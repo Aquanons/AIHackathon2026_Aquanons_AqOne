@@ -306,12 +306,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
         vertical: 14,
       ),
       filled: true,
-      fillColor: _authFill.withOpacity(0.55),
+      fillColor: _authFill.withValues(alpha: 0.55),
       prefixIcon: prefixIcon,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha: 0.6),
         ),
       ),
       focusedBorder: OutlineInputBorder(
