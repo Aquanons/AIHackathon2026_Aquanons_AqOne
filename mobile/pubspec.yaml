@@ -12,7 +12,18 @@ dependencies:
   http: ^1.2.2
   sqflite: ^2.3.3
   path: ^1.9.0
-  geolocator: ^13.0.1
+
+  # Bumped from ^13.0.1 to match the version the Venture code is proven
+  # against. LocationService already uses the modern locationSettings API,
+  # so no call-site changes were needed.
+  geolocator: ^14.0.3
+
+  # Venture map. Versions pinned to what the source project resolved.
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+
+  # Tappable emergency contact numbers.
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
