@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — AqOne</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="../../admin/assets/icons/logo.png" alt="AqOne logo" class="logo">
+      <span class="brand-name">AqOne</span>
+    </div>
+    <div class="live-badge">LIVE</div>
+    <div class="user-chip">LGU Admin</div>
+  </header>
+
+  <div class="app-body">
+
+    <!-- Map -->
+    <div class="map-wrap">
+      <div id="map"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="panel">
+        <h3>Quick Stats</h3>
+        <div class="stat-row">
+          <span>Registered Vessels</span>
+          <strong id="vessel-count">0</strong>
+        </div>
+        <div class="stat-row">
+          <span>Active Alerts</span>
+          <strong id="alert-count">0</strong>
+        </div>
+        <div class="stat-row">
+          <span>Active Buoys</span>
+          <strong>2</strong>
+        </div>
+        <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
+      </div>
+
+      <div class="panel">
+        <h3>Vessels</h3>
+        <ul id="vessel-list" class="vessel-list">
+          <li>V-001 — Bangka ni Mang Juan</li>
+          <li>V-002 — Bangka ni Kapitan</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Advisories</h3>
+        <p class="stub">Coming soon.</p>
+      </div>
+
+      <div class="panel">
+        <h3>Forecast</h3>
+        <p class="stub">Coming soon.</p>
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
