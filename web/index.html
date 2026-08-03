@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AqOne — Sign in</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    if (sessionStorage.getItem('aqoneToken')) window.location.replace('dashboard.html');
+  </script>
+</head>
+<body class="auth-body">
+  <div class="auth-shell">
+    <h1 class="auth-title">AqOne</h1>
+    <p class="auth-sub">MDRRMO response dashboard</p>
+    <form id="login-form" class="auth-form" novalidate>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <button type="submit" class="btn-primary">Sign in</button>
+    </form>
+  </div>
+  <script type="module">
+    import { api } from './js/api.js';
+    import { saveSession } from './js/session.js';
+
+    const form = document.getElementById('login-form');
+    const errorEl = document.getElementById('login-error');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorEl.textContent = '';
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      const fd = new FormData(form);
+      try {
+        const data = await api.login(fd.get('username'), fd.get('password'));
+        saveSession(data.token, data.user);
+        window.location.replace('dashboard.html');
+      } catch (e) {
+        errorEl.textContent = e.message || 'Sign in failed.';
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

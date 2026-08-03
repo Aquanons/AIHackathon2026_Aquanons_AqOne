@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AqOne — Live SOS feed</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    if (!sessionStorage.getItem('aqoneToken')) window.location.replace('index.html');
+  </script>
+</head>
+<body>
+  <div class="topbar">
+    <header class="app-header">
+      <div class="brand">AqOne</div>
+      <div class="header-center">
+        <span id="active-count" class="count-badge">0</span>
+        <span class="count-label">active SOS</span>
+      </div>
+      <div class="header-right">
+        <span id="connection-status" class="status-pill status-connecting">Connecting…</span>
+        <span id="last-updated" class="last-updated"></span>
+        <span id="current-user" class="user-name"></span>
+        <button id="logout" class="btn-ghost">Log out</button>
+      </div>
+    </header>
+    <div class="disclosure-banner">
+      <span>AqOne — MDRRMO live SOS feed. Demo build.</span>
+      <span id="simulated-tag" class="sim-tag" hidden>Simulated</span>
+    </div>
+  </div>
+  <main>
+    <p id="feed-error" class="feed-error" role="alert"></p>
+    <div id="sos-list" class="sos-list" aria-live="polite"></div>
+  </main>
+  <script type="module">
+    import { api } from './js/api.js';
+    import { currentUser, clearSession } from './js/session.js';
+    import { setItems, upsert, bindAck } from './js/feed.js';
+    import { connect } from './js/stream.js';
+
+    const user = currentUser();
+    document.getElementById('current-user').textContent = user.display_name || user.username || '';
+    document.getElementById('logout').addEventListener('click', () => {
+      clearSession();
+      window.location.replace('index.html');
+    });
+
+    const statusEl = document.getElementById('connection-status');
+    const lastUpdatedEl = document.getElementById('last-updated');
+    const errorEl = document.getElementById('feed-error');
+
+    function setStatus(kind, text) {
+      statusEl.className = 'status-pill status-' + kind;
+      statusEl.textContent = text;
+    }
+
+    function touch() {
+      lastUpdatedEl.textContent = 'Last updated ' + new Date().toLocaleTimeString();
+    }
+
+    async function refresh() {
+      const data = await api.listSos();
+      setItems(data.sos);
+      touch();
+    }
+
+    function normalize(sos) {
+      return sos?.sos ?? sos;
+    }
+
+    connect({
+      onEvent(type, raw) {
+        const sos = normalize(raw);
+        if (type === 'created') upsert(sos, { newId: sos.id });
+        else upsert(sos);
+        touch();
+      },
+      onStatus(kind) {
+        if (kind === 'live') setStatus('live', 'Live');
+        else if (kind === 'reconnecting') setStatus('reconnecting', 'Reconnecting…');
+        else if (kind === 'polling') setStatus('polling', 'Polling');
+      },
+      onPoll: refresh,
+    });
+
+    bindAck(refresh);
+    refresh().catch(() => {
+      errorEl.textContent = 'Could not load the feed. Reconnecting…';
+    });
+  </script>
+</body>
+</html>
