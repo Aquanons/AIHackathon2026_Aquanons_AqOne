@@ -1,5 +1,6 @@
-import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+
+import 'db_factory.dart';
 
 class AppDatabase {
   AppDatabase({String? overridePath}) : _overridePath = overridePath;
@@ -18,8 +19,8 @@ class AppDatabase {
   }
 
   Future<Database> _open() async {
-    final path = _overridePath ??
-        p.join(await getDatabasesPath(), 'aqone_outbox.db');
+    initDatabaseFactory();
+    final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
       version: 3,
