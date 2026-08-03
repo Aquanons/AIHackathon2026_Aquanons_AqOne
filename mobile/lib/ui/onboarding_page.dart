@@ -15,10 +15,12 @@ class OnboardingPage extends StatefulWidget {
     super.key,
     required this.identity,
     required this.onReady,
+    this.initialBoat,
   });
 
   final IdentityStore identity;
   final VoidCallback onReady;
+  final String? initialBoat;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
@@ -28,6 +30,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _boat = TextEditingController();
   bool _saving = false;
+
+  bool get _isReturning =>
+      widget.initialBoat != null && widget.initialBoat!.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _boat.text = widget.initialBoat ?? '';
+  }
 
   @override
   void dispose() {
@@ -102,21 +113,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       children: <Widget>[
                         _Branding(isWide: isWide, mediaQuery: mediaQuery),
                         const SizedBox(height: 28),
-                        const Text(
-                          'Set up your boat',
+                        Text(
+                          _isReturning ? 'Welcome back' : 'Set up your boat',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
                             color: _brandDeep,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'No account, no password. Your boat name is what the '
-                          'MDRRMO sees if you send an SOS.',
+                        Text(
+                          _isReturning
+                              ? 'Confirm your boat name to continue. You can '
+                                  'change it here if you are on a different boat.'
+                              : 'No account, no password. Your boat name is what '
+                                  'the MDRRMO sees if you send an SOS.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
                             color: _authLabel,
                             height: 1.4,
