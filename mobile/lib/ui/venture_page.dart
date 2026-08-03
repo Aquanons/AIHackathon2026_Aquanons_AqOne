@@ -239,8 +239,8 @@ class _VenturePageState extends State<VenturePage> {
     if (_isSendingSos) {
       return;
     }
-    final confirmed = await _confirmSos();
-    if (confirmed != true || !mounted) {
+    final note = await _confirmSos();
+    if (note == null || !mounted) {
       return;
     }
 
@@ -248,7 +248,7 @@ class _VenturePageState extends State<VenturePage> {
     try {
       // SosService captures a fresh fix itself; the map's cached position is
       // never what gets sent.
-      final record = await widget.sos.raiseSos();
+      final record = await widget.sos.raiseSos(note: note);
       if (!mounted) {
         return;
       }
@@ -269,8 +269,14 @@ class _VenturePageState extends State<VenturePage> {
     }
   }
 
-  Future<bool?> _confirmSos() {
-    return showDialog<bool>(
+  /// Confirms the SOS and collects an optional note.
+  ///
+  /// Returns the note text on confirm (possibly empty), or null if cancelled.
+  /// The note stays optional and the field starts unfocused, so sending is
+  /// still a single tap - nobody should have to type to call for help.
+  Future<String?> _confirmSos() async {
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape:
@@ -282,10 +288,29 @@ class _VenturePageState extends State<VenturePage> {
             Expanded(child: Text('Send an SOS?')),
           ],
         ),
-        content: Text(
-          'This alerts the MDRRMO that ${widget.identity.boat} needs help, '
-          'and sends your position. Only use this in a real emergency.',
-          style: const TextStyle(fontSize: 14, height: 1.4),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'This alerts the MDRRMO that ${widget.identity.boat} needs '
+              'help, and sends your position. Only use this in a real '
+              'emergency.',
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: note,
+              maxLength: AqOneConfig.maxNoteLength,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'What is wrong? (optional)',
+                hintText: 'engine down',
+                counterText: '',
+                isDense: true,
+              ),
+            ),
+          ],
         ),
         actions: <Widget>[
           TextButton(
@@ -303,6 +328,10 @@ class _VenturePageState extends State<VenturePage> {
         ],
       ),
     );
+
+    final text = note.text;
+    note.dispose();
+    return confirmed == true ? text : null;
   }
 
   void _queueHazardDialog(HazardKind kind) {

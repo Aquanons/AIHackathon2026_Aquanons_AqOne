@@ -53,7 +53,6 @@ class _HomePageState extends State<HomePage> {
   Timer? _buoyTimer;
   Timer? _seaTimer;
   StreamSubscription<void>? _changes;
-  bool _sending = false;
 
   SeaCondition? _sea;
   bool _seaLoading = true;
@@ -166,77 +165,15 @@ class _HomePageState extends State<HomePage> {
     setState(() => _buoy = status);
   }
 
-  Future<void> _confirmAndSend() async {
-    final note = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Send an SOS?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text(
-                'This alerts the MDRRMO once it reaches shore. Only send it '
-                'if you need help.',
-              ),
-              const SizedBox(height: AqSpace.base),
-              TextField(
-                controller: note,
-                maxLength: AqOneConfig.maxNoteLength,
-                decoration: const InputDecoration(
-                  labelText: 'What is wrong? (optional)',
-                  hintText: 'engine down',
-                  counterText: '',
-                ),
-              ),
-            ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AqColors.danger,
-              ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Send SOS'),
-            ),
-          ],
-        );
-      },
-    );
-
-    final text = note.text;
-    note.dispose();
-
-    if (confirmed != true) {
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-    setState(() => _sending = true);
-    try {
-      await widget.service.raiseSos(note: text);
-    } finally {
-      if (mounted) {
-        setState(() => _sending = false);
-        await _loadRecords();
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
+        // bottomInset already covers the system inset, so letting SafeArea
+        // add it again would double-pad the bottom of the list.
+        bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
             await _pollBuoy();
@@ -294,8 +231,6 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: AqSpace.base),
               BuoyStatusCard(status: _buoy),
               const SizedBox(height: AqSpace.screen),
-              _SosButton(busy: _sending, onPressed: _confirmAndSend),
-              const SizedBox(height: AqSpace.screen),
               Text(
                 'Your messages',
                 style: TextStyle(
@@ -325,42 +260,3 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _SosButton extends StatelessWidget {
-  const _SosButton({required this.busy, required this.onPressed});
-
-  final bool busy;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 168,
-      child: Material(
-        color: AqColors.danger,
-        borderRadius: BorderRadius.circular(AqRadius.large),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AqRadius.large),
-          onTap: busy ? null : onPressed,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const Icon(Icons.sos_rounded, size: 56, color: Colors.white),
-                const SizedBox(height: AqSpace.sm),
-                Text(
-                  busy ? 'Sending…' : 'Send SOS',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
