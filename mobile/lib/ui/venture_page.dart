@@ -20,7 +20,6 @@ const Color _brandDeep = Color(0xFF0B4C8C);
 const Color _accentDark = Color(0xFF38BDF8);
 const Color _surfaceDark = Color(0xFF1E293B);
 const Color _canvasDark = Color(0xFF0F172A);
-const Color _danger = Color(0xFFDC2626);
 const Color _success = Color(0xFF16A34A);
 
 /// The at-sea operational screen: map, conditions and catch logging.

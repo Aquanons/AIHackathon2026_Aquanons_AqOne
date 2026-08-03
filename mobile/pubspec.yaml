@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   sqflite: ^2.3.3
+  sqflite_common_ffi_web: any
   path: ^1.9.0
 
   # Bumped from ^13.0.1 to match the version the Venture code is proven

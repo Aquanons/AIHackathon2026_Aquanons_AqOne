@@ -97,6 +97,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.14"
+  dev_build:
+    dependency: transitive
+    description:
+      name: dev_build
+      sha256: f639b36c1cf845c11b506b562e162eca84f2cb368cf9cca48117069f881d4be8
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.8+3"
   fake_async:
     dependency: transitive
     description:
@@ -121,6 +129,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.2"
+  file:
+    dependency: transitive
+    description:
+      name: file
+      sha256: a3b4f84adafef897088c160faf7dfffb7696046cb13ae90b508c2cbc95d3b8d4
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.0.1"
   fixnum:
     dependency: transitive
     description:
@@ -224,6 +240,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.5"
+  glob:
+    dependency: transitive
+    description:
+      name: glob
+      sha256: c3f1ee72c96f8f78935e18aa8cecced9ab132419e8625dc187e1c2408efc20de
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.3"
   gsettings:
     dependency: transitive
     description:
@@ -368,6 +392,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
+  native_toolchain_c:
+    dependency: transitive
+    description:
+      name: native_toolchain_c
+      sha256: f9c168717100ae6d9fee9ffb0be379bf1f8b26b0f6bcbd4fdddcd931993a6a72
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.19.2"
   objective_c:
     dependency: transitive
     description:
@@ -480,6 +512,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
+  pool:
+    dependency: transitive
+    description:
+      name: pool
+      sha256: "978783255c543aa3586a1b3c21f6e9d720eb315376a915872c61ef8b5c20177d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.5.2"
   posix:
     dependency: transitive
     description:
@@ -488,6 +528,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.2"
+  process_run:
+    dependency: transitive
+    description:
+      name: process_run
+      sha256: dadbf4986ddab79086a107b2f893bacd580a523453f76238bc0c13a9faa982af
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.4+1"
   proj4dart:
     dependency: transitive
     description:
@@ -557,6 +605,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.5.11"
+  sqflite_common_ffi:
+    dependency: transitive
+    description:
+      name: sqflite_common_ffi
+      sha256: "5ccd38136edb9beb3213f6927775d52db70dfdadcdb28dad1f625ca9f2b9824f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.4.2"
+  sqflite_common_ffi_web:
+    dependency: "direct main"
+    description:
+      name: sqflite_common_ffi_web
+      sha256: "32dc484518fec883cf0d1aa85c767f7cde6757729480b3d8d20e0fac247ef161"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.2"
   sqflite_darwin:
     dependency: transitive
     description:
@@ -573,6 +637,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.1"
+  sqlite3:
+    dependency: transitive
+    description:
+      name: sqlite3
+      sha256: c73fd75df1332d76a6257f4823ae4df9c791f522b97e4a60cbcad214de1becf4
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.5.0"
   stack_trace:
     dependency: transitive
     description:
