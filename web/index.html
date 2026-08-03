@@ -1,122 +1,36 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AqOne â€” Dashboard Â· Maritime Intelligence for Aklan</title>
-  <meta name="description" content="AqOne Dashboard â€” accounts &amp; roles, live tracking, charts, reports and weather for the Aklan LGU.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body class="landing-page">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AqOne</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <video class="bg-video" autoplay muted loop playsinline poster="assets/pic/bg.png">
+      <source src="assets/vid/bgvid.mp4" type="video/mp4" />
+      Your browser does not support the video tag.
+    </video>
 
-  <header class="topbar landing-topbar">
-    <a class="brand" href="index.html">
-      <img src="../../admin/assets/icons/aqoneLogo2.png" alt="AqOne logo" class="logo">
-      <span class="brand-name">AqOne</span>
-    </a>
-    <nav class="nav-links">
-      <a href="#features" class="nav-link">Features</a>
-      <a href="#modules" class="nav-link">Modules</a>
-      <a href="login.html" class="btn btn-ghost">Sign In</a>
-      <a href="signup.html" class="btn btn-primary">Create account</a>
-    </nav>
-  </header>
+    <div class="page-shell">
+      <main class="page-content">
+        <div class="content-card">
+          <img class="logo" src="assets/icons/logo.png" alt="AqOne logo" />
+          <div class="auth-actions">
+            <a class="auth-btn auth-btn-login" href="html/login.html">Log In</a>
+            <a class="auth-btn auth-btn-signup" href="html/signup.html">Sign Up</a>
+          </div>
 
-  <section class="hero">
-    <div class="hero-glow"></div>
-    <span class="hero-kicker">LGU Maritime Intelligence Â· Aklan</span>
-    <h1>A maritime operations console<br>with real accounts &amp; live analytics.</h1>
-    <p class="hero-sub">
-      AqOne Dashboard adds role-based accounts, signup &amp; terms, satellite and marine map layers,
-      geofence zones, live vessel trails, analytics charts and a catch-reporting module â€”
-      still fully client-side on simulated data.
-    </p>
-    <div class="hero-cta">
-      <a href="signup.html" class="btn btn-primary btn-big">Create account</a>
-      <a href="dashboard.html" class="btn btn-ghost btn-big">Try as Guest</a>
+          <footer class="page-footer" >
+            <p>By continuing, you agree to our</p>
+            <a class="footer-link" href="html/terms.html">Privacy Policy</a>
+            <p>and</p>
+            <a class="footer-link" href="html/terms.html">Terms & Conditions.</a>
+          </footer>
+        </div>
+      </main>
     </div>
 
-    <div class="hero-stats">
-      <div class="hero-stat"><strong>3</strong><span>User roles</span></div>
-      <div class="hero-stat"><strong>3</strong><span>Map layers</span></div>
-      <div class="hero-stat"><strong>6</strong><span>Modules</span></div>
-      <div class="hero-stat"><strong>2&nbsp;s</strong><span>Live refresh</span></div>
-    </div>
-  </section>
-
-  <section id="features" class="features">
-    <div class="section-head">
-      <h2>From prototype to operations console</h2>
-    </div>
-    <div class="feature-grid">
-      <div class="feature-card">
-        <span class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </span>
-        <h3>Accounts &amp; Roles</h3>
-        <p>Sign up on the device, pick a role (Administrator, Operator or Viewer) and sign in with a stored, hashed credential.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></svg>
-        </span>
-        <h3>3 Map Layers</h3>
-        <p>Switch between streets, satellite imagery and a dark marine basemap from the map itself.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 16 8"/><path d="M4 8h12v12"/></svg>
-        </span>
-        <h3>Vessel Trails</h3>
-        <p>Every vessel leaves a live trail of its last positions, color-coded by status, with a one-click follow mode.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-        </span>
-        <h3>Analytics Charts</h3>
-        <p>Status donut, fleet type mix, buoy battery health, activity trend and a 24-hour wind curve â€” pure SVG/CSS.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l3 3 7-7"/><path d="M14 10h4v4"/></svg>
-        </span>
-        <h3>Catch Reporting</h3>
-        <p>Log catch reports, see totals by species and export everything to CSV in one click.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-        </span>
-        <h3>Theme &amp; Settings</h3>
-        <p>Dark and light themes, refresh-rate control, trail/zone toggles and a data exporter in the settings panel.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="modules" class="coverage">
-    <div class="coverage-inner">
-      <div class="section-head">
-        <span class="section-kicker">Dashboard modules</span>
-        <h2>Six working modules, one console</h2>
-      </div>
-      <div class="coverage-grid">
-        <div class="coverage-item"><span class="dot dot-sky"></span> Live vessel tracking &amp; registration</div>
-        <div class="coverage-item"><span class="dot dot-red"></span> Alert feed with severity filters</div>
-        <div class="coverage-item"><span class="dot dot-amber"></span> Forecast &amp; advisories</div>
-        <div class="coverage-item"><span class="dot dot-violet"></span> Analytics charts</div>
-        <div class="coverage-item"><span class="dot dot-green"></span> Catch reports &amp; CSV export</div>
-        <div class="coverage-item"><span class="dot dot-sky"></span> Activity &amp; audit trail</div>
-      </div>
-    </div>
-  </section>
-
-  <footer class="footer">
-    <p>AqOne â€” interactive prototype Â· sample data only Â· built with Leaflet</p>
-  </footer>
-
-</body>
+    <script src="js/script.js"></script>
+  </body>
 </html>
