@@ -5,11 +5,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AqOne - My Profile</title>
-    <link rel="stylesheet" href="sys.css" />
+    <link rel="stylesheet" href="../css/Profile.css" />
 </head>
 
 <body class="profile-body">
 
+    <!-- ─── HEADER ─── -->
     <header class="app-header">
         <div class="header-brand">
             <a href="dashboard.html" class="back-btn" title="Back to Dashboard">
@@ -17,26 +18,36 @@
                     <path d="M15 18l-6-6 6-6" />
                 </svg>
             </a>
-            <img class="top-logo" src="/assets/icons/aqoneLogo2.png" alt="AqOne" />
+            <img class="top-logo" src="../assets/logo1.png" alt="AqOne" />
             <span class="top-title">AqOne</span>
         </div>
 
-        <div class="header-user-dropdown" id="header-user-dropdown">
-            <div class="header-user-avatar">LG</div>
-            <span class="header-user-name">LGU Administrator</span>
+        <div class="header-actions">
+            <!-- AKLANON / ENGLISH LANGUAGE TOGGLE -->
+            <div class="lang-toggle-container" title="Switch Language">
+                <button type="button" class="lang-btn active" id="lang-en">EN</button>
+                <button type="button" class="lang-btn" id="lang-akl">AKL</button>
+            </div>
+
+            <div class="header-user-dropdown" id="header-user-dropdown">
+                <div class="header-user-avatar">LG</div>
+                <span class="header-user-name">LGU Administrator</span>
+            </div>
         </div>
     </header>
 
     <main class="profile-shell">
 
-        <!-- ─── LEFT COLUMN: PROFILE CARD ─── -->
+        <!-- ─── LEFT COLUMN: PROFILE SIDEBAR ─── -->
         <aside class="profile-side">
             <div class="profile-card">
                 <div class="profile-card-avatar-wrap">
                     <div class="profile-card-avatar">LG</div>
                 </div>
                 <div class="profile-card-name">LGU Administrator</div>
-                <div class="profile-card-role">Municipal Disaster Risk Reduction Officer</div>
+                <div class="profile-card-role">
+                    Municipal Disaster Risk Reduction Officer
+                </div>
                 <div class="profile-card-office">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
@@ -56,12 +67,12 @@
             </button>
         </aside>
 
-        <!-- ─── RIGHT COLUMN: SINGLE STREAMLINED FORM ─── -->
+        <!-- ─── RIGHT COLUMN: PROFILE FORM ─── -->
         <section class="profile-main">
             <div class="profile-panel">
                 <div class="profile-panel-header">
                     <h3>Edit Profile</h3>
-                    <p>Update your personal info and security credentials.</p>
+                    <p>Update your personal info and system settings.</p>
                 </div>
 
                 <div class="profile-form-grid">
@@ -69,22 +80,36 @@
                         <label for="pf-fullname">Full Name</label>
                         <input type="text" id="pf-fullname" value="LGU Administrator" />
                     </div>
+
                     <div class="profile-field">
                         <label for="pf-email">Email Address</label>
                         <input type="email" id="pf-email" value="admin@kalibo.aklan.gov.ph" />
                     </div>
+
                     <div class="profile-field">
                         <label for="pf-position">Position</label>
                         <input type="text" id="pf-position" value="Municipal Disaster Risk Reduction Officer" />
                     </div>
+
                     <div class="profile-field">
+                        <label for="pf-lang-select">System Language</label>
+                        <select id="pf-lang-select">
+                            <option value="en">English</option>
+                            <option value="akl">Akeanon (Aklanon)</option>
+                        </select>
+                    </div>
+
+                    <div class="profile-field profile-field-full">
                         <label for="sec-new-password">New Password</label>
-                        <input type="password" id="sec-new-password" placeholder="Leave blank to keep current" />
+                        <input type="password" id="sec-new-password"
+                            placeholder="Leave blank to keep current password" />
                     </div>
                 </div>
 
                 <div class="profile-panel-actions">
-                    <button class="profile-btn profile-btn-primary" id="btn-save-personal">Save Changes</button>
+                    <button class="profile-btn profile-btn-primary" id="btn-save-personal">
+                        Save Changes
+                    </button>
                 </div>
             </div>
         </section>
