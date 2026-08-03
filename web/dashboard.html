@@ -14,21 +14,32 @@
       <img src="../../admin/assets/icons/logo.png" alt="AqOne logo" class="logo">
       <span class="brand-name">AqOne</span>
     </div>
+
+    <div class="header-search">
+      <input type="text" id="search" placeholder="Search vessels..." />
+    </div>
+
     <div class="live-badge">LIVE</div>
-    <div class="user-chip">LGU Admin</div>
+    <div class="user-chip" id="user-chip">Guest</div>
   </header>
 
   <div class="app-body">
 
-    <!-- Map -->
+    <!-- MAP -->
     <div class="map-wrap">
       <div id="map"></div>
+      <div class="map-coords" id="coords">11.6500° N, 122.4300° E</div>
     </div>
 
-    <!-- Sidebar -->
+    <!-- SIDEBAR -->
     <aside class="sidebar">
+
       <div class="panel">
-        <h3>Quick Stats</h3>
+        <div class="panel-head">
+          <h3>Quick Stats</h3>
+          <span class="last-updated" id="last-updated">Last updated: 0s ago</span>
+        </div>
+        <div class="sample-note">Displaying sample data</div>
         <div class="stat-row">
           <span>Registered Vessels</span>
           <strong id="vessel-count">0</strong>
@@ -38,23 +49,36 @@
           <strong id="alert-count">0</strong>
         </div>
         <div class="stat-row">
-          <span>Active Buoys</span>
-          <strong>2</strong>
+          <span>Online Buoys</span>
+          <strong id="buoy-count">0</strong>
         </div>
-        <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
       </div>
 
       <div class="panel">
-        <h3>Vessels</h3>
-        <ul id="vessel-list" class="vessel-list">
-          <li>V-001 — Bangka ni Mang Juan</li>
-          <li>V-002 — Bangka ni Kapitan</li>
-        </ul>
+        <div class="panel-head">
+          <h3>Vessels</h3>
+          <select id="status-filter" class="select-sm">
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="overdue">Overdue</option>
+          </select>
+        </div>
+        <ul id="vessel-list" class="vessel-list"></ul>
       </div>
 
       <div class="panel">
-        <h3>Advisories</h3>
-        <p class="stub">Coming soon.</p>
+        <div class="panel-head">
+          <h3>Alerts</h3>
+          <span class="count-badge" id="alert-badge">0</span>
+        </div>
+        <div id="alert-list" class="alert-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Advisories</h3>
+        </div>
+        <div id="advisory-list" class="advisory-list"></div>
       </div>
 
       <div class="panel">
@@ -62,7 +86,6 @@
         <p class="stub">Coming soon.</p>
       </div>
     </aside>
-
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

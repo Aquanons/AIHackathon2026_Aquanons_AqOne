@@ -4,7 +4,7 @@
 
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
+  font-family: 'Segoe UI', Arial, sans-serif;
   background: #0f172a;
   color: #e2e8f0;
 }
@@ -13,10 +13,11 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   background: #1e293b;
   padding: 10px 16px;
   height: 60px;
+  border-bottom: 1px solid #334155;
 }
 
 .brand {
@@ -32,51 +33,90 @@ body {
 
 .brand-name {
   font-size: 20px;
-  font-weight: bold;
+  font-weight: 700;
   color: #38bdf8;
 }
 
+.v-badge {
+  background: #334155;
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.header-search {
+  flex: 1;
+  max-width: 380px;
+  margin-left: auto;
+}
+
+.header-search input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #e2e8f0;
+  font-size: 13px;
+  outline: none;
+}
+
 .live-badge {
-  background: #ef4444;
+  background: #16a34a;
   color: #fff;
   font-size: 11px;
-  padding: 4px 8px;
+  font-weight: 700;
+  padding: 4px 10px;
   border-radius: 4px;
-  margin-left: auto; /* overlaps the user chip on small screens */
 }
 
 .user-chip {
   background: #334155;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
   font-size: 13px;
   white-space: nowrap;
-  margin-left: 8px;
 }
 
 /* ---- Body ---- */
 .app-body {
   display: flex;
-  flex-direction: row;
+  min-height: calc(100vh - 60px);
 }
 
 .map-wrap {
   flex: 1;
+  position: relative;
 }
 
 #map {
-  height: 400px;
+  height: 100%;
   width: 100%;
+  min-height: 480px;
 }
 
+.map-coords {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 1000;
+}
+
+/* ---- Sidebar ---- */
 .sidebar {
-  width: 300px;
+  width: 340px;
   background: #1e293b;
   padding: 12px;
-  gap: 12px;
   display: flex;
   flex-direction: column;
-  /* no min-height, no responsive rules */
+  gap: 12px;
+  overflow-y: auto;
+  max-height: calc(100vh - 60px);
 }
 
 .panel {
@@ -86,18 +126,38 @@ body {
   padding: 12px;
 }
 
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .panel h3 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 13px;
   color: #94a3b8;
   text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.last-updated {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.sample-note {
+  font-size: 10px;
+  font-style: italic;
+  color: #64748b;
+  margin-bottom: 8px;
 }
 
 .stat-row {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  padding: 4px 0;
+  padding: 6px 0;
   border-bottom: 1px dashed #334155;
 }
 
@@ -105,24 +165,154 @@ body {
   color: #38bdf8;
 }
 
+/* ---- Vessel list ---- */
+.select-sm {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .vessel-list {
+  list-style: none;
   margin: 0;
-  padding-left: 16px;
+  padding: 0;
+}
+
+.vessel-item {
+  padding: 8px;
+  border-bottom: 1px solid #1e293b;
   font-size: 13px;
+}
+
+.vessel-item:last-child {
+  border-bottom: none;
+}
+
+.vessel-main b {
+  color: #38bdf8;
+}
+
+.v-status {
+  float: right;
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #334155;
+}
+
+.status-active .v-status {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.status-overdue .v-status {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.v-owner {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ---- Alerts ---- */
+.count-badge {
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.alert-item:last-child {
+  border-bottom: none;
+}
+
+.sev-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #64748b;
+  flex-shrink: 0;
+}
+
+.sev-warning .sev-dot { background: #f59e0b; }
+.sev-danger .sev-dot  { background: #ef4444; }
+.sev-info .sev-dot    { background: #3b82f6; }
+
+.alert-main {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  flex: 1;
+}
+
+.alert-sub {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: #ef4444;
+}
+
+/* ---- Advisories ---- */
+.advisory-item {
+  padding: 8px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.advisory-item:last-child {
+  border-bottom: none;
+}
+
+.adv-title {
+  font-size: 13px;
+}
+
+.adv-meta {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .stub {
   color: #64748b;
   font-style: italic;
   font-size: 12px;
+  margin: 4px 0 0 0;
 }
 
+/* ---- Buttons ---- */
 .btn {
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
 }
 
 .btn-primary {
@@ -134,12 +324,108 @@ body {
   background: #0284c7;
 }
 
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+}
+
+.btn-block {
+  width: 100%;
+}
+
 .btn-big {
-  padding: 12px 22px;
+  padding: 12px 24px;
   font-size: 15px;
 }
 
-/* ---- Landing page ---- */
+/* ---- Auth page ---- */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(#0f172a, #1e293b);
+}
+
+.auth-card {
+  width: 340px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 28px;
+}
+
+.auth-logo {
+  height: 48px;
+  width: 48px;
+  display: block;
+  margin: 0 auto 12px auto;
+}
+
+.auth-card h1 {
+  text-align: center;
+  margin: 0 0 4px 0;
+  font-size: 22px;
+}
+
+.auth-sub {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
+  margin: 0 0 20px 0;
+}
+
+.auth-card form label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 12px 0 4px 0;
+}
+
+.auth-card form input[type="text"],
+.auth-card form input[type="password"] {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #e2e8f0;
+  font-size: 13px;
+  outline: none;
+}
+
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.remember input {
+  accent-color: #0ea5e9;
+}
+
+.auth-error {
+  color: #f87171;
+  font-size: 12px;
+  min-height: 16px;
+  margin: 8px 0 0 0;
+}
+
+.auth-hint {
+  text-align: center;
+  color: #64748b;
+  font-size: 11px;
+  margin: 12px 0 0 0;
+}
+
+.auth-hint b {
+  color: #38bdf8;
+}
+
+/* ---- Landing ---- */
 .hero {
   text-align: center;
   padding: 80px 16px;
@@ -147,7 +433,7 @@ body {
 }
 
 .hero h1 {
-  font-size: 32px;
+  font-size: 34px;
   margin-bottom: 8px;
 }
 
@@ -174,6 +460,7 @@ body {
 .feature-card h3 {
   margin: 0 0 6px 0;
   color: #38bdf8;
+  font-size: 15px;
 }
 
 .feature-card p {
