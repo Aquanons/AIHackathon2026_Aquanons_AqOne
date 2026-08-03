@@ -23,7 +23,7 @@ class LocationService {
         return null;
       }
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(
+        locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           timeLimit: AqOneConfig.locationTimeout,
         ),
