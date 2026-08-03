@@ -1973,7 +1973,7 @@
   if (userProfilePill) {
     userProfilePill.style.cursor = 'pointer';
     userProfilePill.addEventListener('click', function () {
-      window.location.href = 'dashboardprof.html';
+      window.location.href = 'Systemprofile.html';
     });
   }
 
