@@ -3,43 +3,131 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AqOne — v2</title>
+  <title>AqOne — v3 · Maritime Intelligence for Aklan</title>
+  <meta name="description" content="AqOne v3 — live vessel tracking, buoy telemetry and weather advisory dashboard for the Aklan LGU.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="landing-page">
 
-  <header class="topbar">
-    <div class="brand">
+  <header class="topbar landing-topbar">
+    <a class="brand" href="index.html">
       <img src="../../admin/assets/icons/logo.png" alt="AqOne logo" class="logo">
       <span class="brand-name">AqOne</span>
-    </div>
+      <span class="v-badge">v3 prototype</span>
+    </a>
     <nav class="nav-links">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#coverage" class="nav-link">Coverage</a>
       <a href="login.html" class="btn btn-ghost">Sign In</a>
+      <a href="dashboard.html" class="btn btn-primary">Open Dashboard</a>
     </nav>
   </header>
 
   <section class="hero">
-    <h1>AqOne Maritime Dashboard</h1>
-    <p>Version 2 — login, vessel tracking and alert lists now work (on sample data).</p>
-    <a href="login.html" class="btn btn-primary btn-big">Get Started</a>
+    <div class="hero-glow"></div>
+    <span class="hero-kicker">LGU Maritime Intelligence · Aklan</span>
+    <h1>See every vessel, buoy &amp; weather signal<br>across Aklan waters — live.</h1>
+    <p class="hero-sub">
+      AqOne v3 brings simulated real-time vessel tracking, buoy telemetry, a working alert feed,
+      weather forecasts and an activity log — all inside one dark, responsive dashboard.
+    </p>
+    <div class="hero-cta">
+      <a href="dashboard.html" class="btn btn-primary btn-big">Launch Dashboard</a>
+      <a href="login.html" class="btn btn-ghost btn-big">Sign In</a>
+    </div>
+
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <strong id="stat-vessels">24</strong>
+        <span>Registered vessels</span>
+      </div>
+      <div class="hero-stat">
+        <strong id="stat-buoys">6</strong>
+        <span>Online buoys</span>
+      </div>
+      <div class="hero-stat">
+        <strong id="stat-alerts">3</strong>
+        <span>Active alerts</span>
+      </div>
+      <div class="hero-stat">
+        <strong>2&nbsp;s</strong>
+        <span>Live refresh</span>
+      </div>
+    </div>
   </section>
 
-  <section class="features">
-    <div class="feature-card">
-      <h3>Vessel Tracking</h3>
-      <p>Markers + live list.</p>
+  <section id="features" class="features">
+    <div class="section-head">
+      <span class="section-kicker">What’s new in v3</span>
+      <h2>Built to make coastal ops simpler</h2>
     </div>
-    <div class="feature-card">
-      <h3>Alert Feed</h3>
-      <p>Recent incidents.</p>
-    </div>
-    <div class="feature-card">
-      <h3>Advisories</h3>
-      <p>Working list.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <span class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3Z"/><path d="M6 10 3 17"/><path d="M18 10l3 7"/><path d="M10 10h4"/><path d="M12 10V6"/><path d="M9 6h6"/></svg>
+        </span>
+        <h3>Live Vessel Tracking</h3>
+        <p>Simulated AIS positions that move every 2 seconds, with statuses that shift between active and overdue.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        </span>
+        <h3>Buoy Telemetry</h3>
+        <p>Offshore buoys reporting battery, wave height and temperature — online/offline states shown on the map.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </span>
+        <h3>Working Alert Feed</h3>
+        <p>Overdue, equipment and distress alerts with severity filters. Dismissing actually removes them — and logs it.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1-1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>
+        </span>
+        <h3>Weather Forecast</h3>
+        <p>Hourly wind, wave and temperature outlook with a 7-day summary — simulated from local station data.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+        </span>
+        <h3>Advisories &amp; Reports</h3>
+        <p>Small craft and operational advisories, with catch-report entries, right inside the dashboard.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 9 8 5 4-3 6 4"/><path d="M8 9h.01"/><path d="M11 13h.01"/></svg>
+        </span>
+        <h3>Activity Log</h3>
+        <p>A time-stamped audit trail of every action — logins, vessel registrations and alert dismissals.</p>
+      </div>
     </div>
   </section>
 
-  <footer class="footer">AqOne v0.2 — beta prototype</footer>
+  <section id="coverage" class="coverage">
+    <div class="coverage-inner">
+      <div class="section-head">
+        <span class="section-kicker">Coverage</span>
+        <h2>Watching Aklan’s fishing grounds</h2>
+      </div>
+      <div class="coverage-grid">
+        <div class="coverage-item"><span class="dot dot-sky"></span> Kalibo &amp; New Washington coast</div>
+        <div class="coverage-item"><span class="dot dot-violet"></span> Boracay / Caticlan approaches</div>
+        <div class="coverage-item"><span class="dot dot-green"></span> Batan &amp; northern municipal waters</div>
+        <div class="coverage-item"><span class="dot dot-amber"></span> Ibajay–Altavas southern coast</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>AqOne v0.3 — interactive prototype · sample data only · built with Leaflet</p>
+  </footer>
 
 </body>
 </html>

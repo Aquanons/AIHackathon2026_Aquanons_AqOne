@@ -3,92 +3,212 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard — AqOne</title>
+  <title>Dashboard — AqOne v3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="dashboard-page">
 
+  <!-- ===== HEADER ===== -->
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="index.html">
       <img src="../../admin/assets/icons/logo.png" alt="AqOne logo" class="logo">
       <span class="brand-name">AqOne</span>
-    </div>
+    </a>
 
     <div class="header-search">
-      <input type="text" id="search" placeholder="Search vessels..." />
+      <input type="text" id="search" placeholder="Search vessels or buoy ID…" autocomplete="off" />
+      <span class="search-clear" id="search-clear" title="Clear search">&times;</span>
     </div>
 
-    <div class="live-badge">LIVE</div>
-    <div class="user-chip" id="user-chip">Guest</div>
+    <div class="live-badge" id="live-badge" title="Simulated live feed">
+      <span class="pulse-dot"></span><span id="live-text">LIVE</span>
+    </div>
+
+    <div class="user-chip" id="user-chip">
+      <span class="user-avatar" id="user-avatar">G</span>
+      <span class="user-meta">
+        <span class="user-name" id="user-name">Guest</span>
+        <span class="user-role" id="user-role">Viewer</span>
+      </span>
+    </div>
+
+    <button class="btn btn-ghost btn-sm" id="logout-btn" title="Sign out">Sign out</button>
   </header>
 
-  <div class="app-body">
+  <!-- ===== KPI BAR ===== -->
+  <section class="stats-bar" aria-label="Key metrics">
+    <div class="kpi-card">
+      <span class="kpi-label">Registered Vessels</span>
+      <strong id="vessel-count">0</strong>
+      <span class="kpi-trend" id="vessel-online">0 online</span>
+    </div>
+    <div class="kpi-card" id="kpi-alerts">
+      <span class="kpi-label">Active Alerts</span>
+      <strong id="alert-count">0</strong>
+      <span class="kpi-trend kpi-trend-alert" id="alert-highest">—</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Online Buoys</span>
+      <strong id="buoy-count">0</strong>
+      <span class="kpi-trend" id="buoy-total">of 0 total</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Wind (Kalibo)</span>
+      <strong id="wind-kpi">—</strong>
+      <span class="kpi-trend" id="wind-trend">—</span>
+    </div>
+  </section>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <main class="app-body">
 
     <!-- MAP -->
     <div class="map-wrap">
       <div id="map"></div>
-      <div class="map-coords" id="coords">11.6500° N, 122.4300° E</div>
+
+      <div class="map-coords" id="coords">11.7500° N, 122.2500° E</div>
+      <div class="map-zoom" id="map-zoom">z12</div>
+
+      <div class="map-legend">
+        <div class="legend-title">Map legend</div>
+        <div class="legend-item"><span class="legend-icon legend-vessel"></span> Registered vessel</div>
+        <div class="legend-item"><span class="legend-icon legend-buoy"></span> Buoy sensor</div>
+        <div class="legend-item"><span class="legend-icon legend-alert"></span> Active alert</div>
+        <div class="legend-item"><span class="legend-icon legend-zone"></span> Aklan fishing zone</div>
+      </div>
     </div>
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
 
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Quick Stats</h3>
-          <span class="last-updated" id="last-updated">Last updated: 0s ago</span>
-        </div>
-        <div class="sample-note">Displaying sample data</div>
-        <div class="stat-row">
-          <span>Registered Vessels</span>
-          <strong id="vessel-count">0</strong>
-        </div>
-        <div class="stat-row">
-          <span>Active Alerts</span>
-          <strong id="alert-count">0</strong>
-        </div>
-        <div class="stat-row">
-          <span>Online Buoys</span>
-          <strong id="buoy-count">0</strong>
-        </div>
+      <div class="panel sample-note" id="sample-note">Displaying simulated data — no live backend in this version.</div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="live" role="tab">Vessels</button>
+        <button class="tab" data-tab="alerts" role="tab">Alerts <span class="tab-badge" id="tab-alert-badge">0</span></button>
+        <button class="tab" data-tab="forecast" role="tab">Forecast</button>
+        <button class="tab" data-tab="advisories" role="tab">Advisories</button>
+        <button class="tab" data-tab="activity" role="tab">Activity</button>
       </div>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Vessels</h3>
-          <select id="status-filter" class="select-sm">
-            <option value="all">All</option>
+      <!-- LIVE / VESSELS -->
+      <div class="tab-pane active" id="pane-live">
+        <div class="pane-toolbar">
+          <select id="status-filter" class="select-sm" aria-label="Filter by status">
+            <option value="all">All statuses</option>
             <option value="active">Active</option>
             <option value="overdue">Overdue</option>
+            <option value="idle">Idle</option>
           </select>
+          <button class="btn btn-primary btn-sm" id="add-vessel-btn">+ Register</button>
         </div>
         <ul id="vessel-list" class="vessel-list"></ul>
+        <p class="empty-state" id="vessel-empty" hidden>No vessels match your search.</p>
       </div>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Alerts</h3>
-          <span class="count-badge" id="alert-badge">0</span>
+      <!-- ALERTS -->
+      <div class="tab-pane" id="pane-alerts">
+        <div class="pane-toolbar chips" id="severity-chips">
+          <button class="chip active" data-sev="all">All</button>
+          <button class="chip" data-sev="danger">Danger</button>
+          <button class="chip" data-sev="warning">Warning</button>
+          <button class="chip" data-sev="info">Info</button>
         </div>
         <div id="alert-list" class="alert-list"></div>
+        <p class="empty-state" id="alert-empty" hidden>No alerts at this severity.</p>
       </div>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Advisories</h3>
+      <!-- FORECAST -->
+      <div class="tab-pane" id="pane-forecast">
+        <div class="forecast-now">
+          <div class="forecast-now-main">
+            <span class="forecast-temp" id="fc-temp">—</span>
+            <span class="forecast-desc" id="fc-desc">—</span>
+          </div>
+          <div class="forecast-now-meta" id="fc-meta"></div>
         </div>
-        <div id="advisory-list" class="advisory-list"></div>
+        <div class="forecast-scroll" id="forecast-hours"></div>
+        <div class="forecast-week" id="forecast-week"></div>
       </div>
 
-      <div class="panel">
-        <h3>Forecast</h3>
-        <p class="stub">Coming soon.</p>
+      <!-- ADVISORIES -->
+      <div class="tab-pane" id="pane-advisories">
+        <div class="advisory-list" id="advisory-list"></div>
+      </div>
+
+      <!-- ACTIVITY -->
+      <div class="tab-pane" id="pane-activity">
+        <div class="activity-list" id="activity-list"></div>
+      </div>
+
+      <div class="panel panel-foot">
+        <div class="panel-head">
+          <h3>System</h3>
+        </div>
+        <div class="stat-row">
+          <span>Feed status</span>
+          <strong id="feed-status" class="ok-text">Simulated live</strong>
+        </div>
+        <div class="stat-row">
+          <span>Last updated</span>
+          <strong id="last-updated">0s ago</strong>
+        </div>
+        <div class="stat-row">
+          <span>Session</span>
+          <strong id="session-chip">Guest</strong>
+        </div>
       </div>
     </aside>
+  </main>
+
+  <!-- ===== ADD VESSEL MODAL ===== -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title">Register vessel</h2>
+        <button class="icon-btn" id="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="vessel-form" novalidate>
+        <label for="v-name">Vessel name</label>
+        <input type="text" id="v-name" placeholder="e.g. Bangka ni Mang Juan" required />
+
+        <label for="v-type">Vessel type</label>
+        <select id="v-type">
+          <option value="Bangka">Bangka (pump boat)</option>
+          <option value="Fishing Trawler">Fishing trawler</option>
+          <option value="Cargo">Cargo / passenger</option>
+          <option value="Speedboat">Speedboat</option>
+        </select>
+
+        <label for="v-home">Home port</label>
+        <select id="v-home">
+          <option value="Kalibo">Kalibo</option>
+          <option value="New Washington">New Washington</option>
+          <option value="Batan">Batan</option>
+          <option value="Caticlan / Boracay">Caticlan / Boracay</option>
+          <option value="Ibajay">Ibajay</option>
+        </select>
+
+        <label for="v-owner">Registered owner</label>
+        <input type="text" id="v-owner" placeholder="e.g. Eddie Magbanua" />
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Register vessel</button>
+        </div>
+      </form>
+    </div>
   </div>
 
+  <!-- ===== TOASTS ===== -->
+  <div class="toast-wrap" id="toast-wrap"></div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

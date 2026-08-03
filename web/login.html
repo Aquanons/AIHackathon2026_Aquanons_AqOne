@@ -3,32 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign In — AqOne</title>
+  <title>Sign In — AqOne v3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="auth-page">
 
-  <div class="auth-card">
+  <div class="auth-card" id="auth-card">
     <img src="../../admin/assets/icons/logo.png" alt="AqOne" class="auth-logo">
-    <h1>Sign in</h1>
-    <p class="auth-sub">Maritime Intelligence for Aklan LGU</p>
+    <h1>Welcome back</h1>
+    <p class="auth-sub">Sign in to the AqOne maritime console</p>
 
-    <form id="login-form">
+    <form id="login-form" novalidate>
       <label for="username">Username</label>
-      <input type="text" id="username" placeholder="e.g. admin" autocomplete="username" />
+      <input type="text" id="username" placeholder="e.g. admin" autocomplete="username" required />
 
       <label for="password">Password</label>
-      <input type="password" id="password" placeholder="Enter password" autocomplete="current-password" />
+      <div class="password-wrap">
+        <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" required />
+        <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password" tabindex="-1">Show</button>
+      </div>
 
       <label class="remember">
-        <input type="checkbox" id="remember" /> Remember me
+        <input type="checkbox" id="remember" />
+        <span>Keep me signed in on this device</span>
       </label>
 
-      <button type="submit" class="btn btn-primary btn-block">Log In</button>
-      <p class="auth-error" id="auth-error"></p>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">Log In</button>
+      <p class="auth-error" id="auth-error" role="alert"></p>
     </form>
 
-    <p class="auth-hint">Demo account: username <b>admin</b>, any password.</p>
+    <div class="demo-box">
+      <strong>Demo accounts</strong>
+      <button type="button" class="demo-chip" data-user="admin" data-pass="admin123">admin / admin123</button>
+      <button type="button" class="demo-chip" data-user="operator" data-pass="ocean123">operator / ocean123</button>
+    </div>
+
+    <p class="auth-hint">Just exploring? <a href="dashboard.html">Open the dashboard</a> as a guest.</p>
   </div>
 
   <script src="js/auth.js"></script>
