@@ -9,12 +9,15 @@ import '../models/advisory.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
 import '../models/sos_record.dart';
+import '../models/weather_snapshot.dart';
+import '../services/location_service.dart';
 import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
 import 'widgets/advisory_card.dart';
 import 'widgets/buoy_status_card.dart';
 import 'widgets/delivery_state_tile.dart';
 import 'widgets/sea_condition_banner.dart';
+import 'widgets/weather_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -22,6 +25,7 @@ class HomePage extends StatefulWidget {
     required this.service,
     required this.identity,
     required this.feeds,
+    required this.location,
     this.bottomInset = 0,
     this.onOpenAdvisories,
   });
@@ -29,6 +33,7 @@ class HomePage extends StatefulWidget {
   final SosService service;
   final VesselIdentity identity;
   final VentureFeeds feeds;
+  final LocationService location;
 
   /// Space reserved for the shell's floating dock, so the last card is not
   /// hidden underneath it.
@@ -53,6 +58,11 @@ class _HomePageState extends State<HomePage> {
   SeaCondition? _sea;
   bool _seaLoading = true;
   List<Advisory> _advisories = const <Advisory>[];
+  WeatherSnapshot? _weather;
+  bool _weatherLoading = true;
+
+  /// Whether the current reading is for the device position or the fallback.
+  bool _weatherAtDevice = false;
 
   @override
   void initState() {
@@ -63,6 +73,7 @@ class _HomePageState extends State<HomePage> {
     _pollBuoy();
     _loadSea();
     _loadAdvisories();
+    _loadWeather();
     _buoyTimer = Timer.periodic(
       AqOneConfig.buoyPollInterval,
       (_) => _pollBuoy(),
@@ -103,6 +114,40 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     setState(() => _advisories = advisories);
+  }
+
+  /// Weather for wherever the boat actually is.
+  ///
+  /// Uses the device position when location permission is already granted -
+  /// showing port conditions to someone who is already out at sea would be
+  /// worse than useless. Falls back to the municipal position otherwise, and
+  /// the card says which one is being shown so the reading is never
+  /// ambiguous.
+  ///
+  /// Deliberately does not request permission here: Home is the first screen
+  /// after registration, and a location prompt with no explanation is how
+  /// people end up denying it permanently. Venture asks properly, in context,
+  /// and from then on Home follows the device.
+  Future<void> _loadWeather() async {
+    if (mounted) {
+      setState(() => _weatherLoading = true);
+    }
+
+    final fix = await widget.location.cachedFixIfPermitted();
+    final weather = await widget.feeds.weather(
+      lat: fix?.lat ?? AqOneConfig.aklanLat,
+      lon: fix?.lon ?? AqOneConfig.aklanLon,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _weatherLoading = false;
+      _weatherAtDevice = fix != null;
+      if (weather != null) {
+        _weather = weather;
+      }
+    });
   }
 
   Future<void> _loadRecords() async {
@@ -197,6 +242,7 @@ class _HomePageState extends State<HomePage> {
             await _pollBuoy();
             await _loadSea();
             await _loadAdvisories();
+            await _loadWeather();
             await widget.service.retryPending();
             await widget.service.reconcile();
             await _loadRecords();
@@ -229,6 +275,14 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: AqSpace.lg),
               // The official call sits above everything else on the screen.
               SeaConditionBanner(condition: _sea, isLoading: _seaLoading),
+              const SizedBox(height: AqSpace.base),
+              WeatherCard(
+                snapshot: _weather,
+                isLoading: _weatherLoading,
+                onRetry: _loadWeather,
+                locationLabel:
+                    _weatherAtDevice ? 'your position' : 'Aklan (default)',
+              ),
               if (_advisories.isNotEmpty) ...<Widget>[
                 const SizedBox(height: AqSpace.base),
                 AdvisoryCard(

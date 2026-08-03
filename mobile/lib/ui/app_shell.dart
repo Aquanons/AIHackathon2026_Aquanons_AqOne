@@ -95,6 +95,7 @@ class _AppShellState extends State<AppShell> {
           service: widget.sos,
           identity: widget.identity,
           feeds: widget.feeds,
+          location: widget.location,
           bottomInset: inset,
           onOpenAdvisories: () => _select(2),
         ),

@@ -63,6 +63,42 @@ class LocationService {
   /// Kept for callers that only care whether a position exists.
   Future<Fix?> currentFix() async => (await locate()).fix;
 
+  /// A position only if permission has already been granted.
+  ///
+  /// Never prompts. Used by screens that would like to know where you are
+  /// but must not interrupt with a permission dialog the user has no context
+  /// for yet - on a first launch, a fisherman who has not opened Venture has
+  /// not been told why the app wants their location.
+  ///
+  /// Prefers the platform's last known position, which is cached and costs
+  /// no GPS fix, then falls back to a live read.
+  Future<Fix?> cachedFixIfPermitted() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return null;
+      }
+      final permission = await Geolocator.checkPermission();
+      final granted = permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+      if (!granted) {
+        return null;
+      }
+
+      final cached = await Geolocator.getLastKnownPosition();
+      if (cached != null) {
+        return Fix(
+          lat: cached.latitude,
+          lon: cached.longitude,
+          accuracy: cached.accuracy,
+          at: cached.timestamp,
+        );
+      }
+      return (await locate()).fix;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Full location attempt, reporting why it failed.
   ///
   /// Venture needs the reason so it can tell the user what to do about it,
