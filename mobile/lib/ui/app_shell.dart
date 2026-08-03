@@ -54,8 +54,6 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildVenture(double bottomInset) {
     return VenturePage(
-      identity: widget.identity,
-      sos: widget.sos,
       catches: widget.catches,
       feeds: widget.feeds,
       location: widget.location,
@@ -216,16 +214,13 @@ class _SidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Material(
-        color: isActive
-            ? active.withValues(alpha: 0.12)
-            : Colors.transparent,
+        color: isActive ? active.withValues(alpha: 0.12) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: <Widget>[
                 Icon(
@@ -347,9 +342,7 @@ class _MobileDock extends StatelessWidget {
                   width: buttonSize,
                   height: buttonSize,
                   decoration: BoxDecoration(
-                    color: index == 1
-                        ? const Color(0xFF0284C7)
-                        : _brandPrimary,
+                    color: index == 1 ? const Color(0xFF0284C7) : _brandPrimary,
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: isDark ? _surfaceDark : Colors.white,
@@ -396,9 +389,8 @@ class _DockItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = isDark ? _accentDark : _brandPrimary;
-    final color = isActive
-        ? active
-        : (isDark ? Colors.white60 : const Color(0xFF94A3B8));
+    final color =
+        isActive ? active : (isDark ? Colors.white60 : const Color(0xFF94A3B8));
     return InkWell(
       onTap: onTap,
       child: Padding(
