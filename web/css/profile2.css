@@ -13,6 +13,7 @@
     /* Primary Accent & Gradients */
     --blue-primary: #0f69c9;
     --blue-hover: #0a4da3;
+    --blue-dark: #0958a6;
     --sky-accent: #38bdf8;
 
     /* Elevation & Glass Effect */
@@ -78,14 +79,14 @@ body.profile-body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 clamp(20px, 4vw, 48px);
+    padding: 0 20px;
     z-index: 1000;
 }
 
 .header-brand {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
 }
 
 .back-btn {
@@ -113,8 +114,36 @@ body.profile-body {
     background: rgba(255, 255, 255, 0.14);
 }
 
+/* Back button — hangs under the fixed header, right under the logo */
+.back-btn-drop {
+    position: absolute;
+    top: 100%;
+    left: 20px;
+    margin-top: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    color: var(--blue-primary);
+    z-index: 999;
+}
+
+.back-btn-drop:hover {
+    background: var(--surface);
+    color: var(--blue-hover);
+}
+
+[data-theme="dark"] .back-btn-drop {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--sky-accent);
+}
+
+[data-theme="dark"] .back-btn-drop:hover {
+    color: #ffffff;
+}
+
 .top-logo {
-    height: 36px;
+    height: 54px;
     width: auto;
 }
 
@@ -125,9 +154,9 @@ body.profile-body {
 }
 
 .top-title {
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--text);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--blue-dark);
 }
 
 .top-subtitle {
@@ -255,11 +284,11 @@ body.profile-body {
    SHELL LAYOUT (EXPANDED)
    ══════════════════════════════════════════════════════════════ */
 .profile-shell {
-    margin-top: var(--header-h);
+    margin-top: calc(var(--header-h) + 60px);
     min-height: calc(100vh - var(--header-h));
     display: flex;
     gap: 32px;
-    padding: 40px clamp(20px, 5vw, 64px);
+    padding: 24px clamp(20px, 5vw, 64px);
     max-width: 1400px;
     margin-left: auto;
     margin-right: auto;
@@ -283,7 +312,7 @@ body.profile-body {
     flex-direction: column;
     gap: 20px;
     position: sticky;
-    top: calc(var(--header-h) + 28px);
+    top: calc(var(--header-h) + 52px);
 }
 
 @media (max-width: 960px) {
