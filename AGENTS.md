@@ -1,0 +1,94 @@
+# AGENTS.md
+
+Instructions for AI coding agents working in this repository. Read this before
+changing anything. The canonical project brief is `docs/00_START_HERE.md`.
+
+## One-line project
+
+Offline SOS mesh for small-scale fishermen in New Washington, Aklan (no mobile
+signal at sea): phones hand an SOS to anchored LoRa buoys over WiFi, buoys
+relay over LoRa to a gateway with internet, the gateway forwards to a FastAPI
+backend, and the backend pushes the SOS to an MDRRMO dashboard over SSE.
+
+## Build order — strictly sequential
+
+Do NOT start a step until the previous one demonstrably works. Do NOT skip
+steps. If you are unsure whether a step is done, ask.
+
+1. Deployed skeleton — FastAPI on Railway, green `/healthz`, migrations run.
+2. Two radios talk — raw LoRa packet between two ESP32s, no protocol.
+3. Buoy → gateway → backend — button press on a buoy creates a real SOS row.
+4. Phone → buoy → backend — phone in airplane mode, SOS lands.
+5. Dashboard live feed + acknowledge — full path visible, ack persists.
+6. Range test outdoors — record actual metres in `docs/08_DEMO_AND_STATUS.md`.
+7. Freeze, rehearse x3, record screencast.
+
+## Ownership
+
+| Person | Owns |
+|---|---|
+| Lenard | Lead dev — backend, architecture, deployment |
+| Arnold | Full stack — ingest pipeline, gateway |
+| Daniel | Hardware/firmware — buoy. Critical path. |
+| Jade | Dashboard |
+| Doreen Kay | UI/UX, pitch deck |
+
+## Deliberately NOT building (do not implement)
+
+These are scoped-out decisions, not gaps. See `docs/07_SCOPE_OUT.md` for the
+full list. Short version: no AI model, no catch logging, no advisories, no
+photos, no float-plan, no BFAR/LGU regulator roles.
+
+## Shared contracts (do not diverge from these)
+
+All workstreams interoperate through these documents. If a contract needs to
+change, update the doc first and tell the affected owners.
+
+| Contract | Doc | Who consumes |
+|---|---|---|
+| LoRa binary frame | `docs/02_LOAM_PACKET_SPEC.md` | firmware (Daniel), gateway (Arnold) |
+| Phone ↔ buoy WiFi HTTP | `docs/03_PHONE_BUOY_WIFI.md` | firmware (Daniel), mobile (Jade/Doreen) |
+| Gateway → backend HTTPS | `docs/04_INGEST_API.md` | gateway (Arnold), backend (Lenard) |
+| Public REST + SSE | `docs/05_PUBLIC_API.md` | backend (Lenard), dashboard (Jade) |
+| Delivery states | `docs/06_DELIVERY_STATES.md` | all — the four states are the product language |
+
+## Repository layout
+
+```
+backend/     FastAPI + PostgreSQL (Lenard)
+  app/       application code
+  migrations/  database migrations
+  tests/
+gateway/     LoRa gateway node code (Arnold)
+firmware/
+  buoy/      ESP32-S3 + SX1262 firmware, PlatformIO (Daniel)
+mobile/      Flutter app (Jade, Doreen Kay)
+docs/        numbered specs; 00 is the brief, 08 is the status table
+```
+
+## Definition of done (whole build)
+
+- [ ] Phone in airplane mode sends an SOS that reaches the dashboard
+- [ ] Dashboard acknowledge persists across a reload
+- [ ] The four delivery states are visible and honest in the app
+- [ ] Deployed, healthcheck green, demo URL reachable from outside the venue
+- [ ] Repo public, no secrets, README with setup instructions
+- [ ] Screencast recorded
+- [ ] `docs/08_DEMO_AND_STATUS.md` status table reflects reality
+
+## Conventions
+
+- Do not add code comments unless asked. Prefer self-documenting names.
+- No secrets in the repo. Use `.env` locally (gitignored) and platform
+  env vars in deployment. `*.env.example` files are allowed.
+- Follow the build order above. Do not build ahead of the current step.
+- If a task is ambiguous, ask before doing surprising or large work.
+- Verification before completion: run the project's lint/tests for whatever
+  you changed. The backend uses pytest + ruff once scaffolded; firmware uses
+  PlatformIO build; mobile uses `flutter analyze` + `flutter test`.
+
+## Time budget (Aug 3–5)
+
+Day 1 afternoon 2.5 h, Night 1 7.0 h (main integration push), Day 2 4.0 h,
+Day 3 hard stop ~10:30 am 2.0 h. Deliverables may be due 5:00 pm Aug 4.
+Prioritize the sequential build order over polish.

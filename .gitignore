@@ -1,0 +1,34 @@
+# Python / backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Flutter / mobile
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/android/app/.gradle/
+mobile/ios/Pods/
+
+# PlatformIO / firmware
+firmware/.pio/
+firmware/buoy/.pio/
+.pioenvs/
+.pio/
+.vscode/.browse.c_cpp.db*
+CMakeLists.txt.user
+
+# Node / misc
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
