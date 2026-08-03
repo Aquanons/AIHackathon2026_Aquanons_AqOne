@@ -72,6 +72,7 @@ class SosService {
       boat: identity.boat,
       clientTs: DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000,
       state: DeliveryState.saved,
+      trustTier: identity.trustTier,
       lat: fix?.lat,
       lon: fix?.lon,
       note: _clampNote(note),

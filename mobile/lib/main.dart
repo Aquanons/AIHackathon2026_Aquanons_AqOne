@@ -97,7 +97,7 @@ class _AqOneAppState extends State<AqOneApp> {
     if (!_entered || identity == null || !identity.isComplete) {
       return OnboardingPage(
         identity: _identityStore,
-        initialBoat: identity?.boat,
+        initialIdentity: identity,
         onReady: _enterApp,
       );
     }

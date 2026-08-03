@@ -1,5 +1,6 @@
 import '../core/config.dart';
 import 'delivery_state.dart';
+import 'trust_tier.dart';
 
 const Object _unset = Object();
 
@@ -10,6 +11,7 @@ class SosRecord {
     required this.boat,
     required this.clientTs,
     required this.state,
+    this.trustTier = TrustTier.selfDeclared,
     this.lat,
     this.lon,
     this.note,
@@ -30,6 +32,13 @@ class SosRecord {
   final String boat;
   final int clientTs;
   final DeliveryState state;
+
+  /// How corroborated the sending vessel was when this SOS was raised.
+  ///
+  /// Snapshotted onto the record rather than read live, so the dispatcher
+  /// sees what was true at the time of the call. This is triage context, not
+  /// a filter - the app relays every SOS regardless of tier.
+  final TrustTier trustTier;
   final double? lat;
   final double? lon;
   final String? note;
@@ -73,6 +82,7 @@ class SosRecord {
       boat: boat,
       clientTs: clientTs,
       state: state ?? this.state,
+      trustTier: trustTier,
       lat: lat,
       lon: lon,
       note: note,
@@ -97,6 +107,7 @@ class SosRecord {
         'boat': boat,
         'client_ts': clientTs,
         'state': state.wire,
+        'trust_tier': trustTier.wire,
         'lat': lat,
         'lon': lon,
         'note': note,
@@ -118,6 +129,7 @@ class SosRecord {
         boat: row['boat'] as String,
         clientTs: row['client_ts'] as int,
         state: DeliveryState.fromWire(row['state'] as String?),
+        trustTier: TrustTier.fromWire(row['trust_tier'] as String?),
         lat: (row['lat'] as num?)?.toDouble(),
         lon: (row['lon'] as num?)?.toDouble(),
         note: row['note'] as String?,
@@ -139,6 +151,11 @@ class SosRecord {
       'vessel_id': vesselId,
       'boat': boat,
       'client_ts': clientTs,
+      // Tier only. The name, licence and phone stay off this packet on
+      // purpose: they are sent once at registration and looked up by
+      // vessel_id, because a LoRa frame has no room to carry them on every
+      // distress call.
+      'trust_tier': trustTier.wire,
     };
     if (lat != null) {
       payload['lat'] = lat;

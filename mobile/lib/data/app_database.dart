@@ -22,8 +22,19 @@ class AppDatabase {
         p.join(await getDatabasesPath(), 'aqone_outbox.db');
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // v2 records how corroborated the sending vessel was at the moment
+          // the SOS was raised. Rows written before this predate the profile
+          // fields, so they are self-declared by definition.
+          await db.execute(
+            'ALTER TABLE outbox ADD COLUMN trust_tier TEXT NOT NULL '
+            "DEFAULT 'self_declared'",
+          );
+        }
+      },
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE identity (
@@ -38,6 +49,7 @@ class AppDatabase {
             boat            TEXT NOT NULL,
             client_ts       INTEGER NOT NULL,
             state           TEXT NOT NULL,
+            trust_tier      TEXT NOT NULL DEFAULT 'self_declared',
             lat             REAL,
             lon             REAL,
             note            TEXT,
