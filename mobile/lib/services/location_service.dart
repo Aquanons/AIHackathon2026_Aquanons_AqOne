@@ -23,11 +23,11 @@ class LocationService {
         return null;
       }
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
+        locationSettings: LocationSettings(
           accuracy: LocationAccuracy.high,
           timeLimit: AqOneConfig.locationTimeout,
         ),
-      );
+      ).timeout(AqOneConfig.locationTimeout);
       return Fix(lat: position.latitude, lon: position.longitude);
     } catch (_) {
       return null;

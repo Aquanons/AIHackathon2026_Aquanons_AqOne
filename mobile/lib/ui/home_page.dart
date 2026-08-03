@@ -112,18 +112,24 @@ class _HomePageState extends State<HomePage> {
       },
     );
 
+    final text = note.text;
+    note.dispose();
+
     if (confirmed != true) {
       return;
     }
 
+    if (!mounted) {
+      return;
+    }
     setState(() => _sending = true);
     try {
-      await widget.service.raiseSos(note: note.text);
+      await widget.service.raiseSos(note: text);
     } finally {
       if (mounted) {
         setState(() => _sending = false);
+        await _loadRecords();
       }
-      await _loadRecords();
     }
   }
 
