@@ -22,7 +22,7 @@ class AppDatabase {
         p.join(await getDatabasesPath(), 'aqone_outbox.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -33,6 +33,10 @@ class AppDatabase {
             'ALTER TABLE outbox ADD COLUMN trust_tier TEXT NOT NULL '
             "DEFAULT 'self_declared'",
           );
+        }
+        if (oldVersion < 3) {
+          // v3 queues catch logs so they survive being logged at sea.
+          await _createCatchOutbox(db);
         }
       },
       onCreate: (db, version) async {
@@ -71,7 +75,40 @@ class AppDatabase {
         await db.execute(
           'CREATE INDEX idx_outbox_seq ON outbox (vessel_id, seq)',
         );
+        await _createCatchOutbox(db);
       },
+    );
+  }
+
+  /// Catch logs get their own table rather than sharing [outbox].
+  ///
+  /// They travel a different route - straight to the backend over HTTP when
+  /// signal returns, never over LoRa - and carry entirely different columns.
+  /// Folding them into the SOS outbox would mean a dozen nullable columns and
+  /// a state machine that means two different things depending on the row.
+  static Future<void> _createCatchOutbox(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS catch_outbox (
+        local_id     TEXT PRIMARY KEY,
+        vessel_id    TEXT NOT NULL,
+        species_name TEXT,
+        quantity_kg  REAL NOT NULL,
+        catch_date   TEXT NOT NULL,
+        client_ts    INTEGER NOT NULL,
+        state        TEXT NOT NULL,
+        lat          REAL,
+        lon          REAL,
+        method       TEXT,
+        notes        TEXT,
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        last_error   TEXT,
+        server_id    TEXT,
+        synced_at    INTEGER
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_catch_state '
+      'ON catch_outbox (state, client_ts DESC)',
     );
   }
 
