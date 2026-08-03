@@ -21,3 +21,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Brand assets are optional. Every Image.asset in the app has an
+  # errorBuilder fallback, so the app runs without them. To enable the real
+  # artwork, copy background.png, aqoneLogo2.png and aqoneLogo3.png into
+  # mobile/assets/ and uncomment the block below. Declaring an asset that
+  # does not exist fails the build, so keep these commented until the files
+  # are present.
+  #
+  # assets:
+  #   - assets/images/background.png
+  #   - assets/icons/aqoneLogo2.png
+  #   - assets/icons/aqoneLogo3.png
