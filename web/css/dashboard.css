@@ -3614,3 +3614,39 @@ h3.buoy-drawer-title {
 @media (max-width: 768px) {
   .sos-drawer { width: 100%; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   LANGUAGE TOGGLE
+   ══════════════════════════════════════════════════════════════ */
+.lang-toggle-container {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 20px;
+  padding: 2px;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+[data-theme="dark"] .lang-toggle-container {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.lang-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lang-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}

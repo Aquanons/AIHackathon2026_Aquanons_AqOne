@@ -166,16 +166,7 @@
     return html;
   }
 
-  // ===== FACILITY MARKERS =====
-  facilities.forEach(f => {
-    const marker = L.marker([f.lat, f.lng], { icon: createMarkerIcon('facility') })
-      .bindPopup(makePopup(f.name, [
-        ['Type', f.type],
-        ['Status', f.status.charAt(0).toUpperCase() + f.status.slice(1)],
-        ['Coverage Pop.', f.pop]
-      ], { cls: f.status, text: f.status }));
-    facilityLayer.addLayer(marker);
-  });
+  // ===== FACILITY MARKERS (removed — not shown on map) =====
 
   // ===== BUOY MARKERS =====
   initialBuoys.forEach(b => {
@@ -519,7 +510,6 @@
   });
 
   // Add layers to map
-  facilityLayer.addTo(map);
   incidentLayer.addTo(map);
   buoyLayer.addTo(map);
   pinLayer.addTo(map);
@@ -946,7 +936,9 @@
       });
 
       var activeFilter = document.querySelector('.zones-filter.active');
-      renderZonesTab(activeFilter ? activeFilter.dataset.filter : 'all');
+      if (activeFilter && typeof renderZonesTab === 'function') {
+        renderZonesTab(activeFilter.dataset.filter);
+      }
     } catch (err) {
       console.warn('[AqOne] Could not fetch hotspots:', err.message);
     }
@@ -1312,7 +1304,9 @@
 
   // ===== TOGGLE LAYERS =====
   function toggleLayer(checkboxId, layer) {
-    document.getElementById(checkboxId).addEventListener('change', function () {
+    const el = document.getElementById(checkboxId);
+    if (!el) return;
+    el.addEventListener('change', function () {
       if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
     });
   }
@@ -1331,11 +1325,13 @@
   const statsBody = document.getElementById('stats-body');
   let statsMinimized = false;
 
-  statsMinimizeBtn.addEventListener('click', () => {
-    statsMinimized = !statsMinimized;
-    statsWidget.classList.toggle('minimized', statsMinimized);
-    statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
-  });
+  if (statsMinimizeBtn) {
+    statsMinimizeBtn.addEventListener('click', () => {
+      statsMinimized = !statsMinimized;
+      if (statsWidget) statsWidget.classList.toggle('minimized', statsMinimized);
+      statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
+    });
+  }
 
   // Active alerts card click
   const statAlertsCard = document.querySelector('.stat-card.stat-alerts');
@@ -1344,9 +1340,11 @@
     statAlertsCard.addEventListener('click', function() {
       statsTabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => tc.classList.remove('active'));
-      document.querySelector('.stats-tab[data-tab="alerts"]').classList.add('active');
-      document.getElementById('tab-alerts').classList.add('active');
-      if (statsMinimized) { statsMinimized = false; statsWidget.classList.remove('minimized'); statsMinimizeBtn.innerHTML = '&minus;'; }
+      const alertsTab = document.querySelector('.stats-tab[data-tab="alerts"]');
+      const alertsTabContent = document.getElementById('tab-alerts');
+      if (alertsTab) alertsTab.classList.add('active');
+      if (alertsTabContent) alertsTabContent.classList.add('active');
+      if (statsMinimized && statsWidget) { statsMinimized = false; statsWidget.classList.remove('minimized'); if (statsMinimizeBtn) statsMinimizeBtn.innerHTML = '&minus;'; }
     });
   }
 
@@ -1355,11 +1353,13 @@
   const legendToggle = document.getElementById('legend-toggle');
   let legendCollapsed = false;
 
-  legendToggle.addEventListener('click', () => {
-    legendCollapsed = !legendCollapsed;
-    legendCard.classList.toggle('collapsed', legendCollapsed);
-    legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
-  });
+  if (legendToggle) {
+    legendToggle.addEventListener('click', () => {
+      legendCollapsed = !legendCollapsed;
+      if (legendCard) legendCard.classList.toggle('collapsed', legendCollapsed);
+      legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
+    });
+  }
 
   // ===== TAB SWITCHING =====
   const statsTabs = document.querySelectorAll('.stats-tab');
@@ -1370,7 +1370,8 @@
       statsTabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => tc.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      const targetContent = document.getElementById('tab-' + tab.dataset.tab);
+      if (targetContent) targetContent.classList.add('active');
     });
   });
 
@@ -1547,6 +1548,7 @@
   // ===== ZONES TAB =====
   function renderZonesTab(filter) {
     var list = document.getElementById('zones-list');
+    if (!list) return;
     var sorted = hotspots.slice().sort(function (a, b) {
       var order = { critical: 0, declining: 1, healthy: 2 };
       return (order[a.health] || 2) - (order[b.health] || 2);
@@ -1587,7 +1589,8 @@
     var flaggedCount = hotspots.filter(function (h) {
       return (h.health === 'critical' || h.health === 'declining') && h.reporters >= MIN_REPORTERS_FOR_FLAG;
     }).length;
-    document.getElementById('zones-badge').textContent = flaggedCount;
+    var zonesBadge = document.getElementById('zones-badge');
+    if (zonesBadge) zonesBadge.textContent = flaggedCount;
   }
 
   renderZonesTab('all');
@@ -1733,11 +1736,11 @@
 
   var buoyOnlineCount = buoyMonitorData.filter(function (b) { return b.status === 'online'; }).length;
   var buoyTotal = buoyMonitorData.length;
-  buoyRailBadge.textContent = buoyOnlineCount + '/' + buoyTotal;
-  buoyDrawerBadge.textContent = buoyOnlineCount + '/' + buoyTotal + ' Online';
+  if (buoyRailBadge) buoyRailBadge.textContent = buoyOnlineCount + '/' + buoyTotal;
+  if (buoyDrawerBadge) buoyDrawerBadge.textContent = buoyOnlineCount + '/' + buoyTotal + ' Online';
   if (buoyOnlineCount < buoyTotal) {
-    buoyRailBadge.classList.add('badge-amber');
-    buoyDrawerBadge.classList.add('badge-amber');
+    if (buoyRailBadge) buoyRailBadge.classList.add('badge-amber');
+    if (buoyDrawerBadge) buoyDrawerBadge.classList.add('badge-amber');
   }
 
   function renderBuoyList() {
@@ -1937,36 +1940,53 @@
   });
 
   // ===== CENTER ON AKLAN =====
-  document.getElementById('btn-center-aklan').addEventListener('click', function () {
-    map.setView(NEW_WASHINGTON_CENTER, NEW_WASHINGTON_ZOOM, { animate: true, duration: 1 });
-    if (activePanel) closePanel();
-  });
+  const btnCenterAklan = document.getElementById('btn-center-aklan');
+  if (btnCenterAklan) {
+    btnCenterAklan.addEventListener('click', function () {
+      map.setView(NEW_WASHINGTON_CENTER, NEW_WASHINGTON_ZOOM, { animate: true, duration: 1 });
+      if (activePanel) closePanel();
+    });
+  }
 
   // ===== EXPORT =====
-  document.getElementById('btn-export').addEventListener('click', function () {
-    const data = {
-      center: map.getCenter(),
-      zoom: map.getZoom(),
-      facilities: facilities.length,
-      buoys: initialBuoys.length,
-      incidents: incidents.length,
-      timestamp: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'aqone-dashboard-export.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+  const btnExport = document.getElementById('btn-export');
+  if (btnExport) {
+    btnExport.addEventListener('click', function () {
+      const data = {
+        center: map.getCenter(),
+        zoom: map.getZoom(),
+        facilities: facilities.length,
+        buoys: initialBuoys.length,
+        incidents: incidents.length,
+        timestamp: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aqone-dashboard-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
 
   // ===== EXIT LOADING =====
-  window.addEventListener('load', function () {
-    setTimeout(function () {
-      document.getElementById('loading-overlay').classList.add('hidden');
-    }, 800);
-  });
+  function hideLoadingOverlay() {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(hideLoadingOverlay, 300);
+  } else {
+    window.addEventListener('load', function () {
+      setTimeout(hideLoadingOverlay, 300);
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(hideLoadingOverlay, 300);
+    });
+  }
+  setTimeout(hideLoadingOverlay, 1500);
 
   // ===== USER PROFILE PILL =====
   var userProfilePill = document.getElementById('user-profile');
@@ -1978,12 +1998,11 @@
   }
 
   // ===== THEME TOGGLE (shared with profile.html) =====
-  // Merged with profile.html's theme script: this now also keeps the
-  // #pref-dark-toggle checkbox on the profile page in sync, and both
-  // entry points (button click / checkbox change) funnel through one
-  // applyTheme() so the two pages can never fight over the toggle.
+  // Reads BOTH storage keys used by profile.js ('aqone_dark_mode') and
+  // the dashboard's own key ('aqone-theme') so dark mode persists across pages.
   (function () {
     var STORAGE_KEY = 'aqone-theme';
+    var PROFILE_KEY = 'aqone_dark_mode';
     var root = document.documentElement;
 
     function applyTheme(theme) {
@@ -1996,8 +2015,23 @@
       if (darkToggle) darkToggle.checked = theme === 'dark';
     }
 
-    var savedTheme = localStorage.getItem(STORAGE_KEY) || 'light';
-    applyTheme(savedTheme);
+    function resolveTheme() {
+      var ownKey = localStorage.getItem(STORAGE_KEY);
+      if (ownKey) return ownKey;
+      var profileDark = localStorage.getItem(PROFILE_KEY);
+      if (profileDark === 'true') return 'dark';
+      return 'light';
+    }
+
+    applyTheme(resolveTheme());
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === PROFILE_KEY) {
+        var next = e.newValue === 'true' ? 'dark' : 'light';
+        applyTheme(next);
+        localStorage.setItem(STORAGE_KEY, next);
+      }
+    });
 
     var themeBtn = document.getElementById('btn-theme');
     if (themeBtn) {
@@ -2017,6 +2051,204 @@
         localStorage.setItem(STORAGE_KEY, next);
       });
     }
+  })();
+
+  // ===== LANGUAGE TRANSLATIONS (EN / AKL) =====
+  (function () {
+    var DASHBOARD_TRANSLATIONS = {
+      en: {
+        subTitle: "Maritime Intelligence — Aklan LGU",
+        layerStreets: "Streets",
+        layerSatellite: "Satellite",
+        layerHybrid: "Hybrid",
+        searchPlaceholder: "Search vessels, zones, coordinates...",
+        userName: "Kalibo, Aklan<br>LGU Administrator",
+        railLayers: "Layers",
+        railPan: "Pan",
+        railPin: "Pin",
+        railMeasure: "Measure",
+        railBuoys: "BUOYS",
+        railEmergency: "EMERGENCY",
+        railAdvisories: "Advisories",
+        lblIncidents: "Incident Reports",
+        lblBuoyStations: "Buoy Stations",
+        lblUserPins: "User Pins",
+        lblCoverage: "Buoy Coverage Zones",
+        lblMesh: "Mesh Network",
+        btnExport: "Export View Data",
+        btnCenterAklan: "Center on Aklan",
+        measureHint: "Click the map to add points. Double-click to finish.",
+        btnFinish: "Finish",
+        btnClear: "Clear",
+        hdrBuoyMonitor: "Buoy Health Monitor",
+        hdrAdvisories: "Maritime Advisories",
+        subAdvisories: "Create and manage official government advisories.",
+        btnCreateAdv: "Create Advisory",
+        filterAll: "All",
+        filterInCoverage: "In Coverage",
+        filterOutOfCoverage: "Out of Coverage",
+        filterOverdue: "Overdue",
+        wcTitle: "Current Conditions",
+        hdrSeaStatus: "Sea Condition Status",
+        btnSeaSafe: "Safe to Go Out",
+        btnSeaCaution: "Caution — Check Advisories",
+        btnSeaDanger: "Not Advised",
+        lblReason: "Reason (optional)",
+        phReason: "e.g. Small craft advisory in effect...",
+        btnSetStatus: "Set Status",
+        hdrForecast: "7-Day Forecast",
+        stubForecast: "Forecast data coming soon",
+        hdrRainfall: "Rainfall Timeline",
+        stubRainfall: "Rainfall data coming soon",
+        emTitle: "Emergency Contacts",
+        emSubtitle: "Quick access for MDRRMO responders",
+      },
+      akl: {
+        subTitle: "Intelihensiya sa Baybayon — LGU Aklan",
+        layerStreets: "Mga Dalan",
+        layerSatellite: "Satélite",
+        layerHybrid: "Pagsagol",
+        searchPlaceholder: "Mag-sapsap it sakayan, rehiyon, coordinates...",
+        userName: "Kalibo, Aklan<br>Tagadumala sa LGU",
+        railLayers: "Mga Han-ay",
+        railPan: "I-duhol",
+        railPin: "Tandaan",
+        railMeasure: "Sukdon",
+        railBuoys: "MGA BUOYS",
+        railEmergency: "EMERHENSIYA",
+        railAdvisories: "Mga Pasidaan",
+        lblIncidents: "Ulat it Insidente",
+        lblBuoyStations: "Estasyon it Buoy",
+        lblUserPins: "Mga Tanda sang Tawo",
+        lblCoverage: "Rehiyon sang Sakop it Buoy",
+        lblMesh: "Network sa Mesh",
+        btnExport: "I-export ang Datos",
+        btnCenterAklan: "I-sentro sa Aklan",
+        measureHint: "I-klick ang mapa para magdugang it punto. Double-click para matapos.",
+        btnFinish: "Tapuson",
+        btnClear: "Panason",
+        hdrBuoyMonitor: "Kauswagan sang Buoy",
+        hdrAdvisories: "Mga Pasidaan sa Baybayon",
+        subAdvisories: "Maghimo ag magdumala sang opisyal nga mga pasidaan sang gobyerno.",
+        btnCreateAdv: "Maghimo it Pasidaan",
+        filterAll: "Tanan",
+        filterInCoverage: "Yara sa Sakop",
+        filterOutOfCoverage: "Gwa sa Sakop",
+        filterOverdue: "Lampas sa Oras",
+        wcTitle: "Kasamtangan nga Panahon",
+        hdrSeaStatus: "Sitwasyon sa Baybayon",
+        btnSeaSafe: "Ewas nga Maglayag",
+        btnSeaCaution: "Maghalong — Basaha ang Pasidaan",
+        btnSeaDanger: "Indi Ginarekomendar",
+        lblReason: "Rason (opsyonal)",
+        phReason: "hal. Pasidaan sa gamay nga sakayan...",
+        btnSetStatus: "I-set ang Sitwasyon",
+        hdrForecast: "Pasidaan sa 7-Ka Adlaw",
+        stubForecast: "Maga-abot pa ang datos sa panahon",
+        hdrRainfall: "Oras sang Ulan",
+        stubRainfall: "Maga-abot pa ang datos sang ulan",
+        emTitle: "Mga Kontaktuhon sa Emerhensiya",
+        emSubtitle: "Mabilis nga pagkuha para sa mga tagatubag sang MDRRMO",
+      }
+    };
+
+    function applyLanguage(lang) {
+      if (lang !== 'akl') lang = 'en';
+      localStorage.setItem('aqone_lang', lang);
+      var dict = DASHBOARD_TRANSLATIONS[lang];
+
+      var btnEn = document.getElementById('dash-lang-en');
+      var btnAkl = document.getElementById('dash-lang-akl');
+      if (btnEn && btnAkl) {
+        if (lang === 'akl') {
+          btnEn.classList.remove('active');
+          btnAkl.classList.add('active');
+        } else {
+          btnAkl.classList.remove('active');
+          btnEn.classList.add('active');
+        }
+      }
+
+      var setText = function (selector, key) {
+        var el = document.querySelector(selector);
+        if (el && dict[key]) el.innerHTML = dict[key];
+      };
+
+      setText('.top-subtitle', 'subTitle');
+      setText('[data-layer="streets"] span', 'layerStreets');
+      setText('[data-layer="satellite"] span', 'layerSatellite');
+      setText('[data-layer="hybrid"] span', 'layerHybrid');
+
+      var searchInput = document.querySelector('.search-input');
+      if (searchInput && dict.searchPlaceholder) searchInput.placeholder = dict.searchPlaceholder;
+
+      setText('.user-name', 'userName');
+      setText('#rail-btn-layers .rail-label', 'railLayers');
+      setText('#rail-btn-pan .rail-label', 'railPan');
+      setText('#rail-btn-pin .rail-label', 'railPin');
+      setText('#rail-btn-measure .rail-label', 'railMeasure');
+      setText('#rail-btn-buoy .rail-label', 'railBuoys');
+      setText('#btn-emergency .rail-label', 'railEmergency');
+      setText('#rail-btn-advisories .rail-label', 'railAdvisories');
+
+      setText('#toggle-incidents + .toggle-label', 'lblIncidents');
+      setText('#toggle-buoys + .toggle-label', 'lblBuoyStations');
+      setText('#toggle-pins + .toggle-label', 'lblUserPins');
+      setText('#toggle-coverage + .toggle-label', 'lblCoverage');
+      setText('#toggle-mesh + .toggle-label', 'lblMesh');
+
+      setText('#btn-export', 'btnExport');
+      setText('#btn-center-aklan', 'btnCenterAklan');
+      setText('.measure-hint', 'measureHint');
+      setText('#btn-measure-finish', 'btnFinish');
+      setText('#btn-measure-clear', 'btnClear');
+
+      setText('.buoy-drawer-title', 'hdrBuoyMonitor');
+      setText('.advisory-drawer-title', 'hdrAdvisories');
+      setText('.advisory-drawer-desc', 'subAdvisories');
+      setText('#btn-create-advisory', 'btnCreateAdv');
+
+      setText('.vessel-filter[data-filter="all"]', 'filterAll');
+      setText('.vessel-filter[data-filter="in-coverage"]', 'filterInCoverage');
+      setText('.vessel-filter[data-filter="out-of-coverage"]', 'filterOutOfCoverage');
+      setText('.vessel-filter[data-filter="overdue"]', 'filterOverdue');
+
+      setText('.wc-title', 'wcTitle');
+      setText('#sea-condition-card .panel-card-header span', 'hdrSeaStatus');
+      setText('.sea-condition-btn.btn-safe', 'btnSeaSafe');
+      setText('.sea-condition-btn.btn-caution', 'btnSeaCaution');
+      setText('.sea-condition-btn.btn-danger', 'btnSeaDanger');
+      setText('label[for="sea-condition-reason"]', 'lblReason');
+      var seaInput = document.getElementById('sea-condition-reason');
+      if (seaInput && dict.phReason) seaInput.placeholder = dict.phReason;
+      setText('#sea-condition-set-btn', 'btnSetStatus');
+
+      setText('#forecast-card .panel-card-header span', 'hdrForecast');
+      setText('#forecast-body .panel-stub-text', 'stubForecast');
+      setText('#rainfall-card .panel-card-header span', 'hdrRainfall');
+      setText('#rainfall-body .panel-stub-text', 'stubRainfall');
+      setText('.emergency-modal-title', 'emTitle');
+      setText('.emergency-modal-subtitle', 'emSubtitle');
+    }
+
+    var btnEn = document.getElementById('dash-lang-en');
+    var btnAkl = document.getElementById('dash-lang-akl');
+    if (btnEn) btnEn.addEventListener('click', function () { applyLanguage('en'); });
+    if (btnAkl) btnAkl.addEventListener('click', function () { applyLanguage('akl'); });
+
+    var prefLangSelect = document.getElementById('pref-lang-select');
+    if (prefLangSelect) {
+      prefLangSelect.addEventListener('change', function (e) {
+        applyLanguage(e.target.value);
+      });
+    }
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'aqone_lang') applyLanguage(e.newValue);
+    });
+
+    var savedLang = localStorage.getItem('aqone_lang') || 'en';
+    applyLanguage(savedLang);
   })();
 
   // ===== PROFILE PAGE: TABS, SAVE HANDLERS, LOGOUT (from profile.html) =====
@@ -2582,6 +2814,7 @@
 
   function renderProtectedZones() {
     var list = document.getElementById('protected-zone-list');
+    if (!list) return;
     var protectedZones = hotspots.filter(function (h) { return h.protected; });
     if (protectedZones.length === 0) {
       list.innerHTML = '<div class="protected-zone-empty">No protected zones yet</div>';
@@ -2630,6 +2863,7 @@
 
   function showToast(title, msg) {
     var container = document.getElementById('toast-container');
+    if (!container) return;
     var toast = document.createElement('div');
     toast.className = 'toast';
     toast.innerHTML = '<div class="toast-title">' + title + '</div><div class="toast-msg">' + msg + '</div>';
@@ -2646,27 +2880,30 @@
   var bfarCancel = document.getElementById('bfar-btn-cancel');
   var bfarConfirm = document.getElementById('bfar-btn-confirm');
 
-  function closeBFARModal() { bfarOverlay.classList.remove('active'); }
+  function closeBFARModal() { if (bfarOverlay) bfarOverlay.classList.remove('active'); }
 
-  bfarClose.addEventListener('click', closeBFARModal);
-  bfarCancel.addEventListener('click', closeBFARModal);
-  bfarOverlay.addEventListener('click', function (e) { if (e.target === bfarOverlay) closeBFARModal(); });
+  if (bfarClose) bfarClose.addEventListener('click', closeBFARModal);
+  if (bfarCancel) bfarCancel.addEventListener('click', closeBFARModal);
+  if (bfarOverlay) bfarOverlay.addEventListener('click', function (e) { if (e.target === bfarOverlay) closeBFARModal(); });
 
-
-  bfarConfirm.addEventListener('click', function () {
-    if (currentDesignateIndex < 0) return;
-    var duration = parseInt(document.getElementById('bfar-duration').value);
-    var reason = document.getElementById('bfar-reason').value;
-    if (isNaN(duration)) duration = 30;
-    designateZone(currentDesignateIndex, duration, reason);
-    currentDesignateIndex = -1;
-    closeBFARModal();
-  });
+  if (bfarConfirm) {
+    bfarConfirm.addEventListener('click', function () {
+      if (currentDesignateIndex < 0) return;
+      var durationEl = document.getElementById('bfar-duration');
+      var reasonEl = document.getElementById('bfar-reason');
+      var duration = durationEl ? parseInt(durationEl.value) : 30;
+      var reason = reasonEl ? reasonEl.value : '';
+      if (isNaN(duration)) duration = 30;
+      designateZone(currentDesignateIndex, duration, reason);
+      currentDesignateIndex = -1;
+      closeBFARModal();
+    });
+  }
 
   // Custom events for hotspot popup buttons
   window.addEventListener('bfar-designate', function (e) {
     currentDesignateIndex = e.detail.idx;
-    bfarOverlay.classList.add('active');
+    if (bfarOverlay) bfarOverlay.classList.add('active');
   });
   window.addEventListener('remove-protection', function (e) {
     removeProtection(e.detail.idx);
