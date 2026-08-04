@@ -1,12 +1,53 @@
 from __future__ import annotations
 
-from typing import Literal
+from datetime import UTC, datetime
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.auth import require_user
 from app.db import get_pool
+
+# Responder status vocabulary. One byte, so it survives a 64-byte LoRa frame in
+# phase 2 and stays consistent between dispatchers under pressure. The canonical
+# table lives in docs/13_RESPONDER_LOOP.md; the dashboard and the Flutter app
+# mirror these values.
+RESPONDER_RECEIVED = 1
+RESPONDER_DISPATCHED = 2
+RESPONDER_COAST_GUARD = 3
+RESPONDER_NEAREST_VESSEL = 4
+RESPONDER_DELAYED = 5
+
+RESPONDER_STATUS_LABELS: dict[int, str] = {
+    RESPONDER_RECEIVED: 'MDRRMO has your call',
+    RESPONDER_DISPATCHED: 'Rescue boat on the way',
+    RESPONDER_COAST_GUARD: 'Coast Guard notified',
+    RESPONDER_NEAREST_VESSEL: 'Nearby boats alerted',
+    RESPONDER_DELAYED: 'Delayed - still coming',
+}
+
+REPLY_STILL_IN_DANGER = 1
+REPLY_SAFE_NOW = 2
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _delivery_state(row: Any) -> str:
+    """Collapse the stored flags into the four states the app speaks.
+
+    Mirrors docs/06_DELIVERY_STATES.md. The handset merges this with whatever
+    it already knows, so a state can only ever move forward.
+    """
+    if row['resolved_at'] is not None:
+        return 'acknowledged'
+    if row['acknowledged_at'] is not None:
+        return 'acknowledged'
+    if row['delivered_direct'] or row['delivered_via_buoy']:
+        return 'delivered'
+    return 'relayed'
 
 # Deliberately NOT behind require_user.
 #
@@ -161,25 +202,157 @@ async def active_sos(_: dict = Depends(require_user)) -> dict[str, object]:
     }
 
 
+class AcknowledgeIn(BaseModel):
+    """A dispatcher's answer to a distress call.
+
+    `eta_minutes` is what the dispatcher types; the server converts it to an
+    absolute `eta_at` so the clock is authoritative and not the browser's, and
+    so the handset's countdown stays correct however long delivery takes.
+    """
+
+    eta_minutes: int | None = Field(default=None, ge=1, le=720)
+    responder_status: int = Field(default=RESPONDER_RECEIVED, ge=1, le=5)
+    responder_note: str | None = None
+
+
 @protected_router.post('/{event_id}/acknowledge')
-async def acknowledge(event_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def acknowledge(
+    event_id: int,
+    payload: AcknowledgeIn | None = None,
+    user: dict = Depends(require_user),
+) -> dict[str, object]:
+    body = payload or AcknowledgeIn()
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
             UPDATE sos_events
-               SET acknowledged_at = NOW(), acked_by = $2
+               SET acknowledged_at  = COALESCE(acknowledged_at, NOW()),
+                   acked_by         = $2,
+                   responder_status = $3,
+                   responder_note   = COALESCE($4, responder_note),
+                   -- NULL eta_minutes leaves any existing ETA untouched, so a
+                   -- dispatcher can update the status without wiping the time.
+                   eta_at = CASE
+                              WHEN $5::INT IS NULL THEN eta_at
+                              ELSE NOW() + ($5::INT * INTERVAL '1 minute')
+                            END
              WHERE id = $1
-            RETURNING id, acknowledged_at, acked_by
+            RETURNING id, acknowledged_at, acked_by, eta_at,
+                      responder_status, responder_note
             ''',
             event_id,
             user.get('email') or 'unknown',
+            body.responder_status,
+            body.responder_note,
+            body.eta_minutes,
         )
     if row is None:
-        return {'ok': False, 'detail': 'no such SOS event'}
+        raise HTTPException(status_code=404, detail='no such SOS event')
     return {
         'ok': True,
         'id': row['id'],
         'acknowledged_at': row['acknowledged_at'].isoformat(),
         'acked_by': row['acked_by'],
+        'eta_at': row['eta_at'].isoformat() if row['eta_at'] else None,
+        'responder_status': row['responder_status'],
+        'responder_status_label': RESPONDER_STATUS_LABELS.get(row['responder_status']),
+        'responder_note': row['responder_note'],
+    }
+
+
+@router.get('/vessel/{vessel_id}')
+async def vessel_sos(vessel_id: str) -> dict[str, object]:
+    """What the handset polls to learn whether anyone answered.
+
+    Unauthenticated for the same reason ingest is: a handset in distress has no
+    token. It returns only the events belonging to the vessel id in the path, so
+    it discloses nothing a dispatcher would not already be shouting over VHF.
+
+    This route did not exist. The app has been calling
+    /api/v1/vessels/{id}/sos, which no router ever served, so reconciliation
+    silently 404'd and no acknowledgement ever reached a fisherman.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            '''
+            SELECT id, local_id, seq, client_ts, acknowledged_at, acked_by,
+                   eta_at, responder_status, responder_note,
+                   fisher_reply, resolved_at,
+                   delivered_direct, delivered_via_buoy
+            FROM sos_events
+            WHERE vessel_id = $1
+            ORDER BY created_at DESC
+            LIMIT 20
+            ''',
+            vessel_id,
+        )
+
+    return {
+        'vessel_id': vessel_id,
+        # Server time, so the handset can correct for clock drift before
+        # rendering a countdown against eta_at.
+        'server_time': datetime.now(UTC).isoformat(),
+        'events': [
+            {
+                'id': row['id'],
+                'local_id': row['local_id'],
+                'seq': row['seq'],
+                'client_ts': row['client_ts'],
+                'delivery_state': _delivery_state(row),
+                'acknowledged_at': _iso(row['acknowledged_at']),
+                'acked_by': row['acked_by'],
+                'eta_at': _iso(row['eta_at']),
+                'responder_status': row['responder_status'],
+                'responder_status_label': RESPONDER_STATUS_LABELS.get(row['responder_status']),
+                'responder_note': row['responder_note'],
+                'fisher_reply': row['fisher_reply'],
+                'resolved_at': _iso(row['resolved_at']),
+            }
+            for row in rows
+        ],
+    }
+
+
+class ReplyIn(BaseModel):
+    """The fisher's one-tap answer to an acknowledgement."""
+
+    reply: int = Field(ge=1, le=2, description='1 STILL_IN_DANGER, 2 SAFE_NOW')
+
+
+@router.post('/{event_id}/reply')
+async def fisher_reply(event_id: int, payload: ReplyIn) -> dict[str, object]:
+    """Record the fisher's reply. Unauthenticated, like ingest.
+
+    It can only annotate an event that already exists and cannot create one, so
+    the worst an abuser achieves is a wrong flag on an incident a dispatcher is
+    already looking at.
+
+    SAFE_NOW resolves the incident, which is what lets a dispatcher release
+    assets to somebody else.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            '''
+            UPDATE sos_events
+               SET fisher_reply      = $2,
+                   fisher_replied_at = NOW(),
+                   resolved_at = CASE WHEN $2 = $3 THEN NOW() ELSE resolved_at END
+             WHERE id = $1
+            RETURNING id, fisher_reply, fisher_replied_at, resolved_at
+            ''',
+            event_id,
+            payload.reply,
+            REPLY_SAFE_NOW,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail='no such SOS event')
+    return {
+        'ok': True,
+        'id': row['id'],
+        'fisher_reply': row['fisher_reply'],
+        'fisher_replied_at': _iso(row['fisher_replied_at']),
+        'resolved_at': _iso(row['resolved_at']),
     }

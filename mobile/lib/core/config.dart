@@ -17,7 +17,16 @@ class AqOneConfig {
   static const Duration backendTimeout = Duration(seconds: 12);
   static const Duration buoyPollInterval = Duration(seconds: 10);
   static const Duration outboxRetryInterval = Duration(seconds: 20);
-  static const Duration reconcileInterval = Duration(minutes: 2);
+  /// How often the app asks the backend what happened to an outstanding SOS.
+  ///
+  /// Two minutes was fine when this only reconciled delivery bookkeeping. Now
+  /// it also carries the responder's ETA, and two minutes is far too long to
+  /// leave someone wondering whether anybody heard them.
+  ///
+  /// The cost of the faster rate is near zero: reconcile() opens with a local
+  /// query and returns immediately when nothing is outstanding, so an idle
+  /// handset does one cheap SQLite read per tick and never touches the network.
+  static const Duration reconcileInterval = Duration(seconds: 15);
   static const Duration locationTimeout = Duration(seconds: 8);
 
   /// How often Venture refreshes buoys and hazard feeds while it is visible.

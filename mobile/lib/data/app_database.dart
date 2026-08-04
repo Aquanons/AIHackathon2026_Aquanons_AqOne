@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -42,6 +42,12 @@ class AppDatabase {
         }
         if (oldVersion < 4) {
           await db.execute('DROP TABLE IF EXISTS catch_outbox');
+        }
+        if (oldVersion < 5) {
+          // v5 stores what the responder sent back, so the ETA survives the
+          // app being closed and reopened - which is exactly when a frightened
+          // person will check it.
+          await _addResponderColumns(db);
         }
       },
       onCreate: (db, version) async {
@@ -71,7 +77,14 @@ class AppDatabase {
             relayed_at      INTEGER,
             delivered_at    INTEGER,
             acknowledged_at INTEGER,
-            acked_by        TEXT
+            acked_by        TEXT,
+            -- What the responder sent back. remote_id is the backend's event
+            -- id, needed to post the fisher's reply against the right incident.
+            remote_id        TEXT,
+            eta_at           TEXT,
+            responder_status INTEGER,
+            responder_note   TEXT,
+            fisher_reply     INTEGER
           )
         ''');
         await db.execute(
@@ -90,6 +103,28 @@ class AppDatabase {
   /// signal returns, never over LoRa - and carry entirely different columns.
   /// Folding them into the SOS outbox would mean a dozen nullable columns and
   /// a state machine that means two different things depending on the row.
+  /// Columns added in v5 for the responder loop.
+  ///
+  /// Applied one at a time and tolerantly: SQLite has no ADD COLUMN IF NOT
+  /// EXISTS, and a handset that has already been through a partial upgrade
+  /// must not be left with an unopenable database mid-emergency.
+  static Future<void> _addResponderColumns(Database db) async {
+    const columns = <String>[
+      'remote_id TEXT',
+      'eta_at TEXT',
+      'responder_status INTEGER',
+      'responder_note TEXT',
+      'fisher_reply INTEGER',
+    ];
+    for (final column in columns) {
+      try {
+        await db.execute('ALTER TABLE outbox ADD COLUMN $column');
+      } catch (_) {
+        // Already present.
+      }
+    }
+  }
+
   static Future<void> _createLegacyOutbox(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS catch_outbox (

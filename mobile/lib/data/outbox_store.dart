@@ -120,6 +120,64 @@ class OutboxStore {
     return save(updated);
   }
 
+  /// Store what the responder sent back for this SOS.
+  ///
+  /// Returns true when something actually changed, so the caller only pushes a
+  /// UI update when there is news - a poll every 15 seconds that reports "no
+  /// change" should not repaint a countdown the user is watching.
+  Future<bool> saveResponder(
+    String localId, {
+    String? remoteId,
+    String? etaAt,
+    int? responderStatus,
+    String? responderNote,
+  }) async {
+    final db = await _db.database;
+    final existing = await db.query(
+      'outbox',
+      columns: <String>['remote_id', 'eta_at', 'responder_status', 'responder_note'],
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      return false;
+    }
+    final row = existing.first;
+
+    final next = <String, Object?>{
+      if (remoteId != null && row['remote_id'] != remoteId) 'remote_id': remoteId,
+      if (etaAt != null && row['eta_at'] != etaAt) 'eta_at': etaAt,
+      if (responderStatus != null && row['responder_status'] != responderStatus)
+        'responder_status': responderStatus,
+      if (responderNote != null && row['responder_note'] != responderNote)
+        'responder_note': responderNote,
+    };
+    if (next.isEmpty) {
+      return false;
+    }
+
+    await db.update(
+      'outbox',
+      next,
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+    );
+    return true;
+  }
+
+  /// Record the fisher's own reply locally, so the button reflects reality even
+  /// if the network call to the backend fails.
+  Future<void> saveFisherReply(String localId, int reply) async {
+    final db = await _db.database;
+    await db.update(
+      'outbox',
+      <String, Object?>{'fisher_reply': reply},
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+    );
+  }
+
   Future<SosRecord?> recordFailure(String localId, String error) async {
     final current = await byLocalId(localId);
     if (current == null) {

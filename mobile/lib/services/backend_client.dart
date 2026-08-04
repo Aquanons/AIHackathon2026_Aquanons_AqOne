@@ -10,16 +10,39 @@ class RemoteSos {
   const RemoteSos({
     required this.id,
     required this.deliveryState,
+    this.localId,
     this.seq,
     this.acknowledgedAt,
     this.ackedBy,
+    this.etaAt,
+    this.responderStatus,
+    this.responderStatusLabel,
+    this.responderNote,
+    this.fisherReply,
+    this.resolvedAt,
   });
 
   final String id;
   final DeliveryState deliveryState;
+
+  /// The handset's own id for this record. Present only for SOS that reached
+  /// the backend by the direct path - a LoRa frame has no room for a UUID -
+  /// and it is the primary key for matching a reply back to the outbox.
+  final String? localId;
+
   final int? seq;
   final String? acknowledgedAt;
   final String? ackedBy;
+
+  /// Absolute arrival time, not a duration. See docs/13_RESPONDER_LOOP.md:
+  /// a duration decays in transit, a timestamp does not.
+  final String? etaAt;
+
+  final int? responderStatus;
+  final String? responderStatusLabel;
+  final String? responderNote;
+  final int? fisherReply;
+  final String? resolvedAt;
 
   static RemoteSos fromJson(Map<String, dynamic> json) {
     final status = json['status'] as String?;
@@ -30,9 +53,16 @@ class RemoteSos {
     return RemoteSos(
       id: json['id']?.toString() ?? '',
       deliveryState: resolved,
+      localId: json['local_id'] as String?,
       seq: (json['seq'] as num?)?.toInt(),
       acknowledgedAt: json['acknowledged_at'] as String?,
       ackedBy: json['acked_by'] as String?,
+      etaAt: json['eta_at'] as String?,
+      responderStatus: (json['responder_status'] as num?)?.toInt(),
+      responderStatusLabel: json['responder_status_label'] as String?,
+      responderNote: json['responder_note'] as String?,
+      fisherReply: (json['fisher_reply'] as num?)?.toInt(),
+      resolvedAt: json['resolved_at'] as String?,
     );
   }
 }
@@ -90,9 +120,13 @@ class BackendClient {
     }
   }
 
+  /// Ask the backend what has happened to this vessel's SOS records.
+  ///
+  /// The path was previously /api/v1/vessels/{id}/sos, which no router ever
+  /// served - every poll 404'd, so no acknowledgement ever reached a fisherman.
   Future<List<RemoteSos>> vesselSos(String vesselId) async {
     final uri = Uri.parse(
-      '$_baseUrl/api/v1/vessels/${Uri.encodeComponent(vesselId)}/sos',
+      '$_baseUrl/api/sos/vessel/${Uri.encodeComponent(vesselId)}',
     );
     final response = await _client.get(uri).timeout(AqOneConfig.backendTimeout);
     if (response.statusCode != 200) {
@@ -102,7 +136,7 @@ class BackendClient {
     if (decoded is! Map<String, dynamic>) {
       return const <RemoteSos>[];
     }
-    final rows = decoded['sos'];
+    final rows = decoded['events'];
     if (rows is! List) {
       return const <RemoteSos>[];
     }
@@ -110,6 +144,25 @@ class BackendClient {
         .whereType<Map<String, dynamic>>()
         .map(RemoteSos.fromJson)
         .toList(growable: false);
+  }
+
+  /// The fisher's one-tap answer to an acknowledgement.
+  ///
+  /// 1 = still in danger, 2 = safe now. Tells the dispatcher the fisher is
+  /// alive and read the ETA - which the acknowledgement alone cannot confirm.
+  Future<bool> replyToSos(int eventId, int reply) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/api/sos/$eventId/reply'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(<String, Object?>{'reply': reply}),
+          )
+          .timeout(AqOneConfig.backendTimeout);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Generic authenticated-ish GET returning a decoded body, or null.

@@ -798,6 +798,54 @@
         <div class="sos-broadcast-msg" id="sos-broadcast-msg"></div>
       </div>
     </div>
+
+    <!-- Acknowledge: capture an ETA so the fisherman learns when help arrives.
+         The dispatcher enters minutes; the backend stores an absolute arrival
+         time, because a duration decays while it travels to the handset. -->
+    <div class="ack-modal-overlay" id="ack-modal-overlay" hidden>
+      <div class="ack-modal" role="dialog" aria-modal="true" aria-labelledby="ack-modal-title">
+        <div class="ack-modal-header">
+          <span id="ack-modal-title">Acknowledge distress call</span>
+          <button type="button" class="ack-modal-close" id="ack-modal-close" aria-label="Cancel">&times;</button>
+        </div>
+        <div class="ack-modal-body">
+          <p class="ack-modal-vessel" id="ack-modal-vessel">&mdash;</p>
+
+          <label class="ack-label" for="ack-status">What is happening</label>
+          <select class="ack-select" id="ack-status">
+            <option value="2" selected>Rescue boat on the way</option>
+            <option value="1">Call received — assessing</option>
+            <option value="3">Coast Guard notified</option>
+            <option value="4">Nearby boats alerted</option>
+            <option value="5">Delayed — still coming</option>
+          </select>
+
+          <label class="ack-label" for="ack-eta">Time to reach the vessel</label>
+          <div class="ack-eta-row" id="ack-eta-quick">
+            <button type="button" class="ack-eta-chip" data-eta="10">10 min</button>
+            <button type="button" class="ack-eta-chip is-selected" data-eta="20">20 min</button>
+            <button type="button" class="ack-eta-chip" data-eta="30">30 min</button>
+            <button type="button" class="ack-eta-chip" data-eta="45">45 min</button>
+            <button type="button" class="ack-eta-chip" data-eta="60">60 min</button>
+          </div>
+          <input class="ack-input" id="ack-eta" type="number" min="1" max="720" value="20"
+                 aria-label="Estimated minutes until arrival" />
+          <p class="ack-hint">
+            The fisherman sees a live countdown. If this time passes before
+            rescue arrives it changes to &ldquo;delayed — still en route&rdquo;
+            rather than expiring.
+          </p>
+
+          <label class="ack-label" for="ack-note">Message (optional)</label>
+          <input class="ack-input" id="ack-note" type="text" maxlength="120"
+                 placeholder="e.g. Stay with the boat, keep your light on" />
+        </div>
+        <div class="ack-modal-actions">
+          <button type="button" class="sos-btn ack-btn-cancel" id="ack-btn-cancel">Cancel</button>
+          <button type="button" class="sos-btn sos-btn-acknowledge" id="ack-btn-confirm">Send acknowledgement</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════

@@ -191,6 +191,29 @@ class SosService {
     return false;
   }
 
+  /// Send the fisher's one-tap answer to a responder acknowledgement.
+  ///
+  /// 1 = still in danger, 2 = safe now. Saved locally first so the button
+  /// reflects what the fisher pressed even if the network call fails - being
+  /// told "your reply failed" while waiting for rescue is worse than useless,
+  /// and the record is retried by the normal reconcile cycle.
+  Future<bool> replyToSos(String localId, int reply) async {
+    final record = await _outbox.byLocalId(localId);
+    if (record == null) {
+      return false;
+    }
+    await _outbox.saveFisherReply(localId, reply);
+    _changes.add(null);
+
+    final remoteId = record.remoteId;
+    if (remoteId == null) {
+      // The backend has not told us its id for this incident yet, so there is
+      // nothing to attach the reply to. The next reconcile will bring it.
+      return false;
+    }
+    return _backend.replyToSos(int.tryParse(remoteId) ?? -1, reply);
+  }
+
   Future<BuoyStatus?> pollBuoy() async {
     try {
       return await _buoy.status();
@@ -226,12 +249,21 @@ class SosService {
             if (row.seq != null) row.seq!: row,
         };
 
+        // Match on local_id first, seq only as a fallback.
+        //
+        // seq is assigned by the buoy ack, so an SOS that reached the backend
+        // over the direct path never has one. Matching on seq alone meant those
+        // records could never be reconciled and the fisher never learned they
+        // had been acknowledged - which, now that the direct path exists, is
+        // the common case rather than the edge case.
+        final byLocalId = <String, RemoteSos>{
+          for (final row in remote)
+            if (row.localId != null && row.localId!.isNotEmpty) row.localId!: row,
+        };
+
         for (final record in pending.where((r) => r.vesselId == vesselId)) {
           final seq = record.seq;
-          if (seq == null) {
-            continue;
-          }
-          final match = bySeq[seq];
+          final match = byLocalId[record.localId] ?? (seq == null ? null : bySeq[seq]);
           if (match == null) {
             continue;
           }
@@ -241,6 +273,18 @@ class SosService {
             ackedBy: match.ackedBy,
           );
           if (advanced != null && advanced.state != record.state) {
+            changed = true;
+          }
+          // Responder details live alongside the delivery state: the ETA and
+          // status are what the fisher is actually waiting to see.
+          final stored = await _outbox.saveResponder(
+            record.localId,
+            remoteId: match.id,
+            etaAt: match.etaAt,
+            responderStatus: match.responderStatus,
+            responderNote: match.responderNote ?? match.responderStatusLabel,
+          );
+          if (stored) {
             changed = true;
           }
         }

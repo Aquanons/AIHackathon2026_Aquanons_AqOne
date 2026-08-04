@@ -1627,18 +1627,149 @@
     }
   });
 
-  sosBtnAcknowledge.addEventListener('click', function () {
-    sosBtnAcknowledge.disabled = true;
-    sosBtnAcknowledge.textContent = 'Acknowledged';
-    console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' acknowledged');
-    if (currentDrawerData) {
-      const idx = alertData.findIndex(function (a) {
-        return a.vesselId === currentDrawerData.vesselId ||
-               (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
+  // ===== ACKNOWLEDGE WITH ETA =====
+  //
+  // Acknowledging is no longer a bare flag. The dispatcher tells the fisherman
+  // what is happening and roughly when help arrives, which is the difference
+  // between "someone saw my SOS" and "I know whether to stay with the boat".
+  //
+  // Minutes are collected here; the backend converts to an absolute arrival
+  // time so the handset's countdown stays correct however slow delivery is.
+  const ackOverlay = document.getElementById('ack-modal-overlay');
+  const ackVesselEl = document.getElementById('ack-modal-vessel');
+  const ackStatusEl = document.getElementById('ack-status');
+  const ackEtaEl = document.getElementById('ack-eta');
+  const ackNoteEl = document.getElementById('ack-note');
+  const ackConfirmBtn = document.getElementById('ack-btn-confirm');
+
+  function closeAckModal() {
+    if (ackOverlay) ackOverlay.hidden = true;
+  }
+
+  function openAckModal() {
+    if (!ackOverlay) return;
+    const label = currentDrawerData
+      ? (currentDrawerData.desc || currentDrawerData.vesselId || 'Distress call')
+      : 'Distress call';
+    if (ackVesselEl) ackVesselEl.textContent = label;
+    ackOverlay.hidden = false;
+    if (ackEtaEl) ackEtaEl.focus();
+  }
+
+  // Quick picks and the free-entry field stay in step with each other.
+  const ackQuick = document.getElementById('ack-eta-quick');
+  if (ackQuick) {
+    ackQuick.addEventListener('click', function (event) {
+      const chip = event.target.closest('.ack-eta-chip');
+      if (!chip) return;
+      ackQuick.querySelectorAll('.ack-eta-chip').forEach(function (b) {
+        b.classList.remove('is-selected');
       });
-      if (idx !== -1) { alertData[idx].status = 'acknowledged'; renderAlerts(); }
-    }
+      chip.classList.add('is-selected');
+      if (ackEtaEl) ackEtaEl.value = chip.dataset.eta;
+    });
+  }
+  if (ackEtaEl) {
+    ackEtaEl.addEventListener('input', function () {
+      if (!ackQuick) return;
+      ackQuick.querySelectorAll('.ack-eta-chip').forEach(function (b) {
+        b.classList.toggle('is-selected', b.dataset.eta === ackEtaEl.value);
+      });
+    });
+  }
+
+  ['ack-modal-close', 'ack-btn-cancel'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', closeAckModal);
   });
+  if (ackOverlay) {
+    ackOverlay.addEventListener('click', function (event) {
+      if (event.target === ackOverlay) closeAckModal();
+    });
+  }
+
+  sosBtnAcknowledge.addEventListener('click', openAckModal);
+
+  if (ackConfirmBtn) {
+    ackConfirmBtn.addEventListener('click', function () {
+      const etaMinutes = Math.max(1, Math.min(720, parseInt(ackEtaEl && ackEtaEl.value, 10) || 20));
+      const status = parseInt(ackStatusEl && ackStatusEl.value, 10) || 1;
+      const note = (ackNoteEl && ackNoteEl.value.trim()) || null;
+      const eventId = currentDrawerData && currentDrawerData.sosEventId;
+
+      ackConfirmBtn.disabled = true;
+
+      // Optimistic: the dispatcher sees the incident acknowledged immediately.
+      // A distress console should never appear frozen while a request is in
+      // flight, and a failure is surfaced below rather than blocking the UI.
+      sosBtnAcknowledge.disabled = true;
+      sosBtnAcknowledge.textContent = 'Acknowledged';
+      if (currentDrawerData) {
+        currentDrawerData.etaAt = new Date(Date.now() + etaMinutes * 60000).toISOString();
+        currentDrawerData.responderStatus = status;
+        const idx = alertData.findIndex(function (a) {
+          return a.vesselId === currentDrawerData.vesselId ||
+                 (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
+        });
+        if (idx !== -1) {
+          alertData[idx].status = 'acknowledged';
+          alertData[idx].etaAt = currentDrawerData.etaAt;
+          renderAlerts();
+        }
+      }
+      closeAckModal();
+
+      // Only reaches the backend for incidents that came from it. Demo rows in
+      // alertData have no sosEventId and stay local.
+      if (eventId) {
+        authFetch('/api/sos/' + encodeURIComponent(eventId) + '/acknowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eta_minutes: etaMinutes,
+            responder_status: status,
+            responder_note: note
+          })
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            if (currentDrawerData) currentDrawerData.etaAt = data.eta_at;
+          })
+          .catch(function (err) {
+            console.warn('[AqOne] Acknowledgement not delivered:', err.message);
+            showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
+          })
+          .finally(function () {
+            ackConfirmBtn.disabled = false;
+          });
+      } else {
+        ackConfirmBtn.disabled = false;
+      }
+    });
+  }
+
+  // Live countdown on acknowledged incidents. Never renders a negative number:
+  // once the promised time passes it says the rescue is delayed, because a
+  // countdown expiring into silence reads as "nobody is coming".
+  function formatEta(etaAt) {
+    if (!etaAt) return '';
+    var remainingMs = new Date(etaAt).getTime() - Date.now();
+    if (remainingMs <= 0) return 'delayed — still en route';
+    var mins = Math.floor(remainingMs / 60000);
+    var secs = Math.floor((remainingMs % 60000) / 1000);
+    return 'ETA ' + mins + ':' + String(secs).padStart(2, '0');
+  }
+
+  setInterval(function () {
+    document.querySelectorAll('[data-eta-at]').forEach(function (el) {
+      var text = formatEta(el.dataset.etaAt);
+      el.textContent = text;
+      el.classList.toggle('is-overdue', text.indexOf('delayed') === 0);
+    });
+  }, 1000);
 
   sosBtnResolve.addEventListener('click', function () {
     console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' resolved');
