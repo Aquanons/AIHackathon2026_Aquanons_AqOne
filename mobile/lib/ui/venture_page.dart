@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -477,12 +476,6 @@ class _VenturePageState extends State<VenturePage> {
                 right: 96,
                 child: _buildChecklist(isDark),
               ),
-            // Chat Hub FAB — bottom-left, above the attribution.
-            Positioned(
-              left: 16,
-              bottom: 60 + widget.bottomInset,
-              child: _buildChatHubButton(isDark),
-            ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
             Positioned(
@@ -675,6 +668,18 @@ class _VenturePageState extends State<VenturePage> {
           isDark: isDark,
           onTap: () => setState(() => _isChecklistOpen = !_isChecklistOpen),
         ),
+        const SizedBox(height: 10),
+        // Chat sits immediately above SOS rather than in its own corner, so
+        // every action on this screen is reachable from one thumb position.
+        _RoundButton(
+          icon: Icons.chat_bubble_rounded,
+          tooltip: 'Chat with nearby boats',
+          isActive: false,
+          isDark: isDark,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const Chathubb()),
+          ),
+        ),
         const SizedBox(height: 14),
         _ActionPill(
           icon: Icons.warning_rounded,
@@ -814,34 +819,6 @@ class _VenturePageState extends State<VenturePage> {
         style: TextStyle(
           fontSize: 9,
           color: isDark ? Colors.white70 : const Color(0xFF475569),
-        ),
-      ),
-    );
-  }
-
-  // --- Chat Hub FAB (bottom-left) — iOS Messages icon shape ---
-  Widget _buildChatHubButton(bool isDark) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const Chathubb()),
-      ),
-      child: SizedBox(
-        width: 58,
-        height: 62,
-        child: CustomPaint(
-          size: const Size(58, 62),
-          painter: const _BubbleTailPainter(),
-          child: const Align(
-            alignment: Alignment.topLeft,
-            child: Padding(
-              padding: EdgeInsets.only(left: 13, top: 11),
-              child: Icon(
-                Icons.waves_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
         ),
       ),
     );
@@ -1074,46 +1051,3 @@ class _ActionPill extends StatelessWidget {
   }
 }
 
-/// Draws the iOS-style speech bubble with a connected tail as one silhouette.
-class _BubbleTailPainter extends CustomPainter {
-  const _BubbleTailPainter();
-
-  static const _blue = Color(0xFF64B5F6);
-  static const _bodyWidth = 50.0;
-  static const _bodyHeight = 46.0;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Body — rounded rectangle.
-    final body = ui.Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, 0, _bodyWidth, _bodyHeight),
-          const Radius.circular(18),
-        ),
-      );
-
-    // Tail — triangle whose top edge is buried inside the body so the union
-    // is a single connected silhouette.
-    final tail = ui.Path()
-      ..moveTo(14, 44)
-      ..lineTo(24, 46)
-      ..lineTo(6, 60)
-      ..close();
-
-    final shape = ui.Path.combine(ui.PathOperation.union, body, tail);
-
-    canvas.drawPath(shape, Paint()..color = _blue);
-    canvas.drawPath(
-      shape,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _BubbleTailPainter old) => false;
-}

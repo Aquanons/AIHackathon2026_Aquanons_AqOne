@@ -442,7 +442,7 @@ class _ChathubbState extends State<Chathubb> {
               onPressed: () => Navigator.of(context).pop(),
             ),
             title: Text(
-              'Chat (istoryahanai)',
+              'Chat',
               style: TextStyle(
                 color: isDark ? Colors.white : Colors.black87,
                 fontWeight: FontWeight.w700,

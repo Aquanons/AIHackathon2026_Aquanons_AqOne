@@ -224,6 +224,21 @@ curl -X POST https://incredible-liberation-production-aad7.up.railway.app/api/so
 Sending it **twice with the same `client_ts`** should still produce one
 incident. That is the de-duplication working.
 
+### Install the Android app — no build required
+
+A pre-built APK is included at **`mobile/AqOne.apk`** (58 MB) for evaluators who
+would rather not install the Flutter toolchain.
+
+1. Copy `mobile/AqOne.apk` to an Android device.
+2. Open it. Android will ask permission to install from an unknown source —
+   allow it for the app doing the installing (Files or Chrome).
+3. Launch AqOne and complete onboarding.
+
+The build points at the live Railway deployment by default, so an SOS sent from
+the app appears on the dashboard above without any further configuration.
+
+Android only. iOS requires a signed build and is not provided.
+
 ### Prerequisites for local builds
 
 Python 3.11+, Flutter 3.5+, PostgreSQL 14+ (PostGIS optional), Arduino IDE for
@@ -255,10 +270,20 @@ page, gated by `ADMIN_SETUP_KEY`.
 
 ### 3. Mobile app
 
+To install without building, use the pre-built `mobile/AqOne.apk` described
+above. To build from source:
+
 ```bash
 cd mobile
 flutter pub get
 flutter run
+```
+
+To produce a fresh APK:
+
+```bash
+flutter build apk --release
+# output: build/app/outputs/flutter-apk/app-release.apk
 ```
 
 To point the app at a different backend:
@@ -355,6 +380,7 @@ backend/     FastAPI + PostgreSQL — API, AI models, migrations, tests
 docs/        Specs, PRD, disclosures
 firmware/    Heltec V3 buoy sketch
 mobile/      Flutter application
+  AqOne.apk        pre-built Android release, ready to install
 web/         Dashboard, and the in-browser hazard model
 ```
 
