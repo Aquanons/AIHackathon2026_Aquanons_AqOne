@@ -212,10 +212,6 @@ void setup() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest* r) { r->send_P(200, "text/html", HTML); });
   }
 
-  // The embedded browser chat page stays reachable at /chat even when the
-  // dashboard owns "/".
-  server.on("/chat", HTTP_GET, [](AsyncWebServerRequest* r) { r->send_P(200, "text/html", HTML); });
-
   // Static file mounts for the dashboard's HTML, CSS, JS and asset folders.
   server.serveStatic("/html", LittleFS, "/html");
   server.serveStatic("/css", LittleFS, "/css");
