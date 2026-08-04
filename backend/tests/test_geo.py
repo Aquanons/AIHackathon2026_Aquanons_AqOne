@@ -72,13 +72,20 @@ def plan():
 
 
 def test_generated_buoys_are_at_sea_within_municipal_waters(plan):
+    """Buoys are in water and within a plausible distance of the municipality.
+
+    Spacing is no longer a distance band from the centre: buoys are placed as a
+    connected LoRa chain anchored at a shore gateway, so the first buoy sits
+    deliberately close to land. The bound here only catches absurd positions -
+    mesh geometry is covered by tests/test_mesh.py.
+    """
     from app.simulation.generator import _distance_km
 
     assert plan.buoys
     for buoy in plan.buoys:
         assert geo.point_in_water(buoy['lat'], buoy['lon']), f"buoy {buoy['id']} is on land"
         distance = _distance_km(geo.CENTER_LAT, geo.CENTER_LON, buoy['lat'], buoy['lon'])
-        assert 3.0 <= distance <= 26.0, f"buoy {buoy['id']} is {distance:.1f} km out"
+        assert 0.5 <= distance <= 26.0, f"buoy {buoy['id']} is {distance:.1f} km out"
 
 
 def test_generated_buoy_contacts_are_at_sea(plan):

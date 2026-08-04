@@ -245,33 +245,108 @@ def build_plan(days: int, seed: int, start_at: datetime = DEFAULT_START) -> Simu
 
 def _build_buoys(rng: np.random.Generator, start_at: datetime) -> list[dict[str, Any]]:
     count = int(rng.integers(8, 13))
+    positions, radii = _build_mesh_chain(rng, count)
+
     rows: list[dict[str, Any]] = []
-
-    # Sampled inside the water polygon rather than swept along a bearing arc
-    # from a centre point. The old arc (24deg-148deg out to 24.5 km) crossed
-    # the coastline and put buoys inland over Panay.
-    # Bands are sized to the traced water polygon, which reaches ~25 km from
-    # the municipal centre. Buoys sit across municipal waters, nearshore out to
-    # roughly the 15 km municipal limit plus a margin.
-    positions = _water_positions_within(rng, count, min_km=3.0, max_km=18.0)
-    # Sort seaward so buoy numbering runs from nearshore outward, which makes
-    # the mesh-relay story legible on the map.
-    positions.sort(key=lambda p: _distance_km(CENTER_LAT, CENTER_LON, p[0], p[1]))
-
     for index in range(count):
         lat, lon = positions[index]
+        lora_radius = radii[index]
+        gateway_linked = any(
+            _distance_km(lat, lon, station['lat'], station['lon']) * 1000.0 <= lora_radius
+            for station in geo.SHORE_STATIONS
+        )
         rows.append(
             {
                 'id': f'B{index + 1:02d}',
                 'label': f'Buoy {index + 1:02d}',
                 'lat': lat,
                 'lon': lon,
-                'contact_radius_m': int(rng.integers(700, 1601)),
+                # WiFi SoftAP bubble: the range within which a phone can hand
+                # over an SOS. Short, per docs/03_PHONE_BUOY_WIFI.md.
+                'contact_radius_m': int(rng.integers(800, 1501)),
+                # LoRa link range: buoy-to-buoy and buoy-to-gateway relay.
+                'lora_radius_m': int(lora_radius),
+                'is_gateway_linked': gateway_linked,
                 'created_at': start_at - timedelta(days=30 + index),
                 'is_synthetic': True,
             }
         )
     return rows
+
+
+LORA_RADIUS_MIN_M = 6000.0
+LORA_RADIUS_MAX_M = 8000.0
+
+# Each new buoy is placed between 0.55x and 0.90x of LoRa range from an
+# existing one: close enough that the link is comfortably inside range, far
+# enough that the buoy extends coverage instead of stacking on its neighbour.
+# The overlap this produces is what makes the mesh legible on the map.
+LINK_SPACING_MIN = 0.55
+LINK_SPACING_MAX = 0.90
+
+
+def _build_mesh_chain(
+    rng: np.random.Generator,
+    count: int,
+) -> tuple[list[tuple[float, float]], list[float]]:
+    """Place buoys as a connected LoRa chain anchored at a shore gateway.
+
+    Independent random sampling produced a set of isolated points - buoys 4-9 km
+    apart with ~1 km radios - which could not have relayed anything to shore.
+    Placement is now incremental: the first buoy must reach a shore station
+    directly, and every later buoy must land within LoRa range of one already
+    placed. Connectivity is therefore a property of construction, and
+    tests/test_mesh.py verifies it holds.
+    """
+    anchor_station = min(
+        geo.SHORE_STATIONS,
+        key=lambda s: min(
+            _distance_km(s['lat'], s['lon'], lat, lon) for lat, lon in geo.WATER_POLYGON
+        ),
+    )
+
+    positions: list[tuple[float, float]] = []
+    radii: list[float] = []
+
+    for index in range(count):
+        radius_m = float(rng.uniform(LORA_RADIUS_MIN_M, LORA_RADIUS_MAX_M))
+        placed = False
+
+        for _ in range(4000):
+            lat, lon = geo.sample_water_points(rng, 1)[0]
+
+            if not positions:
+                # Anchor: must reach the shore gateway directly.
+                gap_m = (
+                    _distance_km(lat, lon, anchor_station['lat'], anchor_station['lon']) * 1000.0
+                )
+                if LINK_SPACING_MIN * radius_m <= gap_m <= LINK_SPACING_MAX * radius_m:
+                    placed = True
+            else:
+                # Later buoys: within link range of an existing buoy, but not
+                # so close that they duplicate its coverage.
+                gaps = [
+                    _distance_km(lat, lon, plat, plon) * 1000.0 for plat, plon in positions
+                ]
+                nearest = min(gaps)
+                budget = min(radius_m, min(radii))
+                if LINK_SPACING_MIN * budget <= nearest <= LINK_SPACING_MAX * budget:
+                    placed = True
+
+            if placed:
+                positions.append((lat, lon))
+                radii.append(radius_m)
+                break
+
+        if not placed:
+            raise RuntimeError(
+                f'Could not place buoy {index + 1} of {count} within LoRa range of '
+                f'the existing chain. The water polygon may be too small for this '
+                f'many buoys at {LORA_RADIUS_MIN_M / 1000:.0f}-'
+                f'{LORA_RADIUS_MAX_M / 1000:.0f} km spacing.'
+            )
+
+    return positions, radii
 
 
 def _build_vessels(
@@ -925,8 +1000,11 @@ async def _insert_vessels(conn: asyncpg.Connection, rows: list[dict[str, Any]]) 
 async def _insert_buoys(conn: asyncpg.Connection, rows: list[dict[str, Any]]) -> None:
     await conn.executemany(
         '''
-        INSERT INTO buoys (id, vessel_id, label, created_at, lat, lon, contact_radius_m, is_synthetic)
-        VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
+        INSERT INTO buoys (
+          id, vessel_id, label, created_at, lat, lon,
+          contact_radius_m, lora_radius_m, is_gateway_linked, is_synthetic
+        )
+        VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)
         ''',
         [
             (
@@ -936,6 +1014,8 @@ async def _insert_buoys(conn: asyncpg.Connection, rows: list[dict[str, Any]]) ->
                 row['lat'],
                 row['lon'],
                 row['contact_radius_m'],
+                row['lora_radius_m'],
+                row['is_gateway_linked'],
                 row['is_synthetic'],
             )
             for row in rows
