@@ -6,6 +6,7 @@ import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
 import 'advisories_page.dart';
 import 'home_page.dart';
+import 'profile_page.dart';
 import 'venture_page.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
@@ -27,12 +28,25 @@ class AppShell extends StatefulWidget {
     required this.sos,
     required this.feeds,
     required this.location,
+    required this.identityStore,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+    required this.onLogout,
+    required this.onIdentityUpdated,
   });
 
   final VesselIdentity identity;
   final SosService sos;
   final VentureFeeds feeds;
   final LocationService location;
+
+  // Profile needs the store to save edits, and the theme handles so its
+  // light/dark switch can reach MaterialApp at the app root.
+  final IdentityStore identityStore;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final VoidCallback onLogout;
+  final ValueChanged<VesselIdentity> onIdentityUpdated;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -95,6 +109,14 @@ class _AppShellState extends State<AppShell> {
         // Only built once the user has actually opened Venture.
         _ventureOpened ? _buildVenture(inset) : const SizedBox.shrink(),
         AdvisoriesPage(feeds: widget.feeds, bottomInset: inset),
+        ProfilePage(
+          identityStore: widget.identityStore,
+          identity: widget.identity,
+          themeMode: widget.themeMode,
+          onThemeModeChanged: widget.onThemeModeChanged,
+          onLogout: widget.onLogout,
+          onIdentityUpdated: widget.onIdentityUpdated,
+        ),
       ],
     );
 
@@ -182,6 +204,13 @@ class _Sidebar extends StatelessWidget {
               isActive: index == 2,
               isDark: isDark,
               onTap: () => onSelect(2),
+            ),
+            _SidebarItem(
+              icon: Icons.person_rounded,
+              label: 'Profile',
+              isActive: index == 3,
+              isDark: isDark,
+              onTap: () => onSelect(3),
             ),
             const Spacer(),
           ],
@@ -323,6 +352,13 @@ class _MobileDock extends StatelessWidget {
                   isActive: index == 2,
                   isDark: isDark,
                   onTap: () => onSelect(2),
+                ),
+                _DockItem(
+                  icon: Icons.person_rounded,
+                  label: 'Profile',
+                  isActive: index == 3,
+                  isDark: isDark,
+                  onTap: () => onSelect(3),
                 ),
               ],
             ),

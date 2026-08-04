@@ -92,8 +92,38 @@ class _AqOneAppState extends State<AqOneApp> {
       debugShowCheckedModeBanner: false,
       theme: buildAqTheme(Brightness.light),
       darkTheme: buildAqTheme(Brightness.dark),
+      // Held here so the theme switch on the profile page can change it.
+      // Defaults to the system setting, which is the right default at sea:
+      // a phone already in dark mode should not flash a white screen at
+      // someone using it at night.
+      themeMode: _themeMode,
       home: _buildHome(),
     );
+  }
+
+  ThemeMode _themeMode = ThemeMode.system;
+
+  void _setThemeMode(ThemeMode mode) {
+    if (mode == _themeMode) {
+      return;
+    }
+    setState(() => _themeMode = mode);
+  }
+
+  /// Return to onboarding without erasing the vessel identity.
+  ///
+  /// The stored profile is deliberately left in place: the vessel id is what
+  /// ties this handset to its SOS history on the backend, and wiping it during
+  /// a "log out" would orphan any distress call still awaiting a responder.
+  /// Onboarding reuses the existing id when the user signs back in.
+  void _logout() {
+    // Background delivery is deliberately left running.
+    //
+    // An SOS still sitting in the outbox must keep trying to reach a responder
+    // whether or not somebody has tapped "log out" - a distress call is not
+    // the user's session to end. start() is idempotent, so signing back in
+    // does not double up the timers.
+    setState(() => _identity = null);
   }
 
   Future<void> _enterApp() async {
@@ -136,6 +166,11 @@ class _AqOneAppState extends State<AqOneApp> {
       sos: _service,
       feeds: _feeds,
       location: _location,
+      identityStore: _identityStore,
+      themeMode: _themeMode,
+      onThemeModeChanged: _setThemeMode,
+      onLogout: _logout,
+      onIdentityUpdated: (updated) => setState(() => _identity = updated),
     );
   }
 }
