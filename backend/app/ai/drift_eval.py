@@ -58,12 +58,26 @@ async def main() -> None:
         track = row['true_track']
         if isinstance(track, str):
             track = json.loads(track)
+        if len(track) < 2:
+            continue
+
+        # Forecast exactly as far as the ground-truth track actually ran.
+        #
+        # Tracks terminate early when a drifting object beaches, so a fixed
+        # 24-hour horizon was comparing a full-day contour against a truth
+        # position recorded after, say, three hours. That mismatch - not the
+        # model - is what produced a 0% containment rate.
+        #
+        # Track samples are TRACK_STEP (30 min) apart, so n samples span
+        # (n - 1) / 2 hours.
+        forecast_hours = (len(track) - 1) * 0.5
+
         prediction = predict_drift(
             last_lat=float(row['last_contact_lat']),
             last_lon=float(row['last_contact_lon']),
             observed_at=row['last_contact_at'],
             object_class=_incident_class(str(row['abnormal_reason'])),
-            forecast_hours=24.0,
+            forecast_hours=forecast_hours,
             wind_provider=_synthetic_wind_series,
         )
         runtimes.append(prediction.runtime_ms)
