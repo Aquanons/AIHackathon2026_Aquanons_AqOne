@@ -5,16 +5,19 @@
 Built by **Team Aquanons** for AI Fest 2026.
 New Washington, Aklan, Philippines.
 
+**Live deployment:** https://incredible-liberation-production-aad7.up.railway.app/
+**Evaluator login:** `tester@gmail.com` / `12345678`
+
 ---
 
 ## Project Overview and Objectives
 
-Municipal fishers in New Washington, Aklan work in cellular dead zones. Team
-field interviews established this is not an edge case — when fishers go out to
-fish, **all of them** are beyond signal. If a boat capsizes or a squall builds,
-MDRRMO typically learns of it hours later, by word of mouth. The delay destroys
-the most useful information: incident time, last known position, and initial
-drift direction.
+Municipal fishers in New Washington, Aklan work in cellular dead zones. Field
+interviews conducted by the team established that this is not an edge case —
+when fishers go out to fish, **all of them** are beyond signal. If a boat
+capsizes or a squall builds, MDRRMO typically learns of it hours later, by word
+of mouth. That delay destroys the most useful information available: incident
+time, last known position, and initial drift direction.
 
 AqOne aims to:
 
@@ -28,7 +31,7 @@ AqOne aims to:
 
 ### Status — what is built, what is not
 
-Read this before any other claim in this file.
+This table precedes every other claim in this document.
 
 | Component | Status |
 |---|---|
@@ -103,15 +106,15 @@ Produced by `backend/app/ai/*_eval.py`. Every figure is tagged
 | Squall precision / recall | 0.286 / 0.133 |
 | Squall mean lead time | **50 minutes** |
 
-**Read these honestly.** Containment of 100% across eight incidents is
-encouraging, not proof. Squall recall of 0.133 is weak — the model currently
-misses most squalls. Our next step is lowering its decision threshold to trade
-precision for recall, because for a life-safety system a missed squall is far
-worse than a false alarm.
+**These figures should be read conservatively.** Containment of 100% across
+eight incidents is encouraging, not proof. Squall recall of 0.133 is weak — the
+model currently misses most squalls. The team's next step is lowering its
+decision threshold to trade precision for recall, on the reasoning that for a
+life-safety system a missed squall is far worse than a false alarm.
 
 The marine hazard model is the exception: it is trained on **real** data,
 scoring ROC-AUC 0.965, precision 0.829, recall 0.825. Sources, checksums and
-limitations in [`web/ml/model-card.json`](web/ml/model-card.json).
+limitations are recorded in [`web/ml/model-card.json`](web/ml/model-card.json).
 
 ### Architecture
 
@@ -130,7 +133,7 @@ flowchart LR
 
 An SOS is attempted over **both** transports in parallel. The backend
 de-duplicates on `(vessel_id, client_ts)` — not a UUID, because a UUID does not
-fit in a 64-byte LoRa frame — so the same emergency arriving twice is one
+fit in a 64-byte LoRa frame — so the same emergency arriving twice becomes one
 incident on the dispatcher's screen.
 
 ---
@@ -147,11 +150,12 @@ incident on the dispatcher's screen.
 | Drift prediction | Monte Carlo Lagrangian particle ensemble (leeway + current + diffusion) | NumPy | Synthetic; physics-informed |
 | Bayesian search re-tasking | Posterior update with detection probability | NumPy | — |
 
-**No foundation models or LLMs are used anywhere in the product.** No pretrained
-weights, no external inference APIs, no PyTorch, TensorFlow or XGBoost.
+**No foundation models or LLMs are used anywhere in the product.** There are no
+pretrained weights, no external inference APIs, and no PyTorch, TensorFlow or
+XGBoost.
 
 AI coding assistants were used during development. The architecture, model
-choices, honesty constraints and scope decisions were the team's.
+choices, honesty constraints and scope decisions were made by the team.
 
 ### Frameworks
 
@@ -176,7 +180,8 @@ choices, honesty constraints and scope decisions were the team's.
 | OpenStreetMap | Basemap tiles | ODbL |
 
 Every synthetic row is flagged `is_synthetic = TRUE` in the database, and all
-eval scripts filter on it — simulated and real data cannot silently mix.
+evaluation scripts filter on that column — simulated and real data cannot
+silently mix.
 
 Full declarations, including bias analysis and hardware disclosure, are in
 [`docs/16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md).
@@ -187,13 +192,27 @@ Full declarations, including bias analysis and hardware disclosure, are in
 
 ### Fastest test — no setup, no hardware
 
-Confirm the deployed pipeline is live:
+The system is deployed and can be evaluated without installing anything.
+
+**Dashboard:** https://incredible-liberation-production-aad7.up.railway.app/
+
+**Evaluator login**
+
+| Field | Value |
+|---|---|
+| Email | `tester@gmail.com` |
+| Password | `12345678` |
+
+This is a demo account provided for judging on a private repository. It will be
+removed after evaluation.
+
+Confirm the backend is live:
 
 ```bash
 curl https://incredible-liberation-production-aad7.up.railway.app/healthz
 ```
 
-Send a test SOS and watch it appear on the dashboard within 10 seconds:
+Send a test SOS and watch it appear on the dashboard map within 10 seconds:
 
 ```bash
 curl -X POST https://incredible-liberation-production-aad7.up.railway.app/api/sos \
@@ -202,10 +221,10 @@ curl -X POST https://incredible-liberation-production-aad7.up.railway.app/api/so
        "lat":11.6839,"lon":122.4471,"source":"buoy","buoy_id":"BUOY01","seq":1}'
 ```
 
-Send it **twice with the same `client_ts`** — you should still see one incident.
-That is the de-duplication working.
+Sending it **twice with the same `client_ts`** should still produce one
+incident. That is the de-duplication working.
 
-### Prerequisites
+### Prerequisites for local builds
 
 Python 3.11+, Flutter 3.5+, PostgreSQL 14+ (PostGIS optional), Arduino IDE for
 firmware.
@@ -222,7 +241,7 @@ uvicorn app.main:app --reload
 Variables are documented in `backend/.env.example`. `DATABASE_URL`,
 `JWT_SECRET` and `ADMIN_SETUP_KEY` must be set in any deployed environment.
 
-Generate the synthetic dataset (required before the eval scripts):
+Generate the synthetic dataset, which the evaluation scripts require:
 
 ```bash
 python -m app.simulation.generator --days 14 --seed 42
@@ -231,8 +250,8 @@ python -m app.simulation.generator --days 14 --seed 42
 ### 2. Dashboard
 
 Served by the backend at `/`. Start the backend and open
-`http://localhost:8000`. Operator accounts are created via the admin signup page
-gated by `ADMIN_SETUP_KEY`.
+`http://localhost:8000`. Operator accounts are created through the admin signup
+page, gated by `ADMIN_SETUP_KEY`.
 
 ### 3. Mobile app
 
@@ -242,7 +261,7 @@ flutter pub get
 flutter run
 ```
 
-Point at a different backend:
+To point the app at a different backend:
 
 ```bash
 flutter run --dart-define=BACKEND_BASE_URL=https://your-host
@@ -256,7 +275,7 @@ Open `firmware/buoy/AqOneBuoy/AqOneBuoy.ino` in Arduino IDE.
 - **Libraries:** `ArduinoJson` (v7+), `WebSockets` (Markus Sattler)
 - Set `UPLINK_SSID` / `UPLINK_PASS` before flashing
 
-On boot, Serial at 115200 should show:
+On boot, Serial at 115200 shows:
 
 ```
 [wifi] uplink ok  ip=192.168.x.x  ch=6
@@ -264,7 +283,7 @@ On boot, Serial at 115200 should show:
 [boot] ready. 0 SOS recovered from flash
 ```
 
-Join the open `Aquan` network and post an SOS directly:
+Joining the open `Aquan` network allows an SOS to be posted directly:
 
 ```bash
 curl -X POST http://192.168.4.1/v1/sos \
@@ -273,8 +292,8 @@ curl -X POST http://192.168.4.1/v1/sos \
        "lat":11.6839,"lon":122.4471,"note":"engine dead"}'
 ```
 
-**Note:** this sketch is WiFi-only. It does not use the SX1262 LoRa radio — see
-the status table above. See [`firmware/buoy/README.md`](firmware/buoy/README.md).
+**Note:** this sketch is WiFi-only. It does not drive the SX1262 LoRa radio —
+see the status table above and [`firmware/buoy/README.md`](firmware/buoy/README.md).
 
 ### 5. Run the tests
 
@@ -286,8 +305,8 @@ cd mobile  && flutter analyze && flutter test
 
 ### 6. Reproduce the measured AI results
 
-From `backend/`, with `DATABASE_URL` pointing at a database containing the
-synthetic dataset. Writes `backend/app/ai/models/eval_results.json`, which
+Run from `backend/`, with `DATABASE_URL` pointing at a database containing the
+synthetic dataset. These write `backend/app/ai/models/eval_results.json`, which
 `/api/ai/metrics` serves to the dashboard's SAR tab:
 
 ```bash
@@ -296,18 +315,18 @@ python -m app.ai.squall_eval
 python -m app.ai.trip_profile_eval
 ```
 
-Run all three against the same dataset. If the tab shows an empty state, that
-file has not been generated — the dashboard deliberately shows nothing rather
-than placeholder numbers.
+All three should be run against the same dataset. If the SAR tab shows an empty
+state, that file has not been generated — the dashboard deliberately shows
+nothing rather than placeholder numbers.
 
 ### 7. Manual end-to-end check
 
 1. Launch the app and complete onboarding.
-2. Send an SOS with the device offline — confirm it stays `saved` rather than claiming false delivery.
-3. Restart the app — confirm the SOS is still in the outbox.
-4. Restore connectivity — confirm it advances to `relayed` and appears on the dashboard.
-5. Acknowledge it on the dashboard with an ETA — confirm the countdown appears on the handset.
-6. Power-cycle the buoy mid-delivery — confirm the queued SOS still arrives (store-and-forward survives brown-out).
+2. Send an SOS with the device offline — it should remain `saved` rather than claiming false delivery.
+3. Restart the app — the SOS should still be in the outbox.
+4. Restore connectivity — it should advance to `relayed` and appear on the dashboard.
+5. Acknowledge it on the dashboard with an ETA — a countdown should appear on the handset.
+6. Power-cycle the buoy mid-delivery — the queued SOS should still arrive, demonstrating that store-and-forward survives a brown-out.
 
 ---
 
@@ -321,7 +340,7 @@ than placeholder numbers.
 - The app's wind indicator is a single 30 km/h threshold shown with its source. It is **not a model** and must never be presented as one.
 - "Safe to Go Out" on the dashboard is a **human MDRRMO declaration**, stored with the operator's name — not model output.
 - Automated alerts produce false positives and miss unfamiliar events. Responder authority is mandatory.
-- We do not and will not sell fisher location data. A safety network that becomes a surveillance network loses the people it protects.
+- Team Aquanons does not and will not sell fisher location data. A safety network that becomes a surveillance network loses the people it protects.
 - RF allocation, transmit power, duty cycle, device certification and institutional operating authority must be confirmed before any real deployment.
 
 ---
@@ -370,7 +389,7 @@ interviews with local fishers, not desk research alone.
 | [`02_LOAM_PACKET_SPEC.md`](docs/02_LOAM_PACKET_SPEC.md) | LoRa frame format |
 
 `Aqone_PRD (2).md` is the scope of record. Where any other document disagrees
-with it, the PRD wins.
+with it, the PRD takes precedence.
 
 > **Note:** `docs/04_INGEST_API.md` describes a `POST /api/v1/ingest` endpoint
 > that was never built. The real ingest route is `POST /api/sos` — see
