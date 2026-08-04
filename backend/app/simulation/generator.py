@@ -250,7 +250,10 @@ def _build_buoys(rng: np.random.Generator, start_at: datetime) -> list[dict[str,
     # Sampled inside the water polygon rather than swept along a bearing arc
     # from a centre point. The old arc (24deg-148deg out to 24.5 km) crossed
     # the coastline and put buoys inland over Panay.
-    positions = _water_positions_within(rng, count, min_km=3.5, max_km=24.0)
+    # Bands are sized to the traced water polygon, which reaches ~25 km from
+    # the municipal centre. Buoys sit across municipal waters, nearshore out to
+    # roughly the 15 km municipal limit plus a margin.
+    positions = _water_positions_within(rng, count, min_km=3.0, max_km=18.0)
     # Sort seaward so buoy numbering runs from nearshore outward, which makes
     # the mesh-relay story legible on the map.
     positions.sort(key=lambda p: _distance_km(CENTER_LAT, CENTER_LON, p[0], p[1]))
@@ -281,7 +284,7 @@ def _build_vessels(
     rows: list[dict[str, Any]] = []
 
     # Home anchorages sit just off the coastal barangays, inshore of the buoys.
-    home_positions = _water_positions_within(rng, count, min_km=1.0, max_km=8.0)
+    home_positions = _water_positions_within(rng, count, min_km=0.8, max_km=6.5)
 
     for index in range(count):
         vessel_id = f'V{index + 1:03d}'

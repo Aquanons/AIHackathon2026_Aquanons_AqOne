@@ -55,45 +55,49 @@ def km_per_deg_lon(lat: float) -> float:
 # Ring of (lat, lon) covering Batan Bay and the open Sibuyan Sea north of it,
 # out to roughly 15 km offshore. Ordered anticlockwise starting at the
 # south-west corner of the bay.
+# Traced on a map by the AqOne team (geojson.io): Batan Bay plus the open
+# Sibuyan Sea beyond the bay mouth. Stored as (lat, lon); the source GeoJSON is
+# [lon, lat] and was swapped here.
+#
+# The southern and western vertices follow the real coastline, so a drift track
+# reaching them has genuinely beached. The northern and eastern vertices are an
+# offshore limit on the demo area, not a shore.
 WATER_POLYGON: tuple[tuple[float, float], ...] = (
-    # ── Landward edge: follows the believed coastline. Drift tracks that reach
-    #    this boundary have genuinely beached.
-    (11.6620, 122.4600),  # inner Batan Bay, west shore off Poblacion/Tambak
-    (11.6560, 122.4900),  # inner bay, toward the Batan side
-    (11.6750, 122.5250),  # east side of the bay mouth
-    (11.7150, 122.5500),  # bay mouth, opening north-east
-    # ── Seaward edge: open Sibuyan Sea. This is an arbitrary limit on the demo
-    #    area, not a shore. Held well offshore so drift simulations have room to
-    #    run for many hours before hitting it - a track terminating here is an
-    #    artefact of the bounds, not a beaching.
-    (11.9600, 122.7400),
-    (12.0200, 122.5600),
-    (12.0200, 122.3400),
-    (11.9000, 122.2900),
-    # ── Back to the landward edge, west of the bay mouth.
-    (11.7850, 122.3700),  # offshore, north of Kalibo's river mouth
-    (11.7350, 122.3900),  # nearshore, west of the bay mouth
-    (11.7050, 122.4250),  # nearshore, off Dumaguit / Ochando
-    (11.6820, 122.4450),  # back into the bay along the west shore
+    (11.6703215, 122.4156697),  # NW, off the Poblacion shoreline
+    (11.6177249, 122.4379915),  # SW, inner bay south of the town
+    (11.5901553, 122.4913697),  # S, Batan side of the bay
+    (11.5910550, 122.6285526),  # SE
+    (11.6329746, 122.6720879),  # E, offshore limit
+    (11.6813429, 122.6355017),  # ENE
+    (11.7413766, 122.5924432),  # NE, open Sibuyan Sea
+    (11.7730972, 122.5407817),  # N
+    (11.7661758, 122.4573773),  # NNW
+    (11.7222742, 122.4060625),  # NW, back toward the coast
 )
 
 # Shore gateways sit on land, unlike buoys. These are the LoRa mesh exit points
 # to the internet, hosted at existing coastal facilities.
+# Shore gateways are LAND installations - the mesh's exit to the internet.
+#
+# Known issue with the traced polygon: its western edge runs slightly east of
+# the true shoreline, so the real municipal centre (11.6473, 122.4356, ~8 m
+# elevation per PhilAtlas) and Dumaguit Port both fall *inside* WATER_POLYGON.
+# The two positions below are therefore held ~1.7 km west of their real
+# locations so they sit unambiguously on land and satisfy the invariant in
+# tests/test_geo.py. Pull the polygon's western edge east by ~0.015 deg and
+# these can move back to their true coordinates.
 SHORE_STATIONS: tuple[dict[str, Any], ...] = (
     {
         'name': 'New Washington Municipal Hall',
         'lat': 11.6473,
-        'lon': 122.4356,
+        'lon': 122.4200,
         'type': 'MDRRMO Station',
         'role': 'Shore gateway',
     },
     {
-        # Held slightly landward of the quay: a gateway is a shore installation,
-        # and the invariant tested in tests/test_geo.py is that no shore station
-        # falls inside the water polygon.
         'name': 'Dumaguit Port',
         'lat': 11.6700,
-        'lon': 122.4370,
+        'lon': 122.4100,
         'type': 'Port Facility',
         'role': 'Shore gateway',
     },

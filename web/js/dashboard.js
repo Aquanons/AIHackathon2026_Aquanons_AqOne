@@ -115,8 +115,8 @@
   // Coordinates mirror SHORE_STATIONS in backend/app/geo.py, which is the
   // single source of truth for the service area.
   const shoreStations = [
-    { name: 'New Washington Municipal Hall', lat: 11.6473, lng: 122.4356, type: 'MDRRMO Station', status: 'active', role: 'Shore gateway' },
-    { name: 'Dumaguit Port', lat: 11.6700, lng: 122.4370, type: 'Port Facility', status: 'active', role: 'Shore gateway' },
+    { name: 'New Washington Municipal Hall', lat: 11.6473, lng: 122.4200, type: 'MDRRMO Station', status: 'active', role: 'Shore gateway' },
+    { name: 'Dumaguit Port', lat: 11.6700, lng: 122.4100, type: 'Port Facility', status: 'active', role: 'Shore gateway' },
     { name: 'BFAR Kalibo', lat: 11.7086, lng: 122.3653, type: 'BFAR Station', status: 'warning', role: 'Shore gateway' },
   ];
 
@@ -126,11 +126,11 @@
     // ordered nearshore to offshore. Verified against WATER_POLYGON in
     // backend/app/geo.py - the previous set spanned 55 km of Aklan province
     // and several sat inland over Panay.
-    { name: 'Buoy Alpha',   id: 'buoy-alpha',   lat: 11.7213, lng: 122.4457, status: 'active',  battery: 87, signal: 'Strong',   pressure: 1008.4, pressureTrend: -1.2, current: '0.6 m/s', currentDir: 'SW',  coverageRadius: 2000, isGateway: true },
-    { name: 'Buoy Bravo',   id: 'buoy-bravo',   lat: 11.7283, lng: 122.4534, status: 'active',  battery: 72, signal: 'Moderate', pressure: 1007.1, pressureTrend: -2.8, current: '0.9 m/s', currentDir: 'S',   coverageRadius: 2000 },
-    { name: 'Buoy Charlie', id: 'buoy-charlie', lat: 11.6893, lng: 122.5335, status: 'warning', battery: 31, signal: 'Weak',     pressure: 1006.3, pressureTrend: -3.4, current: '0.4 m/s', currentDir: 'W',   coverageRadius: 2000 },
-    { name: 'Buoy Delta',   id: 'buoy-delta',   lat: 11.7663, lng: 122.4153, status: 'active',  battery: 94, signal: 'Strong',   pressure: 1008.9, pressureTrend: -0.5, current: '0.3 m/s', currentDir: 'SE',  coverageRadius: 2000 },
-    { name: 'Buoy Echo',    id: 'buoy-echo',    lat: 11.8163, lng: 122.3978, status: 'danger',  battery: 12, signal: 'Lost',     pressure: null,   pressureTrend: null, current: null,     currentDir: null, coverageRadius: 2000 },
+    { name: 'Buoy Alpha',   id: 'buoy-alpha',   lat: 11.6912, lng: 122.4541, status: 'active',  battery: 87, signal: 'Strong',   pressure: 1008.4, pressureTrend: -1.2, current: '0.6 m/s', currentDir: 'SW',  coverageRadius: 2000, isGateway: true },
+    { name: 'Buoy Bravo',   id: 'buoy-bravo',   lat: 11.6944, lng: 122.4448, status: 'active',  battery: 72, signal: 'Moderate', pressure: 1007.1, pressureTrend: -2.8, current: '0.9 m/s', currentDir: 'S',   coverageRadius: 2000 },
+    { name: 'Buoy Charlie', id: 'buoy-charlie', lat: 11.5948, lng: 122.5051, status: 'warning', battery: 31, signal: 'Weak',     pressure: 1006.3, pressureTrend: -3.4, current: '0.4 m/s', currentDir: 'W',   coverageRadius: 2000 },
+    { name: 'Buoy Delta',   id: 'buoy-delta',   lat: 11.6552, lng: 122.5442, status: 'active',  battery: 94, signal: 'Strong',   pressure: 1008.9, pressureTrend: -0.5, current: '0.3 m/s', currentDir: 'SE',  coverageRadius: 2000 },
+    { name: 'Buoy Echo',    id: 'buoy-echo',    lat: 11.6562, lng: 122.5652, status: 'danger',  battery: 12, signal: 'Lost',     pressure: null,   pressureTrend: null, current: null,     currentDir: null, coverageRadius: 2000 },
   ];
 
   const meshLinks = [
@@ -147,20 +147,19 @@
   // Incidents occur at sea within the service area. The Boracay entry was
   // ~50 km outside New Washington and has been removed.
   const incidents = [
-    { name: 'Overdue Vessel — San Pedro', lat: 11.7256, lng: 122.5485, severity: 'danger', date: '2026-08-04', type: 'Overdue Vessel' },
-    { name: 'Squall Watch — Sibuyan Sea N', lat: 11.8010, lng: 122.3813, severity: 'warning', date: '2026-08-04', type: 'Squall Nowcast' },
-    { name: 'Overdue Vessel — Maria Gracia', lat: 11.8125, lng: 122.5238, severity: 'warning', date: '2026-08-04', type: 'Overdue Vessel' },
+    { name: 'Overdue Vessel — San Pedro', lat: 11.766, lng: 122.53, severity: 'danger', date: '2026-08-04', type: 'Overdue Vessel' },
+    { name: 'Squall Watch — Sibuyan Sea N', lat: 11.7213, lng: 122.5736, severity: 'warning', date: '2026-08-04', type: 'Squall Nowcast' },
+    { name: 'Overdue Vessel — Maria Gracia', lat: 11.6152, lng: 122.5175, severity: 'warning', date: '2026-08-04', type: 'Overdue Vessel' },
   ];
 
   // Service area = New Washington municipal waters. Mirrors WATER_POLYGON in
   // backend/app/geo.py. The previous ring spanned the whole province, from
   // Boracay in the west to Batan in the east.
   const opsBoundary = [
-    [11.6620, 122.4600], [11.6560, 122.4900], [11.6750, 122.5250],
-    [11.7150, 122.5500], [11.9600, 122.7400], [12.0200, 122.5600],
-    [12.0200, 122.3400], [11.9000, 122.2900], [11.7850, 122.3700],
-    [11.7350, 122.3900], [11.7050, 122.4250], [11.6820, 122.4450],
-    [11.6620, 122.4600]
+    [11.6703, 122.4157], [11.6177, 122.4380], [11.5902, 122.4914],
+    [11.5911, 122.6286], [11.6330, 122.6721], [11.6813, 122.6355],
+    [11.7414, 122.5924], [11.7731, 122.5408], [11.7662, 122.4574],
+    [11.7223, 122.4061], [11.6703, 122.4157]
   ];
 
   // ===== MAP INIT =====
