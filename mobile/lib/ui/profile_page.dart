@@ -25,7 +25,6 @@ class ProfilePage extends StatefulWidget {
     this.onThemeModeChanged,
     required this.onLogout,
     required this.onIdentityUpdated,
-    this.onOpenHome,
   });
 
   final IdentityStore identityStore;
@@ -34,7 +33,6 @@ class ProfilePage extends StatefulWidget {
   final ValueChanged<ThemeMode>? onThemeModeChanged;
   final VoidCallback onLogout;
   final ValueChanged<VesselIdentity> onIdentityUpdated;
-  final VoidCallback? onOpenHome;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -142,19 +140,8 @@ class _ProfilePageState extends State<ProfilePage> {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => InfoPage(title: title, body: body),
-      ),
+          builder: (_) => InfoPage(title: title, body: body)),
     );
-  }
-
-  void _handleBack() {
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-    } else if (widget.onOpenHome != null) {
-      widget.onOpenHome!();
-    } else if (Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
   }
 
   @override
@@ -169,7 +156,7 @@ class _ProfilePageState extends State<ProfilePage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _handleBack,
+          onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           'Profile',
@@ -189,9 +176,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(
-          horizontal: AqSpace.screen,
-          vertical: AqSpace.lg,
-        ),
+            horizontal: AqSpace.screen, vertical: AqSpace.lg),
         children: <Widget>[
           Center(
             child: Container(
@@ -346,28 +331,24 @@ class _ProfilePageState extends State<ProfilePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _InfoRow(
-            label: 'Full name',
-            value: identity.skipperName.isNotEmpty ? identity.skipperName : '—',
-          ),
+              label: 'Full name',
+              value:
+                  identity.skipperName.isNotEmpty ? identity.skipperName : '—'),
           const SizedBox(height: AqSpace.md),
           _InfoRow(label: 'Boat name', value: identity.boat),
           const SizedBox(height: AqSpace.md),
           _InfoRow(
-            label: 'Registration type',
-            value: identity.licenseType.label,
-          ),
+              label: 'Registration type', value: identity.licenseType.label),
           if (identity.hasLicense) ...<Widget>[
             const SizedBox(height: AqSpace.md),
             _InfoRow(
-              label: '${identity.licenseType.label} number',
-              value: identity.licenseNumber,
-            ),
+                label: '${identity.licenseType.label} number',
+                value: identity.licenseNumber),
           ],
           const SizedBox(height: AqSpace.md),
           _InfoRow(
-            label: 'Mobile number',
-            value: identity.phone.isNotEmpty ? identity.phone : '—',
-          ),
+              label: 'Mobile number',
+              value: identity.phone.isNotEmpty ? identity.phone : '—'),
           const SizedBox(height: AqSpace.md),
           _InfoRow(label: 'Vessel ID', value: identity.vesselId),
         ],
@@ -396,7 +377,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   textCapitalization: TextCapitalization.words,
                   textInputAction: TextInputAction.next,
                   style: const TextStyle(color: _authText, fontSize: 15),
-                  decoration: _decoration('Full name', Icons.person_outline_rounded),
+                  decoration:
+                      _decoration('Full name', Icons.person_outline_rounded),
                   validator: Validators.skipperName,
                 ),
                 const SizedBox(height: AqSpace.sm),
@@ -407,9 +389,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   textInputAction: TextInputAction.next,
                   style: const TextStyle(color: _authText, fontSize: 15),
                   decoration: _decoration(
-                    'Boat name or registration',
-                    Icons.sailing_outlined,
-                  ),
+                      'Boat name or registration', Icons.sailing_outlined),
                   validator: Validators.boatName,
                 ),
                 const SizedBox(height: AqSpace.sm),
@@ -417,12 +397,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   value: _licenseType,
                   isExpanded: true,
                   style: const TextStyle(color: _authText, fontSize: 15),
-                  decoration: _decoration('Registration type', Icons.badge_outlined),
+                  decoration:
+                      _decoration('Registration type', Icons.badge_outlined),
                   items: <DropdownMenuItem<LicenseType>>[
                     for (final type in LicenseType.values)
                       DropdownMenuItem<LicenseType>(
                         value: type,
-                        child: Text(type.label, overflow: TextOverflow.ellipsis),
+                        child:
+                            Text(type.label, overflow: TextOverflow.ellipsis),
                       ),
                   ],
                   onChanged: _saving
@@ -440,10 +422,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Text(
                     _licenseType.hint,
                     style: const TextStyle(
-                      fontSize: 11.5,
-                      color: _authLabel,
-                      height: 1.3,
-                    ),
+                        fontSize: 11.5, color: _authLabel, height: 1.3),
                   ),
                 ),
                 if (_licenseType.requiresNumber) ...<Widget>[
@@ -461,7 +440,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       '${_licenseType.label} number',
                       Icons.confirmation_number_outlined,
                     ),
-                    validator: (value) => Validators.license(value, _licenseType),
+                    validator: (value) =>
+                        Validators.license(value, _licenseType),
                   ),
                 ],
                 const SizedBox(height: AqSpace.sm),
@@ -471,7 +451,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
                   style: const TextStyle(color: _authText, fontSize: 15),
-                  decoration: _decoration('Mobile number', Icons.phone_iphone_rounded),
+                  decoration:
+                      _decoration('Mobile number', Icons.phone_iphone_rounded),
                   validator: Validators.phone,
                 ),
               ],
@@ -495,10 +476,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     'Editing your details resets your trust tier to self-declared. '
                     'A responder will need to re-confirm your identity.',
                     style: TextStyle(
-                      fontSize: 11.5,
-                      color: _noticeFg,
-                      height: 1.35,
-                    ),
+                        fontSize: 11.5, color: _noticeFg, height: 1.35),
                   ),
                 ),
               ],
@@ -536,14 +514,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
+                              color: Colors.white, strokeWidth: 2),
                         )
-                      : const Text(
-                          'Save changes',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                      : const Text('Save changes',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -597,19 +571,17 @@ class _InfoRow extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: palette.dimText,
-          ),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: palette.dimText),
         ),
         const SizedBox(height: 2),
         Text(
           value,
           style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            color: palette.primaryText,
-          ),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: palette.primaryText),
         ),
       ],
     );
@@ -644,10 +616,7 @@ class _TierChip extends StatelessWidget {
           Text(
             tier.label,
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
+                fontSize: 11, fontWeight: FontWeight.w600, color: color),
           ),
         ],
       ),
@@ -703,11 +672,8 @@ class _ThemeSwitchTile extends StatelessWidget {
 }
 
 class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _SettingsTile(
+      {required this.icon, required this.label, required this.onTap});
 
   final IconData icon;
   final String label;
@@ -740,11 +706,8 @@ class _SettingsTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: palette.dimText,
-                ),
+                Icon(Icons.chevron_right_rounded,
+                    size: 20, color: palette.dimText),
               ],
             ),
           ),
