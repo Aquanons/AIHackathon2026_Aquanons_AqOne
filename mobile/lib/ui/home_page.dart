@@ -28,6 +28,7 @@ class HomePage extends StatefulWidget {
     required this.location,
     this.bottomInset = 0,
     this.onOpenAdvisories,
+    this.onOpenProfile,
   });
 
   final SosService service;
@@ -42,6 +43,7 @@ class HomePage extends StatefulWidget {
   /// Opens the full advisories list. Null hides the "View all" action rather
   /// than leaving a control that navigates nowhere.
   final VoidCallback? onOpenAdvisories;
+  final VoidCallback? onOpenProfile;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -168,6 +170,9 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
+    final displayName = widget.identity.skipperName.trim().isNotEmpty
+        ? widget.identity.skipperName.trim()
+        : widget.identity.boat;
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
@@ -192,23 +197,79 @@ class _HomePageState extends State<HomePage> {
               AqSpace.xl + widget.bottomInset,
             ),
             children: <Widget>[
-              Text(
-                widget.identity.boat,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                  color: palette.primaryText,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: palette.primaryText,
+                          ),
+                        ),
+                        const SizedBox(height: AqSpace.xs),
+                        Text(
+                          'AqOne distress beacon',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: palette.secondaryText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AqSpace.base),
+                  Semantics(
+                    button: true,
+                    label: 'Open fisherman profile',
+                    child: InkWell(
+                      onTap: widget.onOpenProfile,
+                      customBorder: const CircleBorder(),
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: palette.surface,
+                          border: Border.all(color: palette.border),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.person_rounded,
+                          color: palette.secondaryText,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: AqSpace.xs),
-              Text(
-                'AqOne distress beacon',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: palette.secondaryText,
+              if (widget.identity.skipperName.trim().isNotEmpty) ...<Widget>[
+                const SizedBox(height: 2),
+                Text(
+                  widget.identity.boat,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: palette.secondaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: AqSpace.lg),
               // The official call sits above everything else on the screen.
               SeaConditionBanner(condition: _sea, isLoading: _seaLoading),
@@ -259,4 +320,3 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
-
