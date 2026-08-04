@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -36,8 +36,12 @@ class AppDatabase {
           );
         }
         if (oldVersion < 3) {
-          // v3 queues catch logs so they survive being logged at sea.
-          await _createCatchOutbox(db);
+          // v3 queues the legacy outbox rows so they survive being logged at
+          // sea.
+          await _createLegacyOutbox(db);
+        }
+        if (oldVersion < 4) {
+          await db.execute('DROP TABLE IF EXISTS catch_outbox');
         }
       },
       onCreate: (db, version) async {
@@ -76,18 +80,17 @@ class AppDatabase {
         await db.execute(
           'CREATE INDEX idx_outbox_seq ON outbox (vessel_id, seq)',
         );
-        await _createCatchOutbox(db);
       },
     );
   }
 
-  /// Catch logs get their own table rather than sharing [outbox].
+  /// Legacy outbox rows get their own table rather than sharing [outbox].
   ///
   /// They travel a different route - straight to the backend over HTTP when
   /// signal returns, never over LoRa - and carry entirely different columns.
   /// Folding them into the SOS outbox would mean a dozen nullable columns and
   /// a state machine that means two different things depending on the row.
-  static Future<void> _createCatchOutbox(Database db) async {
+  static Future<void> _createLegacyOutbox(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS catch_outbox (
         local_id     TEXT PRIMARY KEY,

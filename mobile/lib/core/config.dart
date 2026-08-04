@@ -56,12 +56,9 @@ class AqOneConfig {
 
   // --- Backend paths -------------------------------------------------------
 
-  static const String spotsPath = '/api/spots';
-  static const String publicSpotsPath = '/api/public/spots';
   static const String buoysPath = '/api/buoys';
   static const String waveAlertsPath = '/api/alerts/waves';
   static const String capsizingAlertsPath = '/api/alerts/capsizing';
-  static const String catchLogsPath = '/api/catch-logs';
   static const String seaConditionPath = '/api/sea-condition';
   static const String publicSeaConditionPath = '/api/public/sea-condition';
   static const String advisoriesPath = '/api/advisories?status=Published';
@@ -70,10 +67,6 @@ class AqOneConfig {
   static const int maxVesselIdLength = 32;
   static const int maxBoatLength = 32;
   static const int maxNoteLength = 64;
-
-  /// Catch notes are stored locally and uploaded over HTTP, never squeezed
-  /// into a LoRa frame, so they can be far more generous than SOS notes.
-  static const int maxCatchNoteLength = 240;
   static const int maxNameLength = 64;
   static const int maxPhoneLength = 20;
   static const int minLicenseLength = 5;

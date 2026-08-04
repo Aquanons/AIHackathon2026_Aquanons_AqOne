@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import '../core/config.dart';
 import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
-import '../models/fish_spot.dart';
 import '../models/hazard_alert.dart';
 import '../models/sea_condition.dart';
 import '../models/weather_snapshot.dart';
@@ -46,14 +45,6 @@ class VentureFeeds {
     } catch (_) {
       return null;
     }
-  }
-
-  Future<List<FishSpot>?> spots() async {
-    final decoded = await _backend.getJson(AqOneConfig.spotsPath);
-    if (decoded == null) {
-      return null;
-    }
-    return FishSpot.parseList(decoded);
   }
 
   Future<List<BuoyMarker>?> buoys() async {

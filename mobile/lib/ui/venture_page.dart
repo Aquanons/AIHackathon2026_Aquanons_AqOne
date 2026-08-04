@@ -6,36 +6,44 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/config.dart';
+import '../data/identity_store.dart';
 import '../models/buoy_marker.dart';
-import '../models/fish_spot.dart';
+import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
+import '../models/sos_record.dart';
 import '../models/weather_snapshot.dart';
-import '../services/catch_service.dart';
 import '../services/location_service.dart';
+import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
-import 'widgets/ripple_fish_spot.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
 const Color _accentDark = Color(0xFF38BDF8);
 const Color _surfaceDark = Color(0xFF1E293B);
 const Color _canvasDark = Color(0xFF0F172A);
+const Color _danger = Color(0xFFDC2626);
 const Color _success = Color(0xFF16A34A);
 
-/// The at-sea operational screen: map, conditions and catch logging.
+/// The at-sea operational screen: map, conditions and SOS.
 ///
-/// Ported from the source project's Venture mode, with read-only mesh and
-/// weather layers plus offline catch logging.
+/// Ported from the source project's Venture mode, with two deliberate
+/// departures:
+///   * writes go through the offline outbox instead of straight to HTTP, so
+///     an SOS raised out of range is queued rather than lost; and
+///   * SOS captures a fresh GPS fix at submission time rather than reusing
+///     the map's cached position.
 class VenturePage extends StatefulWidget {
   const VenturePage({
     super.key,
-    required this.catches,
+    required this.identity,
+    required this.sos,
     required this.feeds,
     required this.location,
     this.bottomInset = 0,
   });
 
-  final CatchService catches;
+  final VesselIdentity identity;
+  final SosService sos;
   final VentureFeeds feeds;
   final LocationService location;
 
@@ -51,10 +59,10 @@ class _VenturePageState extends State<VenturePage> {
   final MapController _mapController = MapController();
 
   final RequestGuard _weatherGuard = RequestGuard();
-  final RequestGuard _spotGuard = RequestGuard();
   final RequestGuard _buoyGuard = RequestGuard();
   final RequestGuard _waveGuard = RequestGuard();
   final RequestGuard _capsizeGuard = RequestGuard();
+  StreamSubscription<void>? _sosSub;
   Timer? _pollTimer;
 
   double _rotation = 0;
@@ -65,20 +73,21 @@ class _VenturePageState extends State<VenturePage> {
   bool _weatherFailed = false;
   bool _safetyDialogShown = false;
 
-  List<FishSpot> _spots = const <FishSpot>[];
   List<BuoyMarker> _buoys = const <BuoyMarker>[];
   final Map<HazardKind, List<HazardAlert>> _hazards =
       <HazardKind, List<HazardAlert>>{};
   final Set<String> _announcedHazardIds = <String>{};
-  int _pendingCatches = 0;
+
+  SosRecord? _latestSos;
+  bool _isSendingSos = false;
 
   bool _isChecklistOpen = false;
   final List<_ChecklistItem> _checklist = <_ChecklistItem>[
-    _ChecklistItem('Fish hook'),
-    _ChecklistItem('Fish net'),
-    _ChecklistItem('Fishing line'),
-    _ChecklistItem('Bait box'),
-    _ChecklistItem('Life jacket', isDone: true),
+    _ChecklistItem('Life jacket'),
+    _ChecklistItem('Flashlight'),
+    _ChecklistItem('Bailer'),
+    _ChecklistItem('Radio check'),
+    _ChecklistItem('First aid kit', isDone: true),
   ];
   final TextEditingController _newItem = TextEditingController();
 
@@ -90,12 +99,12 @@ class _VenturePageState extends State<VenturePage> {
   @override
   void initState() {
     super.initState();
+    _sosSub = widget.sos.changes.listen((_) => _refreshSosStatus());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _locate(initial: true);
-      _loadSpots();
       _loadBuoys();
       _loadHazards();
-      _refreshCatchCount();
+      _refreshSosStatus();
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
         _loadHazards();
@@ -108,17 +117,18 @@ class _VenturePageState extends State<VenturePage> {
     // Polling must stop with the screen. Left running it drains battery and
     // keeps hitting the backend while the phone is in a pocket at sea.
     _pollTimer?.cancel();
+    _sosSub?.cancel();
     _newItem.dispose();
     _mapController.dispose();
     super.dispose();
   }
 
-  Future<void> _refreshCatchCount() async {
-    final count = await widget.catches.pendingCount();
+  Future<void> _refreshSosStatus() async {
+    final history = await widget.sos.history();
     if (!mounted) {
       return;
     }
-    setState(() => _pendingCatches = count);
+    setState(() => _latestSos = history.isEmpty ? null : history.first);
   }
 
   Future<void> _loadWeather(double lat, double lon) async {
@@ -135,15 +145,6 @@ class _VenturePageState extends State<VenturePage> {
       _safetyDialogShown = true;
       _showSafetyDialog();
     }
-  }
-
-  Future<void> _loadSpots() async {
-    final version = _spotGuard.begin();
-    final spots = await widget.feeds.spots();
-    if (!mounted || !_spotGuard.isCurrent(version) || spots == null) {
-      return;
-    }
-    setState(() => _spots = spots);
   }
 
   Future<void> _loadBuoys() async {
@@ -196,6 +197,97 @@ class _VenturePageState extends State<VenturePage> {
     setState(() => _userLocation = point);
     _mapController.move(point, AqOneConfig.locatedMapZoom);
     await _loadWeather(fix.lat, fix.lon);
+  }
+
+  Future<void> _sendSos() async {
+    if (_isSendingSos) {
+      return;
+    }
+    final note = await _confirmSos();
+    if (note == null || !mounted) {
+      return;
+    }
+
+    setState(() => _isSendingSos = true);
+    try {
+      final record = await widget.sos.raiseSos(note: note);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _latestSos = record);
+      _snack(
+        record.hasFix
+            ? 'SOS saved and sending.'
+            : 'SOS saved without a GPS fix. It will still be sent.',
+      );
+    } on StateError {
+      if (mounted) {
+        _snack('Finish setting up your boat before sending an SOS.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingSos = false);
+      }
+    }
+  }
+
+  Future<String?> _confirmSos() async {
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: <Widget>[
+            Icon(Icons.warning_rounded, color: _danger, size: 26),
+            SizedBox(width: 10),
+            Expanded(child: Text('Send an SOS?')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'This alerts the MDRRMO that ${widget.identity.boat} needs '
+              'help, and sends your position. Only use this in a real '
+              'emergency.',
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: note,
+              maxLength: AqOneConfig.maxNoteLength,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'What is wrong? (optional)',
+                hintText: 'engine down',
+                counterText: '',
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _danger,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Send SOS'),
+          ),
+        ],
+      ),
+    );
+
+    final text = note.text;
+    note.dispose();
+    return confirmed == true ? text : null;
   }
 
   void _queueHazardDialog(HazardKind kind) {
@@ -389,19 +481,6 @@ class _VenturePageState extends State<VenturePage> {
 
   Widget _buildMap() {
     final markers = <Marker>[
-      for (final spot in _spots)
-        Marker(
-          point: LatLng(spot.latitude, spot.longitude),
-          width: 180,
-          height: 160,
-          alignment: Alignment.center,
-          child: RippleFishSpot(
-            postedBy: spot.postedBy,
-            timeAgo: spot.createdAt == null
-                ? 'Just now'
-                : formatTimeAgo(spot.createdAt!),
-          ),
-        ),
       for (final buoy in _buoys)
         Marker(
           point: LatLng(buoy.latitude, buoy.longitude),
@@ -581,24 +660,67 @@ class _VenturePageState extends State<VenturePage> {
         ),
         const SizedBox(height: 14),
         _ActionPill(
-          icon: Icons.edit_note_rounded,
-          label: 'Log Catch',
-          color: const Color(0xFF0284C7),
+          icon: Icons.warning_rounded,
+          label: 'SOS',
+          color: _danger,
           isDark: isDark,
-          onTap: _showCatchSheet,
+          onTap: _isSendingSos ? null : _sendSos,
         ),
-        if (_pendingCatches > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              '$_pendingCatches waiting to upload',
-              style: TextStyle(
-                fontSize: 10.5,
-                color: isDark ? Colors.white70 : const Color(0xFF475569),
-              ),
+        if (_latestSos != null) _buildSosStatus(isDark, _latestSos!),
+      ],
+    );
+  }
+
+  Widget _buildSosStatus(bool isDark, SosRecord record) {
+    final state = record.state;
+    final color = switch (state) {
+      DeliveryState.saved => const Color(0xFFD97706),
+      DeliveryState.relayed => _brandPrimary,
+      DeliveryState.delivered => const Color(0xFF0284C7),
+      DeliveryState.acknowledged => _success,
+    };
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      constraints: const BoxConstraints(maxWidth: 190),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: <Widget>[
+          Text(
+            state.title,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: color,
             ),
           ),
-      ],
+          const SizedBox(height: 2),
+          Text(
+            state.description,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 10,
+              height: 1.25,
+              color: isDark ? Colors.white70 : const Color(0xFF475569),
+            ),
+          ),
+          if (!record.hasFix)
+            const Padding(
+              padding: EdgeInsets.only(top: 3),
+              child: Text(
+                'No GPS fix recorded',
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 9.5, color: Color(0xFFD97706)),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -788,21 +910,6 @@ class _VenturePageState extends State<VenturePage> {
       _newItem.clear();
     });
   }
-
-  // --- Catch log ----------------------------------------------------------
-
-  Future<void> _showCatchSheet() async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _CatchLogSheet(catches: widget.catches),
-    );
-    if (saved == true && mounted) {
-      await _refreshCatchCount();
-      _snack('Catch saved. It uploads when you have signal.');
-    }
-  }
 }
 
 class _ChecklistItem {
@@ -916,213 +1023,6 @@ class _ActionPill extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom sheet for recording a catch.
-class _CatchLogSheet extends StatefulWidget {
-  const _CatchLogSheet({required this.catches});
-
-  final CatchService catches;
-
-  @override
-  State<_CatchLogSheet> createState() => _CatchLogSheetState();
-}
-
-class _CatchLogSheetState extends State<_CatchLogSheet> {
-  static const List<String> _species = <String>[
-    'Bangus',
-    'Galunggong',
-    'Tulingan',
-    'Hasa-hasa',
-    'Bisugo',
-  ];
-  static const String _other = 'Other';
-
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _quantity = TextEditingController();
-  final TextEditingController _otherSpecies = TextEditingController();
-  final TextEditingController _method = TextEditingController();
-  final TextEditingController _notes = TextEditingController();
-
-  String _selected = _species.first;
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _quantity.dispose();
-    _otherSpecies.dispose();
-    _method.dispose();
-    _notes.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_saving || !_formKey.currentState!.validate()) {
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      await widget.catches.logCatch(
-        // "Other" with a typed name keeps the species instead of discarding
-        // it, which the source implementation did by sending null.
-        speciesName:
-            _selected == _other ? _otherSpecies.text.trim() : _selected,
-        quantityKg: double.parse(_quantity.text.trim()),
-        method: _method.text,
-        notes: _notes.text,
-      );
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save this catch.')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final inset = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: inset),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Log a catch',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Saved on your phone and uploaded when you have signal.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selected,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Species',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<String>>[
-                    for (final name in <String>[..._species, _other])
-                      DropdownMenuItem<String>(
-                        value: name,
-                        child: Text(name),
-                      ),
-                  ],
-                  onChanged: _saving
-                      ? null
-                      : (value) =>
-                          setState(() => _selected = value ?? _species.first),
-                ),
-                if (_selected == _other) ...<Widget>[
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _otherSpecies,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Species name',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Name the species, or pick one above'
-                        : null,
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _quantity,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Quantity (kg)',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    final parsed = double.tryParse((value ?? '').trim());
-                    if (parsed == null) {
-                      return 'Enter a number';
-                    }
-                    if (parsed <= 0) {
-                      return 'Must be more than zero';
-                    }
-                    if (!parsed.isFinite || parsed > 100000) {
-                      return 'That looks too large';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _method,
-                  decoration: const InputDecoration(
-                    labelText: 'Method (optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _notes,
-                  maxLines: 2,
-                  maxLength: AqOneConfig.maxCatchNoteLength,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: _saving ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text('Save catch'),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
