@@ -184,6 +184,7 @@ async def active_sos(_: dict = Depends(require_user)) -> dict[str, object]:
                    buoy_id, created_at, acknowledged_at, acked_by
             FROM sos_events
             WHERE acknowledged_at IS NULL
+              AND resolved_at IS NULL
             ORDER BY created_at DESC
             LIMIT 100
             '''
@@ -258,6 +259,34 @@ async def acknowledge(
         'responder_status': row['responder_status'],
         'responder_status_label': RESPONDER_STATUS_LABELS.get(row['responder_status']),
         'responder_note': row['responder_note'],
+    }
+
+
+@protected_router.post('/{event_id}/resolve')
+async def resolve_sos(
+    event_id: int,
+    user: dict = Depends(require_user),
+) -> dict[str, object]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            '''
+            UPDATE sos_events
+               SET resolved_at = COALESCE(resolved_at, NOW()),
+                   acked_by = COALESCE(acked_by, $2)
+             WHERE id = $1
+            RETURNING id, resolved_at, acked_by
+            ''',
+            event_id,
+            user.get('email') or 'unknown',
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail='no such SOS event')
+    return {
+        'ok': True,
+        'id': row['id'],
+        'resolved_at': _iso(row['resolved_at']),
+        'acked_by': row['acked_by'],
     }
 
 
