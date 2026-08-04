@@ -198,9 +198,11 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
         body: ListView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AqSpace.screen,
-            vertical: AqSpace.lg,
+          padding: EdgeInsets.fromLTRB(
+            AqSpace.screen,
+            AqSpace.lg,
+            AqSpace.screen,
+            AqSpace.xl + 100, // Added extra bottom padding to prevent bottom navigation bar overlap
           ),
           children: <Widget>[
             Center(

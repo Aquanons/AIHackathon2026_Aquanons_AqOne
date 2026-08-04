@@ -164,9 +164,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
-    final displayName = widget.identity.skipperName.trim().isNotEmpty
-        ? widget.identity.skipperName.trim()
-        : widget.identity.boat;
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
@@ -193,25 +190,31 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: <Widget>[
-                        Text(
-                          displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
+                        Image.asset(
+                          'assets/images/aqoneLogo1.png',
+                          height: 38,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.waves_rounded,
+                            size: 38,
                             color: palette.primaryText,
                           ),
                         ),
-                        const SizedBox(height: AqSpace.xs),
-                        Text(
-                          'AqOne distress beacon',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: palette.secondaryText,
+                        const SizedBox(width: 8),
+                        Image.asset(
+                          'assets/images/aqoneLogo2.png',
+                          height: 24,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Text(
+                            'AqOne',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: palette.primaryText,
+                            ),
                           ),
                         ),
                       ],
@@ -249,19 +252,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
               ),
-              if (widget.identity.skipperName.trim().isNotEmpty) ...<Widget>[
-                const SizedBox(height: 2),
-                Text(
-                  widget.identity.boat,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: palette.secondaryText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
               const SizedBox(height: AqSpace.lg),
               SeaConditionBanner(condition: _sea, isLoading: _seaLoading),
               const SizedBox(height: AqSpace.base),
@@ -272,26 +262,6 @@ class _HomePageState extends State<HomePage> {
                 locationLabel:
                     _weatherAtDevice ? 'your position' : 'Aklan (default)',
               ),
-              if (_weather != null) ...<Widget>[
-                const SizedBox(height: AqSpace.base),
-                Container(
-                  padding: const EdgeInsets.all(AqSpace.md),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.shade400),
-                  ),
-                  child: Text(
-                    "The WEATHER IS ${_weather!.conditionText.toUpperCase()} ITS SAFE TO FISH",
-                    style: TextStyle(
-                      color: Colors.green.shade700,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
               if (_advisories.isNotEmpty) ...<Widget>[
                 const SizedBox(height: AqSpace.base),
                 AdvisoryCard(

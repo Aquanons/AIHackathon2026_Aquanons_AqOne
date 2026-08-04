@@ -592,28 +592,13 @@ class _Branding extends StatelessWidget {
     return Column(
       children: <Widget>[
         Image.asset(
-          'assets/icons/aqoneLogo2.png',
-          height: isWide ? 120 : mediaQuery.size.height * 0.12,
+          'assets/images/aqone_logo.png',
+          height: isWide ? 140 : mediaQuery.size.height * 0.18,
           fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => Icon(
             Icons.waves_rounded,
             size: isWide ? 96 : mediaQuery.size.height * 0.10,
             color: _brandPrimary,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Image.asset(
-          'assets/icons/aqoneLogo3.png',
-          height: isWide ? 45 : mediaQuery.size.height * 0.045,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const Text(
-            'AqOne',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: _brandDeep,
-              letterSpacing: -0.5,
-            ),
           ),
         ),
         const SizedBox(height: 8),
