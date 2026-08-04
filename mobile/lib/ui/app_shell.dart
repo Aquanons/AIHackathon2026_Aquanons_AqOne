@@ -9,6 +9,7 @@ import 'home_page.dart';
 import 'profile_page.dart';
 import 'venture_page.dart';
 
+
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _accentDark = Color(0xFF38BDF8);
 const Color _surfaceDark = Color(0xFF1E293B);
@@ -105,6 +106,7 @@ class _AppShellState extends State<AppShell> {
           location: widget.location,
           bottomInset: inset,
           onOpenAdvisories: () => _select(2),
+          onOpenProfile: () => _select(3),
         ),
         // Only built once the user has actually opened Venture.
         _ventureOpened ? _buildVenture(inset) : const SizedBox.shrink(),
@@ -277,7 +279,7 @@ class _SidebarItem extends StatelessWidget {
   }
 }
 
-/// Mobile dock with the Venture button raised above it, as in the mockups.
+/// Mobile dock with the Venture button raised above it.
 class _MobileDock extends StatelessWidget {
   const _MobileDock({
     required this.index,
@@ -298,17 +300,11 @@ class _MobileDock extends StatelessWidget {
   static const double buttonSize = 66;
 
   /// Total space the dock occupies, including the home-indicator inset.
-  ///
-  /// Both the dock and the pages beneath it derive their geometry from this,
-  /// so the bar cannot end up shorter than the thing drawn inside it.
   static double heightFor(BuildContext context) =>
       barHeight + MediaQuery.of(context).viewPadding.bottom + overhang;
 
   @override
   Widget build(BuildContext context) {
-    // Padded explicitly rather than with SafeArea: a SafeArea inside a
-    // fixed-height box adds inset to the content without growing the box,
-    // which is what overflowed the dock on phones with a home indicator.
     final systemInset = MediaQuery.of(context).viewPadding.bottom;
     final fullBarHeight = barHeight + systemInset;
 
@@ -335,37 +331,36 @@ class _MobileDock extends StatelessWidget {
               ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: <Widget>[
-                _DockItem(
-                  icon: Icons.home_rounded,
-                  label: 'Home',
-                  isActive: index == 0,
-                  isDark: isDark,
-                  onTap: () => onSelect(0),
+                Expanded(
+                  child: Center(
+                    child: _DockItem(
+                      icon: Icons.home_rounded,
+                      label: 'Home',
+                      isActive: index == 0,
+                      isDark: isDark,
+                      onTap: () => onSelect(0),
+                    ),
+                  ),
                 ),
                 // Reserved gap for the raised Venture button.
                 const SizedBox(width: 72),
-                _DockItem(
-                  icon: Icons.campaign_rounded,
-                  label: 'Advisories',
-                  isActive: index == 2,
-                  isDark: isDark,
-                  onTap: () => onSelect(2),
-                ),
-                _DockItem(
-                  icon: Icons.person_rounded,
-                  label: 'Profile',
-                  isActive: index == 3,
-                  isDark: isDark,
-                  onTap: () => onSelect(3),
+                Expanded(
+                  child: Center(
+                    child: _DockItem(
+                      icon: Icons.campaign_rounded,
+                      label: 'Advisories',
+                      isActive: index == 2,
+                      isDark: isDark,
+                      onTap: () => onSelect(2),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           Positioned(
-            // Sits centred on the bar's top edge, so its top lands exactly on
-            // the stack's top rather than spilling past it.
             bottom: fullBarHeight - overhang,
             child: Semantics(
               button: true,
