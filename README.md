@@ -3,150 +3,184 @@
 **An offline maritime safety network and AI-assisted search-and-rescue platform for municipal fishers operating beyond cellular coverage.**
 
 Built by **Team Aquanons** for AI Fest 2026.
+New Washington, Aklan, Philippines.
 
-> **Prototype status:** The current `master` branch implements the Flutter SOS client, its durable offline outbox and delivery-state logic, a static dashboard prototype with sample data, and an experimental ESP32 Wi-Fi chat sketch. The LoRa SOS firmware, gateway, backend, model-training pipelines, and trained AI models are proposed architecture and are not yet implemented. This distinction is intentional and should be preserved during judging.
+---
 
-## Problem Overview and Objectives
+## Status — what is built, what is not
 
-Municipal fishers in New Washington, Aklan routinely work in cellular dead zones. Once offshore, a mobile phone may no longer be able to place a call or send an internet-based SOS. If a fisher capsizes, collides, or encounters a sudden squall, responders may learn about the emergency only when the boat fails to return. The delay removes the most useful information: the incident time, last known position, and initial direction of drift.
+Read this before any other claim in this file.
 
-AqOne aims to:
+| Component | Status |
+|---|---|
+| **FastAPI + PostgreSQL backend on Railway** | ✅ Deployed, healthcheck green, 73 tests passing |
+| **Drift prediction** (Monte Carlo Lagrangian) | ✅ Built, measured, live |
+| **Bayesian search re-tasking** | ✅ Built, measured, live |
+| **Squall nowcasting** (trained classifier) | ✅ Built, measured, live |
+| **Trip anomaly / overdue detection** | ✅ Built, measured, live |
+| **Marine hazard model** (trained on real data) | ✅ Built, runs in the browser |
+| **SOS pipeline** phone → backend → dashboard | ✅ Working, with de-duplication |
+| **Responder loop** acknowledge → ETA → handset | ✅ Working |
+| **MDRRMO dashboard** | ✅ Live SOS feed, drift contours, squall watch |
+| **Flutter handset app** | ✅ SOS, offline outbox, squall alarm, weather |
+| **Buoy firmware** (WiFi AP + SOS gateway) | ✅ Written, **not yet flashed to hardware** |
+| **Multi-hop LoRa mesh** | ❌ Frame spec written, relay code not implemented |
+| **Outdoor range test** | ❌ Not performed. All range figures are datasheet values |
+| **Live roster / headcount** | ❌ Roadmap (PRD §5.6) |
+| **Buoy REST endpoint** | ❌ Dashboard buoy markers still hardcoded |
 
-- provide an SOS path that does not require cellular service;
-- preserve and relay distress messages until they reach shore;
-- detect emergencies even when the fisher cannot press a button;
-- warn fleets about localized, fast-forming squalls;
-- turn a last known position into an uncertainty-aware search area;
-- give responders timely evidence while keeping the final dispatch decision with humans; and
-- build a transparent, auditable safety system that exposes confidence, data age, and coverage gaps.
+**The end-to-end path that works today:** a phone sends an SOS, it reaches the
+deployed backend, appears on the MDRRMO dashboard within 10 seconds, a
+dispatcher acknowledges with an ETA, and that ETA appears on the fisher's
+handset. **No LoRa hardware is required for this path.**
 
-## Problem Statement and AI-Based Solution
+---
 
-Existing phone-based safety tools fail outside cellular coverage, while manual radios and beacons still depend on a conscious operator. A last known coordinate also becomes stale quickly because a person or disabled vessel continues to move with wind and current.
+## Problem
 
-AqOne addresses the problem in two layers:
+Municipal fishers in New Washington, Aklan work in cellular dead zones. Team
+field interviews established this is not an edge case — when fishers go out to
+fish, **all of them** are beyond signal. If a boat capsizes or a squall builds,
+MDRRMO typically learns of it hours later, by word of mouth. The delay destroys
+the most useful information: incident time, last known position, and initial
+drift direction.
 
-1. **Connectivity foundation:** a phone hands an SOS to a nearby node over local Wi-Fi. Boat or buoy nodes store and forward messages over LoRa toward a shore gateway, which relays them to an operations dashboard.
-2. **AI-assisted safety layer:** models use sensor, mesh, vessel, weather, and responder evidence before, during, and after an incident.
+## Solution
 
-| Emergency phase | Proposed AI solution | Intended outcome |
+Two layers.
+
+**Connectivity.** A phone hands an SOS to a nearby buoy over local WiFi. Buoys
+store and forward over LoRa toward a shore gateway, which relays it to the
+backend and on to an operations dashboard. The phone never needs cellular
+signal.
+
+**AI safety layer.** Four models covering the emergency timeline:
+
+| Phase | Model | What it does |
 |---|---|---|
-| **Before** | Spatiotemporal forecasting over barometric observations from moving nodes | Estimate localized squall probability 30–90 minutes ahead and issue targeted **RETURN NOW** warnings |
-| **During** | TinyML motion classification, trajectory anomaly detection, heartbeat-loss rules, and confidence fusion | Detect capsize, collision, possible man-overboard, abnormal drift, or silence; request a check-in or raise an explainable alert |
-| **After** | OpenDrift/Leeway particle ensembles, validated local-current residual correction, and Bayesian search updating | Produce a probability field and re-rank search sectors as conditions and responder observations change |
+| **Before** | Marine hazard (gradient boosting) | Risk zones per sector from live weather |
+| **During** | Squall nowcasting (logistic regression) | Pressure-drop propagation across the array → **RETURN NOW** |
+| **Overdue** | Trip anomaly (unsupervised profiling) | Learns each vessel's habits; flags departures from its own pattern |
+| **After** | Drift prediction (Monte Carlo Lagrangian) | Probability field and 50/75/95% search contours, re-tasked on negative search results |
 
-The system is decision support, not autonomous incident command. It does not replace the Philippine Coast Guard, official PAGASA warnings, VHF radio, EPIRBs, or responder judgment.
+AqOne is decision support, not autonomous incident command. It does not replace
+the Philippine Coast Guard, PAGASA warnings, VHF radio, EPIRBs, or responder
+judgement.
 
-## Proposed End-to-End Architecture
+---
+
+## Measured performance
+
+Produced by `backend/app/ai/*_eval.py`. Every figure is tagged
+`calibration: "synthetic"` in the API response.
+
+| Metric | Result |
+|---|---|
+| Drift containment (true position inside 95% contour) | **100%** — n=8 incidents |
+| Search area reduction | **1.40×** |
+| Drift runtime | 131 ms |
+| Current observations used (vs synthetic fallback) | **100%** |
+| Overdue detection — median latency | **55 minutes** |
+| Overdue detection — false alarm rate | **0%** across 496 normal trips |
+| Squall precision / recall | 0.286 / 0.133 |
+| Squall mean lead time | **50 minutes** |
+
+**Read these honestly.** Containment of 100% across eight incidents is
+encouraging, not proof. Squall recall of 0.133 is weak — the model currently
+misses most squalls. Our next step is lowering its decision threshold to trade
+precision for recall, because for a life-safety system a missed squall is far
+worse than a false alarm.
+
+The marine hazard model is the exception: it is trained on **real** data —
+Open-Meteo history (2023-08 → 2025-12), NOAA IBTrACS cyclone tracks and GEBCO
+bathymetry — scoring ROC-AUC 0.965, precision 0.829, recall 0.825. Sources,
+checksums and limitations in [`web/ml/model-card.json`](web/ml/model-card.json).
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    A["Fisher's phone\nFlutter + offline outbox"] -->|Local Wi-Fi| B["Boat/buoy node\nESP32-S3 + sensors"]
-    B <-->|Store-and-forward LoRa| C["Neighbor nodes"]
+    A["Fisher's phone<br/>Flutter + offline outbox"] -->|Local WiFi| B["Buoy node<br/>Heltec V3 / ESP32-S3"]
+    A -->|Direct HTTPS when in signal| E
+    B <-->|Store-and-forward LoRa| C["Relay buoys"]
     C --> D["Shore gateway"]
-    D --> E["Backend and geospatial store"]
-    E --> F["Incident and AI services"]
-    F --> G["PCG / BFAR / LGU console"]
-    G -->|Acknowledgement and search observations| F
+    D --> E["FastAPI + PostgreSQL"]
+    E --> F["AI services"]
+    F --> G["MDRRMO dashboard"]
+    G -->|Acknowledge + ETA| E
+    E -->|ETA| A
 ```
 
-Critical messages are intended to receive unique IDs, integrity protection, replay suppression, priority handling, and durable queues. Model output must retain its source data, transformation version, model or rule version, confidence, and age.
+An SOS is attempted over **both** transports in parallel. The backend
+de-duplicates on `(vessel_id, client_ts)` — not a UUID, because a UUID does not
+fit in a 64-byte LoRa frame — so the same emergency arriving twice is one
+incident on the dispatcher's screen.
 
-## AI Tools and Frameworks
+---
 
-The following tools are specified in the PRD and technical profile for the AI implementation. They are **planned, not currently integrated into `master`**.
+## Stack
 
-| Function | Model or method | Planned tools/frameworks |
+**Backend** — FastAPI, PostgreSQL (PostGIS provisioned), asyncpg, scikit-learn,
+NumPy, JWT + bcrypt. Deployed on Railway via Docker.
+
+**Mobile** — Flutter/Dart, sqflite durable outbox, geolocator.
+
+**Dashboard** — HTML/CSS/JS, Leaflet, Chart.js. The hazard model runs in-browser
+as exported decision trees; no Python at runtime.
+
+**Firmware** — Heltec WiFi LoRa 32 V3 (ESP32-S3 + SX1262), Arduino.
+
+No foundation models or LLMs are used anywhere in the product.
+
+---
+
+## Data sources
+
+| Source | Use | Licence |
 |---|---|---|
-| Sensor preprocessing | Calibration, filtering, event windows, quality rules | Embedded C/C++, Python, NumPy |
-| Squall nowcasting | Graph neural network or convolutional-recurrent model | PyTorch and geospatial preprocessing |
-| Motion detection | Quantized 1D CNN or compact feature/tree classifier | TensorFlow Lite Micro or an equivalent TinyML runtime |
-| Trajectory anomaly | Isolation Forest or sequence anomaly baseline with operating-state rules | scikit-learn |
-| Incident confidence | Calibrated logistic regression or gradient boosting with safety rules | scikit-learn or XGBoost |
-| Drift prediction | Physics-based Leeway particle ensemble | OpenDrift, xarray, NumPy, PostGIS |
-| Local-current correction | Residual regression or spatiotemporal interpolation | PyTorch or XGBoost |
-| Search allocation | Bayesian posterior and probability-of-detection updates | Python, NumPy, PostGIS |
+| Synthetic generator (`app/simulation/generator.py`) | Calibrating and scoring three models | Self-generated |
+| [Open-Meteo](https://open-meteo.com) historical + marine | Hazard model training, live weather | CC-BY 4.0, non-commercial |
+| [NOAA IBTrACS v04r01](https://www.ncei.noaa.gov/products/international-best-track-archive) | Cyclone labels | Public domain |
+| [GEBCO 2020](https://www.opentopodata.org/datasets/gebco2020/) via OpenTopoData | Bathymetry | Public |
+| OpenStreetMap | Basemap tiles | ODbL |
 
-### Frameworks present in the current prototype
+Full declarations, including bias analysis and AI-tool disclosure, are in
+[`docs/16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md).
 
-- **Flutter / Dart** for the fisherman-facing mobile application
-- **sqflite** for the durable on-device SOS outbox
-- **geolocator** for optional GPS capture
-- **HTTP** for phone-to-node handoff and future backend reconciliation
-- **HTML, CSS, JavaScript, and Leaflet** for the static operations-dashboard prototype
-- **ESP32 Arduino libraries** for the experimental Wi-Fi/WebSocket chat sketch
+---
 
-The intended production stack additionally includes FastAPI, PostgreSQL/PostGIS, ESP32-S3 hardware, and SX1262 LoRa radios, but the corresponding backend, gateway, and LoRa firmware are not implemented in this branch.
-
-## Data Sources and Datasets
-
-No trained model, model artifact, or model-ready dataset is committed to this repository. The current dashboard uses clearly identifiable sample data for interface demonstration; it must not be presented as field evidence or training data.
-
-| Data source | Planned use | Current status |
-|---|---|---|
-| Node GNSS and trip state | Position, trajectory features, incident context, drift validation | Mobile GPS capture is partially implemented; fleet dataset not collected |
-| Node IMU event windows | Capsize, impact, and possible man-overboard classification | Planned |
-| Node barometer | Offshore pressure field and squall nowcasting | Planned |
-| Mesh and gateway metadata | Coverage, route quality, queue health, corroboration | Contracts documented; live dataset not collected |
-| Vessel/node registry | Identity, vessel profile, calibration, maintenance, model compatibility | Planned |
-| PAGASA warnings and forecasts | Authoritative alerts, weather context, and fallback | Planned; source terms require confirmation |
-| Ocean wind/current products, such as HYCOM-compatible forcing | Physical forcing for drift ensembles | Planned; exact production source and license require confirmation |
-| Reanalysis and physics-derived synthetic pressure fields | Cold-start nowcasting experiments | Planned |
-| Controlled small-craft trials and physically plausible simulation | Motion-model training and hard-negative testing | Planned |
-| Search observations and recovery outcomes | Bayesian updates and retrospective drift evaluation | Planned |
-
-Data must be separated by time, geography, vessel, and incident group as appropriate to prevent leakage. Missingness, quality flags, calibration, provenance, and freshness must be retained. Because fishing routes can reveal commercially sensitive livelihood patterns, precise tracks require strict access control, purpose limitation, retention rules, and compliance with the Philippine Data Privacy Act of 2012.
-
-## Current `master` Branch Status
-
-| Capability | Status | Evidence in this repository |
-|---|---|---|
-| Flutter SOS creation and local persistence | **Implemented** | SQLite outbox, payload model, retry-oriented service structure |
-| Honest delivery states | **Implemented and unit-tested** | `saved`, `relayed`, `delivered`, `acknowledged` with non-regressing transitions |
-| Phone-to-buoy HTTP client | **Implemented, integration pending** | Configurable buoy URL and documented API contract |
-| Operations dashboard interface | **Prototype** | Static web interface using sample/mock records |
-| ESP32 Wi-Fi messaging experiment | **Prototype** | Arduino WebSocket chat sketch; not LoRa SOS firmware |
-| LoRa SOS relay and multi-hop mesh | **Not implemented in `master`** | Protocol documentation and placeholder folders only |
-| Gateway and backend | **Not implemented in `master`** | Placeholder folders and API/design specifications only |
-| AI models and data pipelines | **Not implemented in `master`** | PRD and technical design only |
-| End-to-end airplane-mode SOS demonstration | **Not yet verified** | Requires working node, LoRa link, gateway, backend, and dashboard integration |
-
-## Repository Structure
+## Repository structure
 
 ```text
-arduino/       Experimental ESP32 Wi-Fi/WebSocket sketch
-backend/       Backend scaffold; implementation pending
-docs/          Architecture, interface contracts, scope, and demo status
-firmware/      LoRa buoy firmware scaffold; implementation pending
-gateway/       Shore gateway scaffold; implementation pending
-mobile/        Flutter application and tests
-web/           Static dashboard and public-facing pages
+backend/     FastAPI + PostgreSQL — API, AI models, migrations, tests
+  app/ai/          the four models and their evaluation scripts
+  app/api/         HTTP routes
+  app/simulation/  synthetic data generator
+docs/        Specs, PRD, disclosures
+firmware/    Heltec V3 buoy sketch
+mobile/      Flutter application
+web/         Dashboard, and the in-browser hazard model
 ```
 
-Start with [`docs/00_START_HERE.md`](docs/00_START_HERE.md). Interface contracts are defined in [`docs/02_LOAM_PACKET_SPEC.md`](docs/02_LOAM_PACKET_SPEC.md), [`docs/03_PHONE_BUOY_WIFI.md`](docs/03_PHONE_BUOY_WIFI.md), [`docs/04_INGEST_API.md`](docs/04_INGEST_API.md), [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md), and [`docs/06_DELIVERY_STATES.md`](docs/06_DELIVERY_STATES.md).
+---
 
-## Setup and Run Instructions
+## Setup
 
-### Prerequisites
-
-- Git
-- Flutter 3.x with a Dart SDK compatible with `^3.5.0`
-- Android Studio or an Android SDK plus an emulator/USB-connected Android device
-- Python 3 for serving the static dashboard locally
-- Node.js for JavaScript syntax checks
-- Internet access for initial Flutter package download and the dashboard's hosted map assets
-
-### 1. Use the required branch
+### Backend
 
 ```bash
-git clone <repository-url>
-cd AIHackathon2026_Aquanons_AqOne
-git checkout master
+cd backend
+pip install -r requirements.txt
+python migrate.py
+uvicorn app.main:app --reload
 ```
 
-If the repository has already been cloned, preserve any local work before pulling or switching branches.
+Variables are documented in `backend/.env.example`. `DATABASE_URL`,
+`JWT_SECRET` and `ADMIN_SETUP_KEY` must be set in any deployed environment.
 
-### 2. Run the Flutter application
+### Mobile
 
 ```bash
 cd mobile
@@ -154,92 +188,99 @@ flutter pub get
 flutter run
 ```
 
-The default node endpoint is `http://10.0.0.1`. Override endpoints at run time when using a mock node or test backend:
+Point at a different backend with
+`flutter run --dart-define=BACKEND_BASE_URL=https://your-host`.
+
+### Dashboard
+
+Served by the backend at `/`. Run the backend and open `http://localhost:8000`.
+
+### Buoy firmware
+
+Open `firmware/buoy/AqOneBuoy/AqOneBuoy.ino` in Arduino IDE. Board: **Heltec
+WiFi LoRa 32(V3)**. Libraries: `ArduinoJson` (v7+), `WebSockets`. Set
+`UPLINK_SSID` / `UPLINK_PASS` before flashing.
+See [`firmware/buoy/README.md`](firmware/buoy/README.md).
+
+---
+
+## Tests
 
 ```bash
-flutter run \
-  --dart-define=BUOY_BASE_URL=http://192.168.1.50:8080 \
-  --dart-define=BACKEND_BASE_URL=https://your-backend.example.com
+cd backend && pytest          # 73 tests
+cd mobile  && flutter analyze && flutter test
 ```
 
-The app can demonstrate local SOS creation, persistence, and delivery-state UI without a completed LoRa/backend path. A real handoff requires an endpoint that implements [`docs/03_PHONE_BUOY_WIFI.md`](docs/03_PHONE_BUOY_WIFI.md).
-
-> **Android integration note:** the current tracked manifest does not yet contain the location, Wi-Fi, internet, and node-scoped cleartext configuration documented in [`mobile/README.md`](mobile/README.md). Add that configuration before claiming GPS or physical-node integration on Android.
-
-### 3. Run the dashboard prototype
-
-Open:
-
-- landing page: https://incredible-liberation-production-aad7.up.railway.app/
-  Use these credentials:
-    - email address: tester@gmail.com
-    - pw: 12345678
-
-
-The dashboard currently presents sample records and is not connected to a live backend.
-
-### 4. Experimental ESP32 sketch
-
-`arduino/MeshChat.ino` is a Wi-Fi/WebSocket messaging experiment for compatible ESP32/Heltec hardware. It is not the proposed LoRa SOS node and is not part of the verified end-to-end workflow. The production node design requires ESP32-S3, SX1262, GNSS, IMU, barometer, protected power, nonvolatile storage, and a guarded SOS button.
-
-## Test Instructions
-
-### Flutter checks
-
-From `mobile/`:
+Re-run the model evaluations (writes `backend/app/ai/models/eval_results.json`):
 
 ```bash
-flutter analyze
-flutter test
+cd backend
+python -m app.ai.drift_eval
+python -m app.ai.squall_eval
+python -m app.ai.trip_profile_eval
 ```
 
-The existing tests cover delivery-state wire values and monotonic transitions, SOS payload serialization and persistence, and key status widgets.
+Verify the deployed SOS path with no hardware at all:
 
-### Web JavaScript syntax
-
-From the repository root in PowerShell:
-
-```powershell
-Get-ChildItem web/js/*.js | ForEach-Object { node --check $_.FullName }
+```bash
+curl -X POST https://incredible-liberation-production-aad7.up.railway.app/api/sos \
+  -H "Content-Type: application/json" \
+  -d '{"vessel_id":"TEST-01","client_ts":1754300000,"boat":"Test Banca",
+       "lat":11.6839,"lon":122.4471,"source":"buoy","buoy_id":"BUOY01","seq":1}'
 ```
 
-All five tracked JavaScript files pass `node --check` on the inspected `master` revision.
+It should appear on the dashboard within 10 seconds. Send it twice with the same
+`client_ts` — you should still see one incident. That is the de-duplication
+working.
 
-### Manual evaluator smoke test
+---
 
-1. Launch the Flutter app and complete onboarding.
-2. Create an SOS with the device offline or without a reachable node.
-3. Confirm the record remains visible as `saved` instead of displaying a false delivery claim.
-4. Restart the app and confirm the SOS remains in the local outbox.
-5. Run a mock service that follows `docs/03_PHONE_BUOY_WIFI.md`, set `BUOY_BASE_URL` to it, and verify that an accepted handoff advances the state to `relayed`.
-6. Serve the dashboard and confirm its sample map, buoy, and incident views load.
+## Safety, ethics and limitations
 
-An end-to-end SOS should only be marked demonstrated after a phone in airplane mode hands the message to real hardware, the LoRa/gateway/backend path delivers it, the dashboard displays it, and responder acknowledgement persists.
+- AqOne does not guarantee message delivery, rescue, prediction accuracy or survival.
+- Three of the four models are calibrated on **synthetic** data. No dataset of Filipino fishermen's trips at sea exists; collecting one is the purpose of the proposed pilot.
+- The hazard model learned **when weather is bad**, not where people die. Its labels are environmental proxies, not verified incidents.
+- Drift output is a probability distribution, not a coordinate.
+- Coverage is densest near shore and thinnest far out — the opposite of where risk is highest.
+- The app's wind indicator is a single 30 km/h threshold shown with its source. It is **not a model** and must never be presented as one.
+- "Safe to Go Out" on the dashboard is a **human MDRRMO declaration**, stored with the operator's name — not model output.
+- Automated alerts produce false positives and miss unfamiliar events. Responder authority is mandatory.
+- We do not and will not sell fisher location data. A safety network that becomes a surveillance network loses the people it protects.
+- RF allocation, transmit power, duty cycle, device certification and institutional operating authority must be confirmed before any real deployment.
 
-## Safety, Ethics, and Limitations
-
-- AqOne does not guarantee message delivery, rescue, prediction accuracy, or survival.
-- Automated alerts can produce false positives or miss unfamiliar events; responder authority is mandatory.
-- Drift output is a probability distribution, not a guaranteed coordinate.
-- Sparse node density, damaged hardware, RF interference, stale environmental inputs, and unequal deployment can reduce performance.
-- Model confidence must fall—or output must be withheld—when data is stale, sparse, uncalibrated, or outside validated conditions.
-- RF allocation, transmit power, duty cycle, device certification, environmental-data licenses, privacy roles, and institutional operating authority must be confirmed before deployment.
+---
 
 ## Team Aquanons
 
 | Member | Role |
 |---|---|
-| Lenard | Lead developer, backend, architecture, and deployment |
-| Arnold | Full stack and gateway/ingest pipeline |
+| Lenard | Lead developer — backend, architecture, deployment |
+| Arnold | Full stack — ingest pipeline, gateway |
 | Daniel | Hardware and firmware |
 | Jade | Dashboard |
 | Doreen Kay | UI/UX and pitch |
 
-## Supporting Documents
+Members of the team are from New Washington. The product was built around field
+interviews with local fishers, not desk research alone.
 
-- [`Aqone PRD`](docs/00_START_HERE.md) — repository-aligned project brief and scope
-- [`Architecture`](docs/01_ARCHITECTURE.md)
-- [`Demo and current status`](docs/08_DEMO_AND_STATUS.md)
-- [`Deliberately scoped-out features`](docs/07_SCOPE_OUT.md)
+---
 
-The expanded AI roadmap in the supplied Product Requirements Document and Technical Profile should be treated as the target system design; the status table above remains the authority for claims about the current prototype.
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`Aqone_PRD (2).md`](docs/) | **Canonical scope.** Unbuilt sections tagged `[Roadmap — not implemented]` |
+| [`00_START_HERE.md`](docs/00_START_HERE.md) | Project brief |
+| [`16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md) | Datasets, AI tools, hardware, bias analysis |
+| [`17_AI_EXPLAINED_SIMPLY.md`](docs/17_AI_EXPLAINED_SIMPLY.md) | Plain-language guide to the four models |
+| [`18_BACKEND_STRUCTURE.md`](docs/18_BACKEND_STRUCTURE.md) | Backend folder map |
+| [`19_HELTEC_DATA_FLOW.md`](docs/19_HELTEC_DATA_FLOW.md) | Firmware → backend contract |
+| [`07_SCOPE_OUT.md`](docs/07_SCOPE_OUT.md) | Deliberate exclusions, and what has since been amended in |
+| [`02_LOAM_PACKET_SPEC.md`](docs/02_LOAM_PACKET_SPEC.md) | LoRa frame format |
+
+`Aqone_PRD (2).md` is the scope of record. Where any other document disagrees
+with it, the PRD wins.
+
+> **Note:** `docs/04_INGEST_API.md` describes a `POST /api/v1/ingest` endpoint
+> that was never built. The real ingest route is `POST /api/sos` — see
+> [`19_HELTEC_DATA_FLOW.md`](docs/19_HELTEC_DATA_FLOW.md).
