@@ -595,70 +595,26 @@
           <button class="panel-card-toggle" id="legend-toggle">&minus;</button>
         </div>
         <div class="panel-card-body">
-          <div class="legend-title">Marker Types</div>
+          <div class="legend-title">Drift Map Key</div>
           <div class="legend-item">
-            <div class="legend-icon marker-facility"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></div>
-            <div class="legend-text">Shore gateway / BFAR station</div>
+            <div class="legend-icon"><span class="legend-swatch legend-swatch-area legend-swatch-95"></span></div>
+            <div class="legend-text">95% search area</div>
           </div>
           <div class="legend-item">
-            <div class="legend-icon marker-vessel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20l2-1h16l2 1"/><path d="M4 20V14l8-6 8 6v6"/><path d="M12 8V4m-4 0h8"/></svg></div>
-            <div class="legend-text">Registered fishing vessel (last contact)</div>
+            <div class="legend-icon"><span class="legend-swatch legend-swatch-area legend-swatch-75"></span></div>
+            <div class="legend-text">75% search area</div>
           </div>
           <div class="legend-item">
-            <div class="legend-icon" style="color:#e74c3c"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/></svg></div>
-            <div class="legend-text">Overdue vessel — missed expected contact</div>
+            <div class="legend-icon"><span class="legend-swatch legend-swatch-area legend-swatch-50"></span></div>
+            <div class="legend-text">50% search area</div>
           </div>
           <div class="legend-item">
-            <div class="legend-icon marker-buoy"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="4" />
-                <path
-                  d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
-              </svg></div>
-            <div class="legend-text">Active buoy sensor</div>
+            <div class="legend-icon"><span class="legend-swatch legend-swatch-line legend-swatch-track"></span></div>
+            <div class="legend-text">Ground truth track</div>
           </div>
           <div class="legend-item">
-            <div class="legend-icon marker-incident"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg></div>
-            <div class="legend-text">Active alert / distress signal</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon danger-zone-legend-icon">!</div>
-            <div class="legend-text">Model-assessed sea sector <small>Not navigation</small></div>
-          </div>
-          <div class="legend-item" id="legend-pins">
-            <div class="legend-icon" style="color:#00bcd4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg></div>
-            <div class="legend-text">User pin</div>
-          </div>
-          <div class="legend-divider"></div>
-          <div class="legend-title" style="margin-top:8px;">Network &amp; AI Layers</div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#60a5fa;opacity:0.6;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Buoy coverage zone</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#22d3ee;opacity:0.6;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 5l20 14M2 19l20-14"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">LoRa mesh network</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#e67e22;opacity:0.8;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 20h20L12 2z"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Squall nowcast / RETURN NOW watch</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#e74c3c;opacity:0.7;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Drift probability field (hot = higher)</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#ffffff;opacity:0.7;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M12 2v20"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Bayesian search sector</div>
+            <div class="legend-icon"><span class="legend-swatch legend-swatch-area legend-swatch-squall"></span></div>
+            <div class="legend-text">Squall nowcast / RETURN NOW watch</div>
           </div>
         </div>
       </div>

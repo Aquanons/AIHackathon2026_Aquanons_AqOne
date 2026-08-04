@@ -2316,16 +2316,10 @@
     updateAiMapKey();
   }
 
-  // The drift map key describes contour and squall-polygon colours. Showing it
-  // while nothing is drawn advertises layers that are not on the map, so it
-  // tracks the actual layer state.
   function updateAiMapKey() {
     var key = document.getElementById('ai-map-key');
     if (!key) return;
-    var hasLayers =
-      (aiContoursLayer && aiContoursLayer.getLayers().length > 0) ||
-      (aiSquallLayer && aiSquallLayer.getLayers().length > 0);
-    key.style.display = hasLayers ? '' : 'none';
+    key.style.display = 'none';
   }
 
   // Banner count and header badge follow the live squall feed. The cutoff is
