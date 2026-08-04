@@ -1421,7 +1421,7 @@
 
   renderAlerts();
 
-  const activeAlertCount = liveAlerts.filter(a => a.status === 'active').length;
+  const activeAlertCount = allAlerts().filter(a => a.status === 'active').length;
   document.getElementById('badge-alerts').textContent = activeAlertCount;
 
   const liveBanner = document.getElementById('live-alert-banner');
@@ -1440,7 +1440,7 @@
   // ReferenceError on that path. This is the branch's logic minus the hotspot
   // parts, reusing the elements resolved just above.
   function syncAlertIndicators() {
-    const activeCount = liveAlerts.filter(function (alert) {
+    const activeCount = allAlerts().filter(function (alert) {
       return alert.status === 'active';
     }).length;
     const alertBadge = document.getElementById('badge-alerts');
@@ -1457,9 +1457,10 @@
   // fictional vessels. This is the path that makes a pressed button visible.
   //
   // Polling rather than SSE: /api/sos/active already exists and needs no
-  // reconnect logic. Three seconds keeps the LGU screen feeling live, and a
-  // missed poll self-heals on the next tick.
-  const LIVE_SOS_POLL_MS = 3000;
+  // reconnect logic. Ten seconds is well inside a dispatcher's reaction time,
+  // and a missed poll self-heals on the next tick, which a dropped socket does
+  // not.
+  const LIVE_SOS_POLL_MS = 10000;
   const liveSosLayer = L.layerGroup().addTo(map);
   const liveSosMarkers = {};
   let liveSosFirstLoad = true;
@@ -1999,12 +2000,12 @@
 
   sosBtnResolve.addEventListener('click', function () {
     console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' resolved');
-    const eventId = currentDrawerData && currentDrawerData.sosEventId;
     if (currentDrawerMarker) {
       incidentLayer.removeLayer(currentDrawerMarker);
       liveSosLayer.removeLayer(currentDrawerMarker);
     }
     if (currentDrawerData) {
+      const eventId = currentDrawerData.sosEventId;
       const row = allAlerts().find(function (a) {
         if (eventId) return a.sosEventId === eventId;
         return a.vesselId === currentDrawerData.vesselId ||
@@ -2013,19 +2014,6 @@
       if (row) { row.status = 'resolved'; syncAlertIndicators(); }
     }
     closeSOSDrawer();
-    if (eventId) {
-      authFetch('/api/sos/' + encodeURIComponent(eventId) + '/resolve', {
-        method: 'POST'
-      })
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return loadActiveSos();
-        })
-        .catch(function (err) {
-          console.warn('[AqOne] Resolve not delivered:', err.message);
-          showToast('Not delivered', 'The incident may reappear until the backend is updated.', true);
-        });
-    }
   });
 
   sosBtnBroadcast.addEventListener('click', function () {
