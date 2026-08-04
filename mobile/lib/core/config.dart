@@ -74,9 +74,9 @@ class AqOneConfig {
 
   // --- Backend paths -------------------------------------------------------
 
-  static const String buoysPath = '/api/buoys';
-  static const String waveAlertsPath = '/api/alerts/waves';
-  static const String capsizingAlertsPath = '/api/alerts/capsizing';
+  static const String buoysPath = '/api/public/buoys';
+  static const String waveAlertsPath = '/api/public/alerts/waves';
+  static const String capsizingAlertsPath = '/api/public/alerts/capsizing';
   static const String seaConditionPath = '/api/sea-condition';
   static const String publicSeaConditionPath = '/api/public/sea-condition';
   static const String advisoriesPath = '/api/advisories?status=Published';
