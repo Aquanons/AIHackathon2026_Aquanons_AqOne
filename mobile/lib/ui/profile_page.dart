@@ -26,6 +26,7 @@ class ProfilePage extends StatefulWidget {
     required this.onLogout,
     required this.onIdentityUpdated,
     this.onOpenHome,
+    this.bottomInset = 0,
   });
 
   final IdentityStore identityStore;
@@ -35,6 +36,12 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
   final ValueChanged<VesselIdentity> onIdentityUpdated;
   final VoidCallback? onOpenHome;
+
+  /// Height of the bottom navigation dock. Passed in rather than guessed: the
+  /// previous hardcoded `+100` was smaller than the dock on devices with
+  /// gesture insets, which left the logout button unreachable at the end of
+  /// the scroll.
+  final double bottomInset;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -152,10 +159,19 @@ class _ProfilePageState extends State<ProfilePage> {
       _cancelEditing();
       return;
     }
+    // onOpenHome is checked FIRST, before Navigator.pop().
+    //
+    // Profile is a tab inside AppShell's IndexedStack, and AppShell itself sits
+    // on a route - so Navigator.canPop() is true here. Popping first therefore
+    // tore down the whole shell instead of switching tabs, which read to the
+    // user as the back button doing nothing useful. Inside a tabbed shell,
+    // "back" means "go to Home".
+    if (widget.onOpenHome != null) {
+      widget.onOpenHome!();
+      return;
+    }
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
-    } else if (widget.onOpenHome != null) {
-      widget.onOpenHome!();
     } else if (Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
     }
@@ -167,7 +183,11 @@ class _ProfilePageState extends State<ProfilePage> {
     final identity = widget.identity;
 
     return PopScope(
-      canPop: !_editing && Navigator.of(context).canPop(),
+      // Never let the system back gesture pop the shell from a tab either -
+      // onPopInvokedWithResult routes it through _handleBack instead.
+      canPop: !_editing &&
+          widget.onOpenHome == null &&
+          Navigator.of(context).canPop(),
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _handleBack();
@@ -202,7 +222,7 @@ class _ProfilePageState extends State<ProfilePage> {
             AqSpace.screen,
             AqSpace.lg,
             AqSpace.screen,
-            AqSpace.xl + 100, // Added extra bottom padding to prevent bottom navigation bar overlap
+            AqSpace.xl + widget.bottomInset,
           ),
           children: <Widget>[
             Center(

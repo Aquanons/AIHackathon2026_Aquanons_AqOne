@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/identity_store.dart';
+import '../models/delivery_state.dart';
+import '../models/sos_record.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
@@ -8,6 +12,7 @@ import 'advisories_page.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
 import 'venture_page.dart';
+import 'widgets/responder_eta_dialog.dart';
 
 
 const Color _brandPrimary = Color(0xFF0F69C9);
@@ -55,6 +60,77 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+
+  // ---- Responder acknowledgement watcher -----------------------------------
+  //
+  // The dispatcher's ETA reached the local database and nothing ever read it,
+  // so a fisher was never told help was coming. It is watched here, at the
+  // shell, rather than on any one page: an acknowledgement must surface
+  // wherever the fisher happens to be looking.
+
+  StreamSubscription<void>? _sosChanges;
+
+  /// localIds already announced, so switching tabs or a routine outbox poll
+  /// does not re-open the dialog for an acknowledgement already seen.
+  final Set<String> _announced = <String>{};
+
+  bool _dialogOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sosChanges = widget.sos.changes.listen((_) => _checkForAcknowledgement());
+    _checkForAcknowledgement();
+  }
+
+  @override
+  void dispose() {
+    _sosChanges?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkForAcknowledgement() async {
+    if (!mounted || _dialogOpen) {
+      return;
+    }
+
+    final records = await widget.sos.history();
+    if (!mounted) {
+      return;
+    }
+
+    SosRecord? pending;
+    for (final record in records) {
+      final acknowledged = record.state == DeliveryState.acknowledged ||
+          record.etaAt != null;
+      if (acknowledged && !_announced.contains(record.localId)) {
+        pending = record;
+        break;
+      }
+    }
+
+    if (pending == null) {
+      return;
+    }
+
+    _announced.add(pending.localId);
+    _dialogOpen = true;
+
+    // Scheduled after the current frame so this can safely fire from a stream
+    // callback during a build without tripping a setState-during-build error.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _dialogOpen = false;
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ResponderEtaDialog(record: pending!),
+      );
+      _dialogOpen = false;
+    });
+  }
 
   /// Venture is not built until the user first opens it, so entering the app
   /// does not immediately prompt for GPS or start polling.
@@ -118,7 +194,8 @@ class _AppShellState extends State<AppShell> {
           onThemeModeChanged: widget.onThemeModeChanged,
           onLogout: widget.onLogout,
           onIdentityUpdated: widget.onIdentityUpdated,
-          onOpenHome: () => _select(0), // <-- ADDED THIS
+          onOpenHome: () => _select(0),
+          bottomInset: inset,
         ),
       ],
     );
