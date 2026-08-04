@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -15,6 +16,7 @@ import '../models/weather_snapshot.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
+import 'chathubb.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
@@ -466,6 +468,12 @@ class _VenturePageState extends State<VenturePage> {
                 right: 96,
                 child: _buildChecklist(isDark),
               ),
+            // Chat Hub FAB — bottom-left, above the attribution.
+            Positioned(
+              left: 16,
+              bottom: 60 + widget.bottomInset,
+              child: _buildChatHubButton(isDark),
+            ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
             Positioned(
@@ -802,6 +810,34 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
+  // --- Chat Hub FAB (bottom-left) — iOS Messages icon shape ---
+  Widget _buildChatHubButton(bool isDark) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const Chathubb()),
+      ),
+      child: SizedBox(
+        width: 58,
+        height: 62,
+        child: CustomPaint(
+          size: const Size(58, 62),
+          painter: const _BubbleTailPainter(),
+          child: const Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: EdgeInsets.only(left: 13, top: 11),
+              child: Icon(
+                Icons.waves_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildChecklist(bool isDark) {
     return Material(
       elevation: 6,
@@ -1027,4 +1063,48 @@ class _ActionPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Draws the iOS-style speech bubble with a connected tail as one silhouette.
+class _BubbleTailPainter extends CustomPainter {
+  const _BubbleTailPainter();
+
+  static const _blue = Color(0xFF64B5F6);
+  static const _bodyWidth = 50.0;
+  static const _bodyHeight = 46.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Body — rounded rectangle.
+    final body = ui.Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0, 0, _bodyWidth, _bodyHeight),
+          const Radius.circular(18),
+        ),
+      );
+
+    // Tail — triangle whose top edge is buried inside the body so the union
+    // is a single connected silhouette.
+    final tail = ui.Path()
+      ..moveTo(14, 44)
+      ..lineTo(24, 46)
+      ..lineTo(6, 60)
+      ..close();
+
+    final shape = ui.Path.combine(ui.PathOperation.union, body, tail);
+
+    canvas.drawPath(shape, Paint()..color = _blue);
+    canvas.drawPath(
+      shape,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleTailPainter old) => false;
 }
