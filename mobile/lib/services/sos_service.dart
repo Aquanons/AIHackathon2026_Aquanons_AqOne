@@ -169,7 +169,7 @@ class SosService {
     if (directOk) {
       // The backend has it. No buoy metadata to record, because this copy
       // never touched the mesh.
-      await _outbox.advance(localId, DeliveryState.relayed);
+      await _outbox.advance(localId, DeliveryState.delivered);
       if (notify) {
         _changes.add(null);
       }
