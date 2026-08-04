@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
+from app.api.advisories import public_router as public_advisories_router
+from app.api.advisories import router as advisories_router  # <-- ONLY ADDED THIS IMPORT
 from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
 from app.api.drift import router as drift_router
@@ -15,7 +17,6 @@ from app.api.sea_condition import router as sea_condition_router
 from app.api.sos import protected_router as sos_read_router
 from app.api.sos import router as sos_ingest_router
 from app.api.squall import router as squall_router
-from app.api.advisories import router as advisories_router  # <-- ONLY ADDED THIS IMPORT
 from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
 
@@ -46,6 +47,7 @@ app.include_router(sos_ingest_router)
 
 # Advisories handles its own auth per-route to avoid breaking JS alert triggers
 app.include_router(advisories_router)  # <-- ONLY ADDED THIS LINE
+app.include_router(public_advisories_router)
 
 # Everything else requires a valid bearer token. Declaring it here rather than
 # on each route means a newly added endpoint is protected by default - the safe

@@ -26,9 +26,12 @@ var AdvisoryService = (function () {
   }
 
   async function fetchJson(path, options = {}) {
+    const token = sessionStorage.getItem('aqoneToken') || '';
+    const headers = { 'Content-Type': 'application/json', ...options.headers };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${API_BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
+      headers: headers,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

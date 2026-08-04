@@ -3761,7 +3761,7 @@
     advPublishDateInput.value = new Date().toISOString().slice(0, 10);
     advExpirationDateInput.value = '';
     advCoverImageInput.value = '';
-    advStatusSelect.value = 'Draft';
+    advStatusSelect.value = 'Published';
     clearAdvisoryErrors();
   }
 
