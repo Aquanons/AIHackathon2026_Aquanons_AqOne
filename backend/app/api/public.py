@@ -18,14 +18,85 @@ credentials the person at risk cannot hold.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.ai.squall import build_buoys, current_detection, event_detection_summary, load_bundle
 from app.api.sea_condition import _serialise
 from app.api.squall import _load_rows
 from app.db import get_pool
+from app.geo import SHORE_STATIONS
 
 router = APIRouter(prefix='/api/public', tags=['public'])
+
+DEMO_BUOYS: tuple[dict[str, object], ...] = (
+    {
+        'id': 'buoy-a',
+        'name': 'Buoy A - Tambak',
+        'latitude': 11.6800,
+        'longitude': 122.4140,
+        'coverage_radius_meters': 700,
+        'status': 'active',
+    },
+    {
+        'id': 'buoy-b',
+        'name': 'Buoy B - Batan Bay',
+        'latitude': 11.6520,
+        'longitude': 122.4480,
+        'coverage_radius_meters': 700,
+        'status': 'active',
+    },
+)
+
+
+@router.get('/buoys')
+async def public_buoys() -> dict[str, object]:
+    """Buoy coverage markers for the fisherman app.
+
+    The live database may still be empty during a pitch rehearsal. Returning the
+    demo mesh keeps Venture usable while real buoy telemetry is being installed.
+    """
+    try:
+        pool = get_pool()
+    except HTTPException:
+        return {'buoys': list(DEMO_BUOYS), 'shore_stations': list(SHORE_STATIONS)}
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            '''
+            SELECT id, label, 700 AS coverage_radius_meters
+            FROM buoys
+            ORDER BY id
+            LIMIT 20
+            '''
+        )
+
+    if not rows:
+        return {'buoys': list(DEMO_BUOYS), 'shore_stations': list(SHORE_STATIONS)}
+
+    fallback_positions = list(DEMO_BUOYS)
+    buoys = []
+    for index, row in enumerate(rows):
+        fallback = fallback_positions[index % len(fallback_positions)]
+        buoys.append(
+            {
+                'id': row['id'],
+                'name': row['label'],
+                'latitude': fallback['latitude'],
+                'longitude': fallback['longitude'],
+                'coverage_radius_meters': row['coverage_radius_meters'],
+                'status': 'active',
+            }
+        )
+    return {'buoys': buoys, 'shore_stations': list(SHORE_STATIONS)}
+
+
+@router.get('/alerts/waves')
+async def public_wave_alerts() -> dict[str, object]:
+    return {'wave_warnings': []}
+
+
+@router.get('/alerts/capsizing')
+async def public_capsizing_alerts() -> dict[str, object]:
+    return {'capsizing_advisories': []}
 
 
 @router.get('/sea-condition')
