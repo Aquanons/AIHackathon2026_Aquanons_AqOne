@@ -104,39 +104,91 @@ class SosService {
     }
   }
 
+  /// Deliver one SOS by every route available, and stop once any succeeds.
+  ///
+  /// Three layers, in the order they can be relied on:
+  ///
+  ///   1. local   the record is already in the outbox before this runs, so the
+  ///              SOS survives a dead battery, a crash or a reinstall
+  ///   2. buoy    phone -> WiFi -> LoRa mesh -> gateway -> backend, the route
+  ///              that works with no cellular signal at all
+  ///   3. direct  phone -> HTTPS -> backend, when the handset has internet
+  ///
+  /// Both transports are attempted, not one as a fallback for the other. For a
+  /// distress call redundancy beats tidiness: the buoy may be out of range and
+  /// the cell signal may be marginal, and there is no way to know in advance
+  /// which will get through. The backend de-duplicates on
+  /// (vessel_id, client_ts), so two successful deliveries are still one
+  /// incident on the dispatcher's screen.
   Future<bool> _attemptRelay(String localId, {bool notify = true}) async {
     final record = await _outbox.byLocalId(localId);
     if (record == null || !record.awaitsRelay) {
       return true;
     }
 
-    try {
-      final ack = await _buoy.handoff(record);
+    // Fired together rather than sequentially - waiting for a 6-second buoy
+    // timeout before trying the internet would delay a distress call for no
+    // reason. Each attempt captures its own failure so one route going down
+    // never cancels the other.
+    Future<Object?> tryBuoy() async {
+      try {
+        return await _buoy.handoff(record);
+      } catch (error) {
+        return error;
+      }
+    }
+
+    Future<bool> tryDirect() async {
+      try {
+        return await _backend.postSos(record);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    final buoyFuture = tryBuoy();
+    final directFuture = tryDirect();
+    final buoyResult = await buoyFuture;
+    final directOk = await directFuture;
+
+    if (buoyResult is BuoyAck) {
       await _outbox.advance(
         localId,
         DeliveryState.relayed,
-        buoyId: ack.buoyId,
-        srcId: ack.srcId,
-        seq: ack.seq,
-        serverTs: ack.serverTs,
+        buoyId: buoyResult.buoyId,
+        srcId: buoyResult.srcId,
+        seq: buoyResult.seq,
+        serverTs: buoyResult.serverTs,
       );
       if (notify) {
         _changes.add(null);
       }
       return true;
-    } on BuoyRejected catch (error) {
-      await _outbox.recordFailure(localId, error.reason);
-      if (notify) {
-        _changes.add(null);
-      }
-      return false;
-    } on BuoyUnreachable catch (error) {
-      await _outbox.recordFailure(localId, error.reason);
-      if (notify) {
-        _changes.add(null);
-      }
-      return false;
     }
+
+    if (directOk) {
+      // The backend has it. No buoy metadata to record, because this copy
+      // never touched the mesh.
+      await _outbox.advance(localId, DeliveryState.relayed);
+      if (notify) {
+        _changes.add(null);
+      }
+      return true;
+    }
+
+    // Neither route worked. Keep the reason from the buoy attempt, which is
+    // the more informative of the two, and leave the record pending so the
+    // retry timer picks it up again.
+    final reason = buoyResult is BuoyRejected
+        ? buoyResult.reason
+        : buoyResult is BuoyUnreachable
+            ? buoyResult.reason
+            : 'no buoy in range and no internet connection';
+    await _outbox.recordFailure(localId, reason);
+    if (notify) {
+      _changes.add(null);
+    }
+    return false;
   }
 
   Future<BuoyStatus?> pollBuoy() async {

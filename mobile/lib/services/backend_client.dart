@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
 import '../models/delivery_state.dart';
+import '../models/sos_record.dart';
 
 class RemoteSos {
   const RemoteSos({
@@ -49,6 +50,40 @@ class BackendClient {
       final response = await _client
           .get(Uri.parse('$_baseUrl/healthz'))
           .timeout(AqOneConfig.backendTimeout);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Hand an SOS straight to the backend over the internet.
+  ///
+  /// The second delivery route, alongside the buoy mesh. When the handset has
+  /// signal - which it does near shore, and in the minutes before a boat leaves
+  /// coverage - routing a distress call through LoRa would be slower and less
+  /// reliable than simply posting it.
+  ///
+  /// Both routes are attempted for every SOS. The backend de-duplicates on
+  /// (vessel_id, client_ts), so a call that arrives twice is one incident on
+  /// the dispatcher's screen. Returns true when the backend has the SOS,
+  /// whether this request created it or found it already there.
+  Future<bool> postSos(SosRecord record) async {
+    final payload = record.toBuoyPayload()
+      ..['local_id'] = record.localId
+      ..['source'] = 'direct';
+
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/api/sos'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(AqOneConfig.backendTimeout);
+
+      // 200 covers both "created" and "already known": the emergency is
+      // recorded either way, which is all the handset needs to stop retrying
+      // this route.
       return response.statusCode == 200;
     } catch (_) {
       return false;

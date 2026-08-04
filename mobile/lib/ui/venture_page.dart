@@ -286,7 +286,17 @@ class _VenturePageState extends State<VenturePage> {
     );
 
     final text = note.text;
-    note.dispose();
+
+    // Disposed after the current frame, not here.
+    //
+    // showDialog's future completes the moment the route is popped, but the
+    // dialog's element tree is still being torn down through the dismiss
+    // animation and its TextField is still attached to this controller.
+    // Disposing it immediately left listeners registered against a
+    // deactivating element and tripped the framework assertion
+    // '_dependents.isEmpty': is not true.
+    WidgetsBinding.instance.addPostFrameCallback((_) => note.dispose());
+
     return confirmed == true ? text : null;
   }
 

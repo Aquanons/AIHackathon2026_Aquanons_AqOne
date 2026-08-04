@@ -1,7 +1,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Flutter injects INTERNET into the debug and profile manifests only, so a
+         release APK built without this line has no network access at all - it
+         works over `flutter run` and fails on a real device. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- geolocator needs these. Without them requestPermission() returns denied
+         without ever showing the system dialog, so the Venture "my location"
+         button silently fails and an SOS goes out with no position. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <!-- Used to tell whether the phone is attached to a buoy's SoftAP. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+
     <application
         android:label="aqone"
         android:name="${applicationName}"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

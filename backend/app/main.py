@@ -12,6 +12,8 @@ from app.api.auth import router as auth_router
 from app.api.drift import router as drift_router
 from app.api.metrics import router as metrics_router
 from app.api.sea_condition import router as sea_condition_router
+from app.api.sos import protected_router as sos_read_router
+from app.api.sos import router as sos_ingest_router
 from app.api.squall import router as squall_router
 from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
@@ -36,6 +38,11 @@ app = FastAPI(lifespan=lifespan)
 # (itself gated by ADMIN_SETUP_KEY) and /api/me, which authenticates itself.
 app.include_router(auth_router)
 
+# SOS ingest is intentionally unauthenticated - see app/api/sos.py. A handset in
+# distress has no token, and the LoRa gateway relays frames it cannot
+# authenticate. Reading and acknowledging SOS events stays protected.
+app.include_router(sos_ingest_router)
+
 # Everything else requires a valid bearer token. Declaring it here rather than
 # on each route means a newly added endpoint is protected by default - the safe
 # direction to fail.
@@ -45,6 +52,7 @@ app.include_router(drift_router, dependencies=_protected)
 app.include_router(squall_router, dependencies=_protected)
 app.include_router(sea_condition_router, dependencies=_protected)
 app.include_router(metrics_router, dependencies=_protected)
+app.include_router(sos_read_router, dependencies=_protected)
 
 
 @app.get('/healthz')
