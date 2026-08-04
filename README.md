@@ -168,15 +168,13 @@ The app can demonstrate local SOS creation, persistence, and delivery-state UI w
 
 ### 3. Run the dashboard prototype
 
-```bash
-cd web
-python -m http.server 8080
-```
-
 Open:
 
-- landing page: `http://localhost:8080/index.html`
-- dashboard: `http://localhost:8080/html/dashboard.html`
+- landing page: https://incredible-liberation-production-aad7.up.railway.app/
+  Use these credentials:
+    - email address: tester@gmail.com
+    - pw: 12345678
+
 
 The dashboard currently presents sample records and is not connected to a live backend.
 
