@@ -3,7 +3,7 @@
 **An offline maritime safety network and AI-assisted search-and-rescue platform for municipal fishers operating beyond cellular coverage.**
 
 Built by **Team Aquanons** for AI Fest 2026.
-New Washington, Aklan, Philippines.
+For New Washington, Aklan, Philippines.
 
 **Live deployment:** https://incredible-liberation-production-aad7.up.railway.app/
 **Evaluator login:** `tester@gmail.com` / `12345678`
