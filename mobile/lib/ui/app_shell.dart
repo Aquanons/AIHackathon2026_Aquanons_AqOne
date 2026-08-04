@@ -118,6 +118,7 @@ class _AppShellState extends State<AppShell> {
           onThemeModeChanged: widget.onThemeModeChanged,
           onLogout: widget.onLogout,
           onIdentityUpdated: widget.onIdentityUpdated,
+          onOpenHome: () => _select(0), // <-- ADDED THIS
         ),
       ],
     );

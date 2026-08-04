@@ -93,9 +93,6 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  /// A failed refresh keeps the last known value on screen. The banner marks
-  /// it as possibly outdated rather than blanking - during bad weather, an
-  /// old "not advised" is far more useful than no reading at all.
   Future<void> _loadSea() async {
     final sea = await widget.feeds.seaCondition();
     if (!mounted) {
@@ -117,18 +114,6 @@ class _HomePageState extends State<HomePage> {
     setState(() => _advisories = advisories);
   }
 
-  /// Weather for wherever the boat actually is.
-  ///
-  /// Uses the device position when location permission is already granted -
-  /// showing port conditions to someone who is already out at sea would be
-  /// worse than useless. Falls back to the municipal position otherwise, and
-  /// the card says which one is being shown so the reading is never
-  /// ambiguous.
-  ///
-  /// Deliberately does not request permission here: Home is the first screen
-  /// after registration, and a location prompt with no explanation is how
-  /// people end up denying it permanently. Venture asks properly, in context,
-  /// and from then on Home follows the device.
   Future<void> _loadWeather() async {
     if (mounted) {
       setState(() => _weatherLoading = true);
@@ -167,6 +152,15 @@ class _HomePageState extends State<HomePage> {
     setState(() => _buoy = status);
   }
 
+  void _openWiFiSelection() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => const _WiFiSelectionScreen(),
+      ),
+    );
+    _pollBuoy();
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
@@ -176,8 +170,6 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
-        // bottomInset already covers the system inset, so letting SafeArea
-        // add it again would double-pad the bottom of the list.
         bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
@@ -271,7 +263,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
               const SizedBox(height: AqSpace.lg),
-              // The official call sits above everything else on the screen.
               SeaConditionBanner(condition: _sea, isLoading: _seaLoading),
               const SizedBox(height: AqSpace.base),
               WeatherCard(
@@ -281,6 +272,26 @@ class _HomePageState extends State<HomePage> {
                 locationLabel:
                     _weatherAtDevice ? 'your position' : 'Aklan (default)',
               ),
+              if (_weather != null) ...<Widget>[
+                const SizedBox(height: AqSpace.base),
+                Container(
+                  padding: const EdgeInsets.all(AqSpace.md),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade400),
+                  ),
+                  child: Text(
+                    "The WEATHER IS ${_weather!.conditionText.toUpperCase()} ITS SAFE TO FISH",
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
               if (_advisories.isNotEmpty) ...<Widget>[
                 const SizedBox(height: AqSpace.base),
                 AdvisoryCard(
@@ -290,7 +301,11 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
               const SizedBox(height: AqSpace.base),
-              BuoyStatusCard(status: _buoy),
+              GestureDetector(
+                onTap: _openWiFiSelection,
+                behavior: HitTestBehavior.opaque,
+                child: BuoyStatusCard(status: _buoy),
+              ),
               const SizedBox(height: AqSpace.screen),
               Text(
                 'Your messages',
@@ -313,6 +328,230 @@ class _HomePageState extends State<HomePage> {
                 ..._records.map(
                   (record) => DeliveryStateTile(record: record),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// BUOY WIFI SELECTION PAGE
+// ==========================================
+
+class _BuoyNetworkItem {
+  final String ssid;
+  final int signalStrength;
+  bool isConnected;
+
+  _BuoyNetworkItem({
+    required this.ssid,
+    required this.signalStrength,
+    this.isConnected = false,
+  });
+}
+
+class _WiFiSelectionScreen extends StatefulWidget {
+  const _WiFiSelectionScreen();
+
+  @override
+  State<_WiFiSelectionScreen> createState() => _WiFiSelectionScreenState();
+}
+
+class _WiFiSelectionScreenState extends State<_WiFiSelectionScreen> {
+  bool _isScanning = false;
+  String? _connectingSsid;
+
+  final List<_BuoyNetworkItem> _networks = [
+    _BuoyNetworkItem(ssid: 'AqOne-Buoy-Alpha-01', signalStrength: 88),
+    _BuoyNetworkItem(ssid: 'AqOne-Buoy-Bravo-04', signalStrength: 65),
+    _BuoyNetworkItem(ssid: 'AqOne-Buoy-CoastGuard-02', signalStrength: 42),
+  ];
+
+  void _scan() async {
+    setState(() => _isScanning = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    setState(() => _isScanning = false);
+  }
+
+  void _toggleConnect(_BuoyNetworkItem item) async {
+    if (item.isConnected) {
+      setState(() => item.isConnected = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Disconnected from ${item.ssid}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else {
+      setState(() => _connectingSsid = item.ssid);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      setState(() {
+        for (final net in _networks) {
+          net.isConnected = false;
+        }
+        item.isConnected = true;
+        _connectingSsid = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connected to ${item.ssid}'),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  IconData _wifiIcon(int signal) {
+    if (signal > 75) return Icons.wifi_rounded;
+    if (signal > 40) return Icons.wifi_2_bar_rounded;
+    return Icons.wifi_1_bar_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AqPalette.of(context);
+
+    return Scaffold(
+      backgroundColor: palette.canvas,
+      appBar: AppBar(
+        backgroundColor: palette.canvas,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: Text(
+          'Buoy Wi-Fi Networks',
+          style: TextStyle(
+            color: palette.primaryText,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: palette.primaryText),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          IconButton(
+            icon: _isScanning
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.primaryText,
+                    ),
+                  )
+                : Icon(Icons.refresh_rounded, color: palette.primaryText),
+            onPressed: _isScanning ? null : _scan,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AqSpace.screen,
+            vertical: AqSpace.md,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Available nearby buoys',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: palette.secondaryText,
+                ),
+              ),
+              const SizedBox(height: AqSpace.md),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _networks.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: AqSpace.sm),
+                  itemBuilder: (context, index) {
+                    final item = _networks[index];
+                    final isBusy = _connectingSsid == item.ssid;
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: palette.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: item.isConnected
+                              ? Colors.green.shade400
+                              : palette.border,
+                          width: item.isConnected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: AqSpace.lg,
+                          vertical: AqSpace.xs,
+                        ),
+                        leading: Icon(
+                          _wifiIcon(item.signalStrength),
+                          color: item.isConnected
+                              ? Colors.green.shade400
+                              : palette.primaryText,
+                          size: 28,
+                        ),
+                        title: Text(
+                          item.ssid,
+                          style: TextStyle(
+                            color: palette.primaryText,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Text(
+                          item.isConnected
+                              ? 'Connected'
+                              : 'Signal strength: ${item.signalStrength}%',
+                          style: TextStyle(
+                            color: item.isConnected
+                                ? Colors.green.shade400
+                                : palette.secondaryText,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: isBusy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(
+                                    color: item.isConnected
+                                        ? Colors.red.shade400
+                                        : palette.border,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: _connectingSsid != null
+                                    ? null
+                                    : () => _toggleConnect(item),
+                                child: Text(
+                                  item.isConnected ? 'Disconnect' : 'Connect',
+                                  style: TextStyle(
+                                    color: item.isConnected
+                                        ? Colors.red.shade400
+                                        : palette.primaryText,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),

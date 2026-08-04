@@ -15,6 +15,7 @@ from app.api.sea_condition import router as sea_condition_router
 from app.api.sos import protected_router as sos_read_router
 from app.api.sos import router as sos_ingest_router
 from app.api.squall import router as squall_router
+from app.api.advisories import router as advisories_router  # <-- ONLY ADDED THIS IMPORT
 from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
 
@@ -42,6 +43,9 @@ app.include_router(auth_router)
 # distress has no token, and the LoRa gateway relays frames it cannot
 # authenticate. Reading and acknowledging SOS events stays protected.
 app.include_router(sos_ingest_router)
+
+# Advisories handles its own auth per-route to avoid breaking JS alert triggers
+app.include_router(advisories_router)  # <-- ONLY ADDED THIS LINE
 
 # Everything else requires a valid bearer token. Declaring it here rather than
 # on each route means a newly added endpoint is protected by default - the safe

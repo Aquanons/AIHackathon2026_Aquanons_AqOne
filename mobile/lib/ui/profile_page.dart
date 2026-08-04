@@ -148,8 +148,12 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _handleBack() {
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
+    if (_editing) {
+      _cancelEditing();
+      return;
+    }
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     } else if (widget.onOpenHome != null) {
       widget.onOpenHome!();
     } else if (Navigator.of(context, rootNavigator: true).canPop()) {
@@ -162,174 +166,181 @@ class _ProfilePageState extends State<ProfilePage> {
     final palette = AqPalette.of(context);
     final identity = widget.identity;
 
-    return Scaffold(
-      backgroundColor: palette.canvas,
-      appBar: AppBar(
-        backgroundColor: palette.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _handleBack,
-        ),
-        title: Text(
-          'Profile',
-          style: TextStyle(
-            color: palette.primaryText,
-            fontWeight: FontWeight.w700,
+    return PopScope(
+      canPop: !_editing && Navigator.of(context).canPop(),
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: palette.canvas,
+        appBar: AppBar(
+          backgroundColor: palette.surface,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: _handleBack,
           ),
-        ),
-        actions: [
-          if (!_editing)
-            IconButton(
-              icon: const Icon(Icons.edit_rounded, size: 20),
-              onPressed: _startEditing,
-              tooltip: 'Edit profile',
+          title: Text(
+            'Profile',
+            style: TextStyle(
+              color: palette.primaryText,
+              fontWeight: FontWeight.w700,
             ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AqSpace.screen,
-          vertical: AqSpace.lg,
-        ),
-        children: <Widget>[
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: <Color>[Color(0xFF38BDF8), _brandPrimary],
-                ),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: _brandPrimary.withValues(alpha: 0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+          ),
+          actions: [
+            if (!_editing)
+              IconButton(
+                icon: const Icon(Icons.edit_rounded, size: 20),
+                onPressed: _startEditing,
+                tooltip: 'Edit profile',
               ),
-              child: ClipOval(
-                child: Image.asset(
-                  'icons/emptyProfile.png',
-                  height: 88,
-                  width: 88,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AqSpace.screen,
+            vertical: AqSpace.lg,
+          ),
+          children: <Widget>[
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[Color(0xFF38BDF8), _brandPrimary],
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: _brandPrimary.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'icons/emptyProfile.png',
                     height: 88,
                     width: 88,
-                    color: palette.surface,
-                    child: const Icon(
-                      Icons.person,
-                      size: 44,
-                      color: _brandPrimary,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      height: 88,
+                      width: 88,
+                      color: palette.surface,
+                      child: const Icon(
+                        Icons.person,
+                        size: 44,
+                        color: _brandPrimary,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: AqSpace.md),
-          Center(
-            child: Text(
-              identity.skipperName.isNotEmpty
-                  ? identity.skipperName
-                  : 'No name set',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: palette.primaryText,
-              ),
-            ),
-          ),
-          const SizedBox(height: AqSpace.xs),
-          Center(
-            child: Text(
-              identity.boat,
-              style: TextStyle(
-                fontSize: 14,
-                color: palette.secondaryText,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: AqSpace.xs),
-          Center(child: _TierChip(tier: identity.trustTier)),
-          const SizedBox(height: AqSpace.lg),
-          if (_editing)
-            _buildEditForm(palette)
-          else
-            _buildInfoSection(palette, identity),
-          const SizedBox(height: AqSpace.lg),
-          Row(
-            children: <Widget>[
-              Container(
-                width: 4,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: _brandPrimary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Settings',
+            const SizedBox(height: AqSpace.md),
+            Center(
+              child: Text(
+                identity.skipperName.isNotEmpty
+                    ? identity.skipperName
+                    : 'No name set',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
                   color: palette.primaryText,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: AqSpace.sm),
-          _ThemeSwitchTile(
-            dark: Theme.of(context).brightness == Brightness.dark,
-            onChanged: (dark) => widget.onThemeModeChanged?.call(
-              dark ? ThemeMode.dark : ThemeMode.light,
             ),
-          ),
-          _SettingsTile(
-            icon: Icons.info_outline_rounded,
-            label: 'About AqOne',
-            onTap: () => _openInfo('About AqOne', InfoCopy.about),
-          ),
-          _SettingsTile(
-            icon: Icons.help_outline_rounded,
-            label: 'Help & Support',
-            onTap: () => _openInfo('Help & Support', InfoCopy.help),
-          ),
-          _SettingsTile(
-            icon: Icons.shield_outlined,
-            label: 'Privacy Policy',
-            onTap: () => _openInfo('Privacy Policy', InfoCopy.privacy),
-          ),
-          _SettingsTile(
-            icon: Icons.gavel_rounded,
-            label: 'Terms of Use',
-            onTap: () => _openInfo('Terms of Use', InfoCopy.terms),
-          ),
-          const SizedBox(height: AqSpace.lg),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _confirmLogout,
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text('Log out'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _dangerRed,
-                side: const BorderSide(color: _dangerRed),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AqRadius.button),
+            const SizedBox(height: AqSpace.xs),
+            Center(
+              child: Text(
+                identity.boat,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: palette.secondaryText,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: AqSpace.xl),
-        ],
+            const SizedBox(height: AqSpace.xs),
+            Center(child: _TierChip(tier: identity.trustTier)),
+            const SizedBox(height: AqSpace.lg),
+            if (_editing)
+              _buildEditForm(palette)
+            else
+              _buildInfoSection(palette, identity),
+            const SizedBox(height: AqSpace.lg),
+            Row(
+              children: <Widget>[
+                Container(
+                  width: 4,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: _brandPrimary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Settings',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: palette.primaryText,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AqSpace.sm),
+            _ThemeSwitchTile(
+              dark: Theme.of(context).brightness == Brightness.dark,
+              onChanged: (dark) => widget.onThemeModeChanged?.call(
+                dark ? ThemeMode.dark : ThemeMode.light,
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.info_outline_rounded,
+              label: 'About AqOne',
+              onTap: () => _openInfo('About AqOne', InfoCopy.about),
+            ),
+            _SettingsTile(
+              icon: Icons.help_outline_rounded,
+              label: 'Help & Support',
+              onTap: () => _openInfo('Help & Support', InfoCopy.help),
+            ),
+            _SettingsTile(
+              icon: Icons.shield_outlined,
+              label: 'Privacy Policy',
+              onTap: () => _openInfo('Privacy Policy', InfoCopy.privacy),
+            ),
+            _SettingsTile(
+              icon: Icons.gavel_rounded,
+              label: 'Terms of Use',
+              onTap: () => _openInfo('Terms of Use', InfoCopy.terms),
+            ),
+            const SizedBox(height: AqSpace.lg),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _confirmLogout,
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Log out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _dangerRed,
+                  side: const BorderSide(color: _dangerRed),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AqRadius.button),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: AqSpace.xl),
+          ],
+        ),
       ),
     );
   }
