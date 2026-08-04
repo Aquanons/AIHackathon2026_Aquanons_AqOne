@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AqOne - LGU Dashboard</title>
+  <title>AqOne - SAR Operations Console</title>
   <link rel="icon" href="../assets/icons/favicon.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-fullscreen@1.0.2/dist/leaflet.fullscreen.css" />
@@ -15,7 +15,7 @@
   <!-- Loading overlay -->
   <div class="loading-overlay" id="loading-overlay">
     <div class="loading-spinner"></div>
-    <span>Loading map data...</span>
+    <span>Loading buoy network data...</span>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════
@@ -26,7 +26,6 @@
       <img class="top-logo" src="../assets/icons/aqoneLogo2.png" alt="AqOne" />
       <div class="header-brand-text">
         <span class="top-title">AqOne</span>
-        <span class="top-subtitle">Maritime Intelligence — Aklan LGU</span>
       </div>
     </div>
 
@@ -49,7 +48,7 @@
 
     <div class="header-search">
       <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" class="search-input" placeholder="Search vessels, zones, coordinates..." />
+      <input type="text" class="search-input" placeholder="Search vessels, buoys, incidents..." />
     </div>
 
     <div class="header-right">
@@ -65,10 +64,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
       </button>
      <div class="user-pill" id="user-profile">
-    <div class="user-avatar">LG</div>
+    <div class="user-avatar">PC</div>
     <span class="user-name">
-        Kalibo, Aklan<br>
-        LGU Administrator
+        PCG Region 6<br>
+        SAR Duty Officer
     </span>
 </div>
     </div>
@@ -80,6 +79,8 @@
   <div class="live-alert-banner" id="live-alert-banner">
     <span class="banner-pulse"></span>
     <span class="banner-text">Active: <strong id="banner-alert-count">0</strong> alerts</span>
+    <span class="banner-sep"></span>
+    <span class="banner-text">RETURN NOW: <strong class="banner-squall-count" id="banner-squall-count">0</strong></span>
     <span class="banner-sep"></span>
     <span class="banner-text">Last updated: <strong class="banner-time">0s ago</strong></span>
   </div>
@@ -97,8 +98,6 @@
     <div class="map-column">
       <div id="map"></div>
 
-
-
       <!-- Measure HUD -->
       <div class="measure-hud" id="measure-hud">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><path d="M3 17l4-8 4 4 4-6 4 5"/></svg>
@@ -106,7 +105,7 @@
       </div>
 
       <!-- Compass / Home button -->
-      <div class="compass-widget" id="compass-widget" title="Reset to Home">
+      <div class="compass-widget" id="compass-widget" title="Reset to Region Center">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
           <path d="M9 21V12h6v9"/>
@@ -151,10 +150,10 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M2 12l4-4M2 12l4 4M22 12l-4-4M22 12l-4 4"/><line x1="8" y1="8" x2="8" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="16" y1="8" x2="16" y2="16"/></svg>
             <span class="rail-label">Measure</span>
           </button>
-          <button class="rail-btn" id="rail-btn-buoy" data-panel="buoys" title="Buoy Health Monitor">
+          <button class="rail-btn" id="rail-btn-buoy" data-panel="buoys" title="Buoy Network Health">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>
             <span class="rail-label">BUOYS</span>
-            <span class="rail-badge" id="buoy-rail-badge">3/4</span>
+            <span class="rail-badge" id="buoy-rail-badge">4/5</span>
           </button>
           <button class="rail-btn rail-emergency" id="btn-emergency" title="Emergency Contacts">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
@@ -180,31 +179,26 @@
               <button class="rail-panel-close" id="rail-panel-close">&times;</button>
             </div>
             <div class="sidebar-section">
-              <h4>Asset Layers</h4>
+              <h4>Operational Layers</h4>
               <label class="toggle-row">
-                <input type="checkbox" id="toggle-facilities" checked />
-                <span class="toggle-label">Facilities</span>
+                <input type="checkbox" id="toggle-gateways" checked />
+                <span class="toggle-label">Shore Gateways</span>
                 <span class="dot dot-blue"></span>
               </label>
               <label class="toggle-row">
-                <input type="checkbox" id="toggle-incidents" checked />
-                <span class="toggle-label">Incident Reports</span>
-                <span class="dot dot-red"></span>
+                <input type="checkbox" id="toggle-vessels" checked />
+                <span class="toggle-label">Vessels &amp; Contact Events</span>
+                <span class="dot dot-green"></span>
               </label>
               <label class="toggle-row">
-                <input type="checkbox" id="toggle-hotspots" />
-                <span class="toggle-label">Fish Hotspots</span>
-                <span class="dot dot-orange"></span>
+                <input type="checkbox" id="toggle-incidents" checked />
+                <span class="toggle-label">Incident / Alert Markers</span>
+                <span class="dot dot-red"></span>
               </label>
               <label class="toggle-row">
                 <input type="checkbox" id="toggle-buoys" checked />
                 <span class="toggle-label">Buoy Stations</span>
                 <span class="dot dot-purple"></span>
-              </label>
-              <label class="toggle-row">
-                <input type="checkbox" id="toggle-pins" checked />
-                <span class="toggle-label">User Pins</span>
-                <span class="dot dot-cyan"></span>
               </label>
               <label class="toggle-row">
                 <input type="checkbox" id="toggle-coverage" checked />
@@ -213,8 +207,28 @@
               </label>
               <label class="toggle-row">
                 <input type="checkbox" id="toggle-mesh" />
-                <span class="toggle-label">Mesh Network</span>
+                <span class="toggle-label">LoRa Mesh Network</span>
                 <span class="dot" style="background:#22d3ee;"></span>
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" id="toggle-squall" checked />
+                <span class="toggle-label">Squall Nowcast Watch</span>
+                <span class="dot" style="background:#e67e22;"></span>
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" id="toggle-drift" checked />
+                <span class="toggle-label">Drift Probability Field</span>
+                <span class="dot" style="background:#e74c3c;"></span>
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" id="toggle-boundary" checked />
+                <span class="toggle-label">Municipal Waters Boundary</span>
+                <span class="dot dot-green"></span>
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" id="toggle-pins" checked />
+                <span class="toggle-label">User Pins</span>
+                <span class="dot dot-cyan"></span>
               </label>
             </div>
             <div class="sidebar-section">
@@ -240,12 +254,6 @@
               </select>
             </div>
             <div class="sidebar-section">
-              <h4>Protected Fishing Zones</h4>
-              <div class="protected-zone-list" id="protected-zone-list">
-                <div class="protected-zone-empty">No protected zones yet</div>
-              </div>
-            </div>
-            <div class="sidebar-section">
               <h4>Quick Actions</h4>
               <button class="action-btn" id="btn-export">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -253,7 +261,7 @@
               </button>
               <button class="action-btn" id="btn-center-aklan">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4"/></svg>
-                Center on Aklan
+                Center on Region
               </button>
             </div>
           </div>
@@ -290,8 +298,8 @@
               <button class="rail-panel-close buoy-drawer-close" id="buoy-drawer-close">&times;</button>
             </div>
             <div class="sidebar-section">
-              <h4 class="buoy-drawer-title">Buoy Health Monitor</h4>
-              <span class="buoy-drawer-badge" id="buoy-drawer-badge">3/4 Online</span>
+              <h4 class="buoy-drawer-title">Buoy Network Health</h4>
+              <span class="buoy-drawer-badge" id="buoy-drawer-badge">4/5 Online</span>
             </div>
             <div class="buoy-drawer-body">
               <div class="buoy-list" id="buoy-list"></div>
@@ -305,7 +313,7 @@
             </div>
             <div class="sidebar-section">
               <h4 class="advisory-drawer-title">Maritime Advisories</h4>
-              <p class="advisory-drawer-desc">Create and manage official government advisories.</p>
+              <p class="advisory-drawer-desc">Create and manage official SAR / weather advisories.</p>
               <button class="action-btn advisory-create-btn" id="btn-create-advisory">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Create Advisory
@@ -317,68 +325,14 @@
         </div>
       </div>
 
-      <div class="panel-card ai-ops-card" id="ai-ops-card">
-        <div class="panel-card-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2v2a4 4 0 0 0 8 0v-2h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><path d="M9 10v4m6-4v4m-3-4v4"/></svg>
-          <span>AI Operations</span>
-          <span class="ai-card-badge">Synthetic only</span>
-        </div>
-        <div class="panel-card-body ai-ops-body">
-          <section class="ai-subpanel ai-risk-subpanel">
-            <div class="ai-subpanel-head">
-              <div>
-                <div class="ai-subpanel-title">Active vessel risk</div>
-                <div class="ai-subpanel-caption">/api/ai/anomaly/active</div>
-              </div>
-              <span class="ai-subpanel-count" id="ai-risk-count">0</span>
-            </div>
-            <div class="ai-risk-list" id="ai-risk-list">
-              <div class="ai-empty-state">Loading vessel risk feed...</div>
-            </div>
-          </section>
-
-          <section class="ai-subpanel ai-drift-subpanel">
-            <div class="ai-subpanel-head">
-              <div>
-                <div class="ai-subpanel-title">Drift search map</div>
-                <div class="ai-subpanel-caption">50/75/95% contours on the main map</div>
-              </div>
-            </div>
-            <label class="ai-select-label" for="ai-drift-select">Incident</label>
-            <select class="ai-select" id="ai-drift-select">
-              <option value="">Loading incidents...</option>
-            </select>
-            <div class="ai-meta-line" id="ai-drift-meta">Contours render on the left map when an incident is selected.</div>
-          </section>
-
-          <section class="ai-subpanel ai-squall-subpanel">
-            <div class="ai-subpanel-head">
-              <div>
-                <div class="ai-subpanel-title">Squall watch</div>
-                <div class="ai-subpanel-caption">Affected area plus buoy pressure trace</div>
-              </div>
-            </div>
-            <div class="ai-squall-summary" id="ai-squall-summary">
-              <div class="ai-empty-state">Loading squall watch...</div>
-            </div>
-            <div class="ai-trace-card">
-              <div class="ai-trace-legend" id="ai-trace-legend"></div>
-              <div class="ai-trace-chart" id="ai-trace-chart">
-                <div class="ai-empty-state">Pressure trace unavailable.</div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <!-- Fleet Status (existing stats widget) -->
+      <!-- Live Overview (fleet/success metrics) -->
       <div class="stats-widget" id="stats-widget">
         <div class="stats-header">
           <div class="stats-tabs" id="stats-tabs">
             <button class="stats-tab active" data-tab="overview">Live Overview</button>
             <button class="stats-tab" data-tab="vessels">Vessels <span class="tab-badge badge-red" id="badge-vessels">2</span></button>
             <button class="stats-tab" data-tab="alerts">Alerts <span class="tab-badge badge-red" id="badge-alerts">2</span></button>
-            <button class="stats-tab" data-tab="zones">ZONES <span class="tab-badge badge-orange" id="zones-badge">3</span></button>
+            <button class="stats-tab" data-tab="sar">SAR Metrics <span class="tab-badge badge-orange" id="badge-sar">2</span></button>
           </div>
           <button id="stats-minimize" class="stats-minimize-btn">-</button>
         </div>
@@ -391,29 +345,29 @@
             <div class="stats-cards">
               <div class="stat-card">
                 <div class="stat-icon stat-pop">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>
                 </div>
                 <div class="stat-info">
-                  <span class="stat-value" id="stat-population">54,320</span>
-                  <span class="stat-label">Population</span>
+                  <span class="stat-value" id="stat-buoys">4/5</span>
+                  <span class="stat-label">Buoys Online</span>
                 </div>
               </div>
               <div class="stat-card">
                 <div class="stat-icon stat-active">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/></svg>
                 </div>
                 <div class="stat-info">
-                  <span class="stat-value" id="stat-active">1,247</span>
-                  <span class="stat-label">Active Fishers</span>
+                  <span class="stat-value" id="stat-coverage">68%</span>
+                  <span class="stat-label">Municipal Water Coverage</span>
                 </div>
               </div>
               <div class="stat-card">
                 <div class="stat-icon stat-projects">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 </div>
                 <div class="stat-info">
-                  <span class="stat-value" id="stat-projects">18</span>
-                  <span class="stat-label">Ongoing Projects</span>
+                  <span class="stat-value" id="stat-vessels">38</span>
+                  <span class="stat-label">Vessels in Contact Range</span>
                 </div>
               </div>
               <div class="stat-card">
@@ -421,8 +375,8 @@
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
                 </div>
                 <div class="stat-info">
-                  <span class="stat-value" id="stat-catches">3,891 kg</span>
-                  <span class="stat-label">Catch This Week</span>
+                  <span class="stat-value" id="stat-leadtime">45 min</span>
+                  <span class="stat-label">Squall Alert Lead Time</span>
                 </div>
               </div>
               <div class="stat-card">
@@ -451,15 +405,33 @@
             <div class="alert-list" id="alert-list"></div>
           </div>
 
-          <div class="tab-content" id="tab-zones">
-            <div class="zones-filters" id="zones-filters">
-              <button class="zones-filter active" data-filter="all">All Zones</button>
-              <button class="zones-filter" data-filter="needs-review">Needs Review</button>
-            </div>
-            <div class="zones-explainer">Zones require 5+ independent reporters before being flagged for BFAR review</div>
-            <div class="zones-list" id="zones-list"></div>
-            <div class="zones-footer">Data based on community catch submissions — last 30 days</div>
+          <div class="tab-content" id="tab-sar">
+            <div class="sar-list" id="sar-list"></div>
+            <div class="sar-footer">Success metrics track the PRD targets for Aqone &mdash; sample data for demonstration</div>
           </div>
+        </div>
+      </div>
+
+      <!-- Squall Nowcasting Card -->
+      <div class="panel-card squall-card" id="squall-card">
+        <div class="panel-card-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 20h20L12 2z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg>
+          <span>Squall Nowcasting</span>
+          <span class="squall-status" id="squall-status">MONITORING</span>
+        </div>
+        <div class="panel-card-body" id="squall-body">
+          <div class="squall-loading">Reading buoy pressure field...</div>
+        </div>
+      </div>
+
+      <!-- Drift & Search Card -->
+      <div class="panel-card drift-card" id="drift-card">
+        <div class="panel-card-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 4 4-6 4 5"/><path d="M3 21h18"/></svg>
+          <span>Drift &amp; Search Allocation</span>
+        </div>
+        <div class="panel-card-body" id="drift-body">
+          <div class="drift-loading">Computing drift probability field...</div>
         </div>
       </div>
 
@@ -518,11 +490,15 @@
           <div class="legend-title">Marker Types</div>
           <div class="legend-item">
             <div class="legend-icon marker-facility"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></div>
-            <div class="legend-text">LGU Facility</div>
+            <div class="legend-text">Shore gateway / BFAR station</div>
           </div>
           <div class="legend-item">
             <div class="legend-icon marker-vessel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20l2-1h16l2 1"/><path d="M4 20V14l8-6 8 6v6"/><path d="M12 8V4m-4 0h8"/></svg></div>
-            <div class="legend-text">Registered fishing vessel</div>
+            <div class="legend-text">Registered fishing vessel (last contact)</div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-icon" style="color:#e74c3c"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/></svg></div>
+            <div class="legend-text">Overdue vessel — missed expected contact</div>
           </div>
           <div class="legend-item">
             <div class="legend-icon marker-buoy"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg></div>
@@ -537,42 +513,26 @@
             <div class="legend-text">User pin</div>
           </div>
           <div class="legend-divider"></div>
-          <div class="legend-title" style="margin-top:8px;">AI Fish Abundance Prediction</div>
+          <div class="legend-title" style="margin-top:8px;">Network &amp; AI Layers</div>
           <div class="legend-item">
-            <div class="legend-icon" style="color:#95a5a6"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Negligible Fish Activity (0–15%)</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#3498db"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Sparse Fish Distribution (16–35%)</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#2ecc71"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Moderate Fish Concentration (36–55%)</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#f1c40f"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">High Fish Concentration (56–75%)</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#e67e22"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Dense Fish Aggregation (76–90%)</div>
-          </div>
-          <div class="legend-item">
-            <div class="legend-icon" style="color:#e74c3c"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Exceptional Fish Concentration (91–100%)</div>
-          </div>
-          <div class="legend-item" id="legend-protected" style="margin-top:4px;">
-            <div class="legend-icon" style="color:#e74c3c"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Protected No Fishing Zone</div>
-          </div>
-          <div class="legend-item" style="margin-top:2px;">
             <div class="legend-icon" style="color:#60a5fa;opacity:0.6;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">Buoy Coverage Zone</div>
+            <div class="legend-text" style="font-size:11px;">Buoy coverage zone</div>
           </div>
-          <div class="legend-item" style="margin-top:2px;">
+          <div class="legend-item">
             <div class="legend-icon" style="color:#22d3ee;opacity:0.6;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 5l20 14M2 19l20-14"/></svg></div>
-            <div class="legend-text" style="font-size:11px;">LoRa Mesh Network</div>
+            <div class="legend-text" style="font-size:11px;">LoRa mesh network</div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-icon" style="color:#e67e22;opacity:0.8;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 20h20L12 2z"/></svg></div>
+            <div class="legend-text" style="font-size:11px;">Squall nowcast / RETURN NOW watch</div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-icon" style="color:#e74c3c;opacity:0.7;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/></svg></div>
+            <div class="legend-text" style="font-size:11px;">Drift probability field (hot = higher)</div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-icon" style="color:#ffffff;opacity:0.7;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M12 2v20"/></svg></div>
+            <div class="legend-text" style="font-size:11px;">Bayesian search sector</div>
           </div>
         </div>
       </div>
@@ -588,14 +548,16 @@
         </div>
       </div>
 
-      <!-- Distress Feed -->
+      <!-- Incident Feed -->
       <div class="panel-card">
         <div class="panel-card-header">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Distress Feed</span>
+          <span>Incident Feed</span>
         </div>
         <div class="panel-card-body">
-          <p class="panel-stub-text">No active distress signals</p>
+          <div id="incident-feed-list">
+            <p class="panel-stub-text">No active incidents</p>
+          </div>
         </div>
       </div>
 
@@ -605,7 +567,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>
           <span>Buoy Health</span>
           <span class="buoy-health-badge" id="buoy-health-badge"></span>
-          <button class="panel-card-toggle" id="buoy-health-toggle" title="View full Buoy Health panel">&rarr;</button>
+          <button class="panel-card-toggle" id="buoy-health-toggle" title="View full Buoy Network panel">&rarr;</button>
         </div>
         <div class="panel-card-body" id="buoy-health-body">
           <div id="buoy-health-list"></div>
@@ -635,7 +597,7 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════
-       SOS BROADCAST DRAWER
+       INCIDENT DRAWER (scored alert / escalation ladder)
        ══════════════════════════════════════════════════════════════ -->
   <div class="sos-drawer" id="sos-drawer">
     <div class="sos-drawer-header" id="sos-drawer-header">
@@ -668,6 +630,21 @@
           <span class="sos-detail-label">Coverage Status</span>
           <span class="sos-detail-value" id="sos-coverage"></span>
         </div>
+        <div class="sos-detail-row">
+          <span class="sos-detail-label">Alert Confidence</span>
+          <span class="sos-detail-value sos-conf">
+            <span class="aq-conf-value" id="sos-confidence-value">&mdash;</span>
+            <span class="aq-conf-bar"><span class="aq-conf-fill" id="sos-confidence-fill" style="width:0%"></span></span>
+          </span>
+        </div>
+        <div class="sos-detail-row">
+          <span class="sos-detail-label">Escalation Stage</span>
+          <span class="sos-detail-value"><span class="aq-stage-badge" id="sos-stage">Stage 3 &mdash; SCORED ALERT</span></span>
+        </div>
+        <div class="sos-detail-row">
+          <span class="sos-detail-label">Expected Next Contact</span>
+          <span class="sos-detail-value" id="sos-next-contact"></span>
+        </div>
       </div>
       <hr class="sos-divider" />
       <div class="sos-section sos-map-action">
@@ -678,6 +655,7 @@
         <button class="sos-btn sos-btn-acknowledge" id="sos-btn-acknowledge">Acknowledge</button>
         <button class="sos-btn sos-btn-resolve" id="sos-btn-resolve">Resolve Incident</button>
         <button class="sos-btn sos-btn-broadcast" id="sos-btn-broadcast">Broadcast to Nearby Vessels</button>
+        <button class="sos-btn sos-btn-checkin" id="sos-btn-checkin">Request Silent Check-in</button>
         <div class="sos-broadcast-msg" id="sos-broadcast-msg"></div>
       </div>
     </div>
@@ -691,7 +669,7 @@
       <div class="emergency-modal-header">
         <div>
           <div class="emergency-modal-title">Emergency Contacts</div>
-          <div class="emergency-modal-subtitle">Quick access for MDRRMO responders</div>
+          <div class="emergency-modal-subtitle">Quick access for SAR duty officers</div>
         </div>
         <button class="emergency-modal-close" id="emergency-modal-close">&times;</button>
       </div>
@@ -705,8 +683,8 @@
             </svg>
           </div>
           <div class="emergency-card-details">
-            <div class="emergency-card-agency">Philippine Coast Guard — Aklan Station</div>
-            <div class="emergency-card-role">Maritime Search & Rescue</div>
+            <div class="emergency-card-agency">Philippine Coast Guard &mdash; Aklan Station</div>
+            <div class="emergency-card-role">Maritime Search &amp; Rescue</div>
             <div class="emergency-card-phone">(036) 268-5529</div>
           </div>
           <div class="emergency-card-actions">
@@ -722,7 +700,7 @@
           </div>
           <div class="emergency-card-details">
             <div class="emergency-card-agency">MDRRMO Aklan</div>
-            <div class="emergency-card-role">Disaster Risk Reduction & Emergency Response</div>
+            <div class="emergency-card-role">Disaster Risk Reduction &amp; Emergency Response</div>
             <div class="emergency-card-phone">(036) 621-0658</div>
           </div>
           <div class="emergency-card-actions">
@@ -738,53 +716,13 @@
           </div>
           <div class="emergency-card-details">
             <div class="emergency-card-agency">PAGASA Western Visayas</div>
-            <div class="emergency-card-role">Weather & Storm Advisories</div>
+            <div class="emergency-card-role">Weather &amp; Squall Advisories</div>
             <div class="emergency-card-phone">(033) 337-5554</div>
           </div>
           <div class="emergency-card-actions">
             <a href="tel:+63333375554" class="emergency-btn emergency-btn-call" style="background: #F39C12;">Call</a>
             <button class="emergency-btn emergency-btn-copy" data-phone="(033) 337-5554">Copy</button>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════════════════════════════
-       BFAR DESIGNATION MODAL
-       ══════════════════════════════════════════════════════════════ -->
-  <div class="bfar-modal-overlay" id="bfar-modal-overlay">
-    <div class="bfar-modal">
-      <div class="bfar-modal-header">
-        <div class="bfar-modal-title">Create Conservation Zone</div>
-        <button class="bfar-modal-close" id="bfar-modal-close">&times;</button>
-      </div>
-      <div class="bfar-modal-body">
-        <div class="bfar-modal-field">
-          <label class="bfar-modal-label">Protection Duration</label>
-          <select class="bfar-modal-select" id="bfar-duration">
-            <option value="7">7 Days</option>
-            <option value="14">14 Days</option>
-            <option value="30" selected>30 Days</option>
-            <option value="custom">Custom</option>
-          </select>
-        </div>
-        <div class="bfar-modal-field">
-          <label class="bfar-modal-label">Reason</label>
-          <select class="bfar-modal-select" id="bfar-reason">
-            <option value="Fish Population Recovery">Fish Population Recovery</option>
-            <option value="Spawning Season">Spawning Season</option>
-            <option value="High Juvenile Density">High Juvenile Density</option>
-            <option value="Marine Conservation">Marine Conservation</option>
-          </select>
-        </div>
-        <div class="bfar-modal-field">
-          <label class="bfar-modal-label">Notes <span style="opacity:0.4">(optional)</span></label>
-          <textarea class="bfar-modal-textarea" id="bfar-notes" placeholder="Additional notes..."></textarea>
-        </div>
-        <div class="bfar-modal-actions">
-          <button class="bfar-btn bfar-btn-cancel" id="bfar-btn-cancel">Cancel</button>
-          <button class="bfar-btn bfar-btn-confirm" id="bfar-btn-confirm">Confirm Designation</button>
         </div>
       </div>
     </div>
@@ -810,7 +748,8 @@
             <label class="advisory-modal-label">Category <span class="required">*</span></label>
             <select class="advisory-modal-select" id="adv-category">
               <option value="Weather Advisory">Weather Advisory</option>
-              <option value="Fishing Restriction">Fishing Restriction</option>
+              <option value="Squall Warning">Squall Warning</option>
+              <option value="Small Craft Advisory">Small Craft Advisory</option>
               <option value="BFAR Notice">BFAR Notice</option>
               <option value="Emergency">Emergency</option>
               <option value="Community Notice">Community Notice</option>
