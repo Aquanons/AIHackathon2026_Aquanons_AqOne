@@ -93,13 +93,25 @@
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
       </button>
-     <div class="user-pill" id="user-profile">
-    <div class="user-avatar">PC</div>
-    <span class="user-name">
-        PCG Region 6<br>
-        SAR Duty Officer
-    </span>
-</div>
+      <!-- Restored from DangerzoneFeature: dashboard.js binds a click handler
+           to this button unconditionally, so dropping it during the merge
+           threw a TypeError that halted the script before the loading overlay
+           could be hidden. -->
+      <button id="btn-fullscreen" class="icon-btn-top" title="Toggle Fullscreen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      </button>
+      <div class="user-pill" id="user-profile">
+        <div class="user-avatar">PC</div>
+        <span class="user-name">
+          PCG Region 6<br>
+          SAR Duty Officer
+        </span>
+      </div>
     </div>
   </header>
 

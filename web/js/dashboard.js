@@ -1,6 +1,19 @@
 (function () {
   'use strict';
 
+  // Failsafe: never leave the operator staring at the loading spinner.
+  //
+  // The overlay is hidden near the end of this script, so any uncaught error
+  // above that point froze the dashboard behind "Loading buoy network data..."
+  // with no indication of what went wrong. Registered first, before anything
+  // that can throw, so a future breakage degrades to a visible dashboard plus a
+  // console error rather than a dead screen.
+  window.addEventListener('error', function (event) {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    console.error('[AqOne] Dashboard init failed:', event.message, 'at', event.filename + ':' + event.lineno);
+  });
+
   // ===== CONFIG =====
   // New Washington, Aklan municipal centre (PhilAtlas: 11.6473 N, 122.4356 E).
   // Zoom 11 framed the whole province; 12 frames the municipality and its
