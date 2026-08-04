@@ -230,6 +230,7 @@
   map.getPane('aiTrackPane').style.zIndex = 440;
   map.createPane('aiSquallPane');
   map.getPane('aiSquallPane').style.zIndex = 450;
+  const dangerZoneLayer = L.layerGroup();
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
@@ -450,6 +451,160 @@
     incidentMarkers.push(marker);
   });
 
+  let apiBuoys = [];
+  var dangerZoneRequestId = 0;
+  var lastDangerZoneResult = null;
+  var dangerZoneCacheKey = 'aqone-last-danger-zone-result-new-washington-grid-v2';
+
+  function readCachedDangerZoneResult() {
+    try {
+      var cached = JSON.parse(localStorage.getItem(dangerZoneCacheKey));
+      return cached && Array.isArray(cached.predictions) ? cached : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function cacheDangerZoneResult(result) {
+    try {
+      localStorage.setItem(dangerZoneCacheKey, JSON.stringify(result));
+    } catch (error) {
+      console.warn('[AqOne] Could not cache the latest danger-zone scan');
+    }
+  }
+
+  function escapeDangerZoneText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderDangerZones(result) {
+    var predictions = result.predictions;
+    var alertPredictions = predictions.filter(function (prediction) {
+      return prediction.level !== 'low';
+    });
+
+    dangerZoneLayer.clearLayers();
+    var firstPredictionMarker = null;
+    predictions.forEach(function (prediction) {
+      var circle = L.circle([prediction.lat, prediction.lng], {
+        radius: prediction.radius,
+        color: prediction.color,
+        fillColor: prediction.color,
+        fillOpacity: prediction.level === 'danger' ? 0.2 : prediction.level === 'watch' ? 0.12 : 0.05,
+        opacity: prediction.level === 'low' ? 0.55 : 0.95,
+        weight: prediction.level === 'danger' ? 3 : prediction.level === 'watch' ? 2 : 1.5,
+        dashArray: prediction.level === 'danger' ? null : prediction.level === 'watch' ? '7 5' : '4 7',
+        className: 'danger-zone-circle danger-zone-circle-' + prediction.level
+      });
+      var icon = L.divIcon({
+        className: '',
+        html: '<div class="danger-zone-map-icon danger-zone-map-icon-' + prediction.level + '">' +
+          '<span>' + (prediction.level === 'low' ? '&check;' : '!') + '</span><i></i></div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+      var marker = L.marker([prediction.lat, prediction.lng], {
+        icon: icon,
+        interactive: true,
+        zIndexOffset: 700
+      });
+      var reasons = prediction.reasons.map(escapeDangerZoneText).join(' &middot; ');
+      var popup = '<div class="popup-title" style="color:' + prediction.color + ';">' +
+        escapeDangerZoneText(prediction.label) + ' Zone</div>' +
+        '<div class="popup-row"><span>Area</span><span>' + escapeDangerZoneText(prediction.name) + '</span></div>' +
+        '<div class="popup-row"><span>Coordinates</span><span>' + prediction.lat.toFixed(3) + '\u00b0, ' + prediction.lng.toFixed(3) + '\u00b0</span></div>' +
+        '<div class="popup-row"><span>Hazard probability</span><span style="font-weight:800;color:' + prediction.color + ';">' + prediction.score + '%</span></div>' +
+        '<div class="popup-row"><span>Model probability</span><span>' + prediction.modelProbability + '%</span></div>' +
+        '<div class="popup-row"><span>Live wind / gust</span><span>' + Number(prediction.features.wind_speed_10m).toFixed(1) + ' / ' + Number(prediction.features.wind_gusts_10m).toFixed(1) + ' km/h</span></div>' +
+        '<div class="popup-row"><span>Live wave / period</span><span>' + Number(prediction.features.wave_height).toFixed(2) + ' m / ' + Number(prediction.features.wave_period).toFixed(1) + ' s</span></div>' +
+        '<div class="popup-row"><span>GEBCO depth</span><span>' + prediction.depthM.toFixed(0) + ' m</span></div>' +
+        '<div class="popup-row"><span>Radius</span><span>' + (prediction.radius / 1000).toFixed(1) + ' km</span></div>' +
+        '<div class="popup-row"><span>Warning trigger</span><span>' + escapeDangerZoneText(prediction.trigger) + '</span></div>' +
+        '<div class="popup-divider"></div>' +
+        '<div style="font-size:11px;line-height:1.45;color:#d1d5db;">' + reasons + '</div>' +
+        '<div style="margin-top:7px;font-size:10px;color:#9ca3af;">' + escapeDangerZoneText(prediction.source) + '<br>' +
+        escapeDangerZoneText(result.modelType) + ' · ' + escapeDangerZoneText(result.modelVersion) + '<br>' +
+        '2025 holdout F1: ' + Number(result.metrics.f1).toFixed(3) + ' · ' + escapeDangerZoneText(result.buoySource) + '</div>' +
+        '<div style="margin-top:7px"><span class="popup-badge badge-danger">EXPERIMENTAL · NOT FOR NAVIGATION</span></div>';
+
+      circle.bindPopup(popup);
+      marker.bindPopup(popup);
+      circle.bindTooltip(prediction.name + ' · ' + prediction.score + '%', {
+        direction: 'top',
+        sticky: true
+      });
+      dangerZoneLayer.addLayer(circle);
+      dangerZoneLayer.addLayer(marker);
+      if (!firstPredictionMarker) firstPredictionMarker = marker;
+    });
+
+    if (firstPredictionMarker && new URLSearchParams(window.location.search).get('previewDangerZone') === '1') {
+      firstPredictionMarker.openPopup();
+    }
+
+    var statusText = document.getElementById('danger-zone-status-text');
+    if (statusText) {
+      var dangerCount = alertPredictions.filter(function (prediction) {
+        return prediction.level === 'danger';
+      }).length;
+      var watchCount = alertPredictions.length - dangerCount;
+      var updatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      statusText.textContent = dangerCount + ' danger · ' + watchCount + ' watch · ' + predictions.length + ' zones · Live ' + updatedAt;
+    }
+    if (statusText) {
+      var scanUpdatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      statusText.textContent = result.dangerCount + ' danger · ' + result.watchCount + ' watch · ' +
+        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · Live ' + scanUpdatedAt;
+    }
+  }
+
+  async function refreshDangerZones() {
+    var statusText = document.getElementById('danger-zone-status-text');
+    var statusCard = document.getElementById('danger-zone-status');
+    var refreshButton = document.getElementById('danger-zone-refresh');
+    var requestId = ++dangerZoneRequestId;
+    if (!lastDangerZoneResult) lastDangerZoneResult = readCachedDangerZoneResult();
+    if (lastDangerZoneResult) {
+      renderDangerZones(lastDangerZoneResult);
+    } else {
+      dangerZoneLayer.clearLayers();
+    }
+    if (statusText) statusText.textContent = lastDangerZoneResult ?
+      'Refreshing live data \u00b7 Existing real-data zones remain visible' :
+      'Loading live weather and marine observations...';
+    if (statusCard) statusCard.classList.remove('danger-zone-status-error');
+    if (refreshButton) refreshButton.classList.add('is-refreshing');
+    try {
+      var result = await window.AqOneDangerZonePredictor.predictLive(apiBuoys);
+      if (requestId !== dangerZoneRequestId) return;
+      lastDangerZoneResult = result;
+      cacheDangerZoneResult(result);
+      renderDangerZones(result);
+    } catch (error) {
+      if (requestId !== dangerZoneRequestId) return;
+      if (lastDangerZoneResult) {
+        renderDangerZones(lastDangerZoneResult);
+        if (statusText) statusText.textContent = 'Live refresh unavailable \u00b7 Showing last successful real-data scan';
+        if (statusCard) statusCard.classList.add('danger-zone-status-error');
+        console.warn('[AqOne] Danger-zone refresh unavailable:', error.message);
+        return;
+      }
+      dangerZoneLayer.clearLayers();
+      if (statusText) statusText.textContent = 'Live data unavailable · No hazard zones shown';
+      if (statusCard) statusCard.classList.add('danger-zone-status-error');
+      console.warn('[AqOne] Danger-zone model unavailable:', error.message);
+    } finally {
+      if (requestId === dangerZoneRequestId && refreshButton) {
+        refreshButton.classList.remove('is-refreshing');
+      }
+    }
+  }
+
   // ===== BOUNDARY =====
   const boundaryPoly = L.polygon(opsBoundary, {
     color: '#2ecc71',
@@ -471,6 +626,8 @@
   squallLayer.addTo(map);
   driftLayer.addTo(map);
   boundaryLayer.addTo(map);
+  dangerZoneLayer.addTo(map);
+  refreshDangerZones();
 
   // ===== PIN TOOL (local-only, no backend dependency) =====
   let pinModeActive = false;
@@ -945,7 +1102,9 @@
 
   // ===== TOGGLE LAYERS =====
   function toggleLayer(checkboxId, layer) {
-    document.getElementById(checkboxId).addEventListener('change', function () {
+    const el = document.getElementById(checkboxId);
+    if (!el) return;
+    el.addEventListener('change', function () {
       if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
     });
   }
@@ -953,6 +1112,7 @@
   toggleLayer('toggle-gateways',  gatewayLayer);
   toggleLayer('toggle-vessels',   vesselLayer);
   toggleLayer('toggle-incidents', incidentLayer);
+  toggleLayer('toggle-danger-zones', dangerZoneLayer);
   toggleLayer('toggle-buoys',     buoyLayer);
   toggleLayer('toggle-coverage',  coverageLayer);
   toggleLayer('toggle-mesh',      meshLayer);
@@ -961,17 +1121,26 @@
   toggleLayer('toggle-boundary',  boundaryLayer);
   toggleLayer('toggle-pins',      pinLayer);
 
+  var dangerZoneRefresh = document.getElementById('danger-zone-refresh');
+  if (dangerZoneRefresh) {
+    dangerZoneRefresh.addEventListener('click', function () {
+      refreshDangerZones();
+    });
+  }
+
   // ===== STATS PANEL =====
   const statsWidget = document.getElementById('stats-widget');
   const statsMinimizeBtn = document.getElementById('stats-minimize');
   const statsBody = document.getElementById('stats-body');
   let statsMinimized = false;
 
-  statsMinimizeBtn.addEventListener('click', () => {
-    statsMinimized = !statsMinimized;
-    statsWidget.classList.toggle('minimized', statsMinimized);
-    statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
-  });
+  if (statsMinimizeBtn) {
+    statsMinimizeBtn.addEventListener('click', () => {
+      statsMinimized = !statsMinimized;
+      if (statsWidget) statsWidget.classList.toggle('minimized', statsMinimized);
+      statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
+    });
+  }
 
   // Active alerts card click
   const statAlertsCard = document.querySelector('.stat-card.stat-alerts');
@@ -980,9 +1149,11 @@
     statAlertsCard.addEventListener('click', function() {
       statsTabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => tc.classList.remove('active'));
-      document.querySelector('.stats-tab[data-tab="alerts"]').classList.add('active');
-      document.getElementById('tab-alerts').classList.add('active');
-      if (statsMinimized) { statsMinimized = false; statsWidget.classList.remove('minimized'); statsMinimizeBtn.innerHTML = '&minus;'; }
+      const alertsTab = document.querySelector('.stats-tab[data-tab="alerts"]');
+      const alertsTabContent = document.getElementById('tab-alerts');
+      if (alertsTab) alertsTab.classList.add('active');
+      if (alertsTabContent) alertsTabContent.classList.add('active');
+      if (statsMinimized && statsWidget) { statsMinimized = false; statsWidget.classList.remove('minimized'); if (statsMinimizeBtn) statsMinimizeBtn.innerHTML = '&minus;'; }
     });
   }
 
@@ -991,11 +1162,13 @@
   const legendToggle = document.getElementById('legend-toggle');
   let legendCollapsed = false;
 
-  legendToggle.addEventListener('click', () => {
-    legendCollapsed = !legendCollapsed;
-    legendCard.classList.toggle('collapsed', legendCollapsed);
-    legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
-  });
+  if (legendToggle) {
+    legendToggle.addEventListener('click', () => {
+      legendCollapsed = !legendCollapsed;
+      if (legendCard) legendCard.classList.toggle('collapsed', legendCollapsed);
+      legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
+    });
+  }
 
   // ===== TAB SWITCHING =====
   const statsTabs = document.querySelectorAll('.stats-tab');
@@ -1006,7 +1179,8 @@
       statsTabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => tc.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      const targetContent = document.getElementById('tab-' + tab.dataset.tab);
+      if (targetContent) targetContent.classList.add('active');
     });
   });
 
@@ -1139,8 +1313,10 @@
       'wave-zone': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c1.5-2 3.5-3 5.5-3s4 1 5.5 3 3.5 3 5.5 3 4-1 5.5-3"/><path d="M2 7c1.5-2 3.5-3 5.5-3s4 1 5.5 3 3.5 3 5.5 3 4-1 5.5-3"/></svg>`,
       'overdue-vessel': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
       'capsizing-risk': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      'forecast-storm': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.7-9H17.5a4.5 4.5 0 1 1 0 9z"/><path d="M13 11l-2 4h3l-2 4"/></svg>`,
+      'storm-surge': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9c2-3 5-3 7 0s5 3 7 0 5-3 7 0"/><path d="M2 15c2-3 5-3 7 0s5 3 7 0 5-3 7 0"/><path d="M12 2v4"/><path d="M9.5 4.5L12 2l2.5 2.5"/></svg>`,
     };
-    const colors = { 'sos': 'icon-red', 'wave-zone': 'icon-yellow', 'overdue-vessel': 'icon-orange', 'capsizing-risk': 'icon-yellow' };
+    const colors = { 'sos': 'icon-red', 'wave-zone': 'icon-yellow', 'overdue-vessel': 'icon-orange', 'capsizing-risk': 'icon-yellow', 'forecast-storm': 'icon-red', 'storm-surge': 'icon-red' };
     return `<div class="alert-icon ${colors[type] || 'icon-yellow'}">${icons[type] || ''}</div>`;
   }
 
@@ -1198,6 +1374,24 @@
 
   const squallCountEl = document.getElementById('banner-squall-count');
   if (squallCountEl) squallCountEl.textContent = 0;
+
+  // Recomputes the alert badge and banner after alertData changes.
+  //
+  // Restored during the DangerzoneFeature merge: the weather-forecast code
+  // calls this, but the branch's definition sat in the same block as the
+  // removed fish-hotspot system, so taking our side dropped it and left a
+  // ReferenceError on that path. This is the branch's logic minus the hotspot
+  // parts, reusing the elements resolved just above.
+  function syncAlertIndicators() {
+    const activeCount = alertData.filter(function (alert) {
+      return alert.status === 'active';
+    }).length;
+    const alertBadge = document.getElementById('badge-alerts');
+    if (alertBadge) alertBadge.textContent = activeCount;
+    if (bannerCountEl) bannerCountEl.textContent = activeCount;
+    if (liveBanner) liveBanner.classList.toggle('has-alerts', activeCount > 0);
+    renderAlerts();
+  }
 
   // ===== SAR METRICS TAB =====
   // SAR metrics come from the evaluation scripts via /api/ai/metrics. There is
@@ -1503,11 +1697,11 @@
 
   var buoyOnlineCount = buoyMonitorData.filter(function (b) { return b.status === 'online'; }).length;
   var buoyTotal = buoyMonitorData.length;
-  buoyRailBadge.textContent = buoyOnlineCount + '/' + buoyTotal;
-  buoyDrawerBadge.textContent = buoyOnlineCount + '/' + buoyTotal + ' Online';
+  if (buoyRailBadge) buoyRailBadge.textContent = buoyOnlineCount + '/' + buoyTotal;
+  if (buoyDrawerBadge) buoyDrawerBadge.textContent = buoyOnlineCount + '/' + buoyTotal + ' Online';
   if (buoyOnlineCount < buoyTotal) {
-    buoyRailBadge.classList.add('badge-amber');
-    buoyDrawerBadge.classList.add('badge-amber');
+    if (buoyRailBadge) buoyRailBadge.classList.add('badge-amber');
+    if (buoyDrawerBadge) buoyDrawerBadge.classList.add('badge-amber');
   }
 
   function renderBuoyList() {
@@ -2187,9 +2381,52 @@
     });
   }
 
+  // ===== EXPORT =====
+  const btnExport = document.getElementById('btn-export');
+  if (btnExport) {
+    btnExport.addEventListener('click', function () {
+      const data = {
+        center: map.getCenter(),
+        zoom: map.getZoom(),
+        facilities: facilities.length,
+        buoys: initialBuoys.length,
+        incidents: incidents.length,
+        timestamp: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aqone-dashboard-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // ===== EXIT LOADING =====
+  function hideLoadingOverlay() {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(hideLoadingOverlay, 300);
+  } else {
+    window.addEventListener('load', function () {
+      setTimeout(hideLoadingOverlay, 300);
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(hideLoadingOverlay, 300);
+    });
+  }
+  setTimeout(hideLoadingOverlay, 1500);
+
   // ===== THEME TOGGLE (shared with profile.html) =====
+  // Reads BOTH storage keys used by profile.js ('aqone_dark_mode') and
+  // the dashboard's own key ('aqone-theme') so dark mode persists across pages.
   (function () {
     var STORAGE_KEY = 'aqone-theme';
+    var PROFILE_KEY = 'aqone_dark_mode';
     var root = document.documentElement;
 
     function applyTheme(theme) {
@@ -2202,8 +2439,23 @@
       if (darkToggle) darkToggle.checked = theme === 'dark';
     }
 
-    var savedTheme = localStorage.getItem(STORAGE_KEY) || 'light';
-    applyTheme(savedTheme);
+    function resolveTheme() {
+      var ownKey = localStorage.getItem(STORAGE_KEY);
+      if (ownKey) return ownKey;
+      var profileDark = localStorage.getItem(PROFILE_KEY);
+      if (profileDark === 'true') return 'dark';
+      return 'light';
+    }
+
+    applyTheme(resolveTheme());
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === PROFILE_KEY) {
+        var next = e.newValue === 'true' ? 'dark' : 'light';
+        applyTheme(next);
+        localStorage.setItem(STORAGE_KEY, next);
+      }
+    });
 
     var themeBtn = document.getElementById('btn-theme');
     if (themeBtn) {
@@ -2223,6 +2475,204 @@
         localStorage.setItem(STORAGE_KEY, next);
       });
     }
+  })();
+
+  // ===== LANGUAGE TRANSLATIONS (EN / AKL) =====
+  (function () {
+    var DASHBOARD_TRANSLATIONS = {
+      en: {
+        subTitle: "Maritime Intelligence — Aklan LGU",
+        layerStreets: "Streets",
+        layerSatellite: "Satellite",
+        layerHybrid: "Hybrid",
+        searchPlaceholder: "Search vessels, zones, coordinates...",
+        userName: "Kalibo, Aklan<br>LGU Administrator",
+        railLayers: "Layers",
+        railPan: "Pan",
+        railPin: "Pin",
+        railMeasure: "Measure",
+        railBuoys: "BUOYS",
+        railEmergency: "EMERGENCY",
+        railAdvisories: "Advisories",
+        lblIncidents: "Incident Reports",
+        lblBuoyStations: "Buoy Stations",
+        lblUserPins: "User Pins",
+        lblCoverage: "Buoy Coverage Zones",
+        lblMesh: "Mesh Network",
+        btnExport: "Export View Data",
+        btnCenterAklan: "Center on Aklan",
+        measureHint: "Click the map to add points. Double-click to finish.",
+        btnFinish: "Finish",
+        btnClear: "Clear",
+        hdrBuoyMonitor: "Buoy Health Monitor",
+        hdrAdvisories: "Maritime Advisories",
+        subAdvisories: "Create and manage official government advisories.",
+        btnCreateAdv: "Create Advisory",
+        filterAll: "All",
+        filterInCoverage: "In Coverage",
+        filterOutOfCoverage: "Out of Coverage",
+        filterOverdue: "Overdue",
+        wcTitle: "Current Conditions",
+        hdrSeaStatus: "Sea Condition Status",
+        btnSeaSafe: "Safe to Go Out",
+        btnSeaCaution: "Caution — Check Advisories",
+        btnSeaDanger: "Not Advised",
+        lblReason: "Reason (optional)",
+        phReason: "e.g. Small craft advisory in effect...",
+        btnSetStatus: "Set Status",
+        hdrForecast: "7-Day Forecast",
+        stubForecast: "Forecast data coming soon",
+        hdrRainfall: "Rainfall Timeline",
+        stubRainfall: "Rainfall data coming soon",
+        emTitle: "Emergency Contacts",
+        emSubtitle: "Quick access for MDRRMO responders",
+      },
+      akl: {
+        subTitle: "Intelihensiya sa Baybayon — LGU Aklan",
+        layerStreets: "Mga Dalan",
+        layerSatellite: "Satélite",
+        layerHybrid: "Pagsagol",
+        searchPlaceholder: "Mag-sapsap it sakayan, rehiyon, coordinates...",
+        userName: "Kalibo, Aklan<br>Tagadumala sa LGU",
+        railLayers: "Mga Han-ay",
+        railPan: "I-duhol",
+        railPin: "Tandaan",
+        railMeasure: "Sukdon",
+        railBuoys: "MGA BUOYS",
+        railEmergency: "EMERHENSIYA",
+        railAdvisories: "Mga Pasidaan",
+        lblIncidents: "Ulat it Insidente",
+        lblBuoyStations: "Estasyon it Buoy",
+        lblUserPins: "Mga Tanda sang Tawo",
+        lblCoverage: "Rehiyon sang Sakop it Buoy",
+        lblMesh: "Network sa Mesh",
+        btnExport: "I-export ang Datos",
+        btnCenterAklan: "I-sentro sa Aklan",
+        measureHint: "I-klick ang mapa para magdugang it punto. Double-click para matapos.",
+        btnFinish: "Tapuson",
+        btnClear: "Panason",
+        hdrBuoyMonitor: "Kauswagan sang Buoy",
+        hdrAdvisories: "Mga Pasidaan sa Baybayon",
+        subAdvisories: "Maghimo ag magdumala sang opisyal nga mga pasidaan sang gobyerno.",
+        btnCreateAdv: "Maghimo it Pasidaan",
+        filterAll: "Tanan",
+        filterInCoverage: "Yara sa Sakop",
+        filterOutOfCoverage: "Gwa sa Sakop",
+        filterOverdue: "Lampas sa Oras",
+        wcTitle: "Kasamtangan nga Panahon",
+        hdrSeaStatus: "Sitwasyon sa Baybayon",
+        btnSeaSafe: "Ewas nga Maglayag",
+        btnSeaCaution: "Maghalong — Basaha ang Pasidaan",
+        btnSeaDanger: "Indi Ginarekomendar",
+        lblReason: "Rason (opsyonal)",
+        phReason: "hal. Pasidaan sa gamay nga sakayan...",
+        btnSetStatus: "I-set ang Sitwasyon",
+        hdrForecast: "Pasidaan sa 7-Ka Adlaw",
+        stubForecast: "Maga-abot pa ang datos sa panahon",
+        hdrRainfall: "Oras sang Ulan",
+        stubRainfall: "Maga-abot pa ang datos sang ulan",
+        emTitle: "Mga Kontaktuhon sa Emerhensiya",
+        emSubtitle: "Mabilis nga pagkuha para sa mga tagatubag sang MDRRMO",
+      }
+    };
+
+    function applyLanguage(lang) {
+      if (lang !== 'akl') lang = 'en';
+      localStorage.setItem('aqone_lang', lang);
+      var dict = DASHBOARD_TRANSLATIONS[lang];
+
+      var btnEn = document.getElementById('dash-lang-en');
+      var btnAkl = document.getElementById('dash-lang-akl');
+      if (btnEn && btnAkl) {
+        if (lang === 'akl') {
+          btnEn.classList.remove('active');
+          btnAkl.classList.add('active');
+        } else {
+          btnAkl.classList.remove('active');
+          btnEn.classList.add('active');
+        }
+      }
+
+      var setText = function (selector, key) {
+        var el = document.querySelector(selector);
+        if (el && dict[key]) el.innerHTML = dict[key];
+      };
+
+      setText('.top-subtitle', 'subTitle');
+      setText('[data-layer="streets"] span', 'layerStreets');
+      setText('[data-layer="satellite"] span', 'layerSatellite');
+      setText('[data-layer="hybrid"] span', 'layerHybrid');
+
+      var searchInput = document.querySelector('.search-input');
+      if (searchInput && dict.searchPlaceholder) searchInput.placeholder = dict.searchPlaceholder;
+
+      setText('.user-name', 'userName');
+      setText('#rail-btn-layers .rail-label', 'railLayers');
+      setText('#rail-btn-pan .rail-label', 'railPan');
+      setText('#rail-btn-pin .rail-label', 'railPin');
+      setText('#rail-btn-measure .rail-label', 'railMeasure');
+      setText('#rail-btn-buoy .rail-label', 'railBuoys');
+      setText('#btn-emergency .rail-label', 'railEmergency');
+      setText('#rail-btn-advisories .rail-label', 'railAdvisories');
+
+      setText('#toggle-incidents + .toggle-label', 'lblIncidents');
+      setText('#toggle-buoys + .toggle-label', 'lblBuoyStations');
+      setText('#toggle-pins + .toggle-label', 'lblUserPins');
+      setText('#toggle-coverage + .toggle-label', 'lblCoverage');
+      setText('#toggle-mesh + .toggle-label', 'lblMesh');
+
+      setText('#btn-export', 'btnExport');
+      setText('#btn-center-aklan', 'btnCenterAklan');
+      setText('.measure-hint', 'measureHint');
+      setText('#btn-measure-finish', 'btnFinish');
+      setText('#btn-measure-clear', 'btnClear');
+
+      setText('.buoy-drawer-title', 'hdrBuoyMonitor');
+      setText('.advisory-drawer-title', 'hdrAdvisories');
+      setText('.advisory-drawer-desc', 'subAdvisories');
+      setText('#btn-create-advisory', 'btnCreateAdv');
+
+      setText('.vessel-filter[data-filter="all"]', 'filterAll');
+      setText('.vessel-filter[data-filter="in-coverage"]', 'filterInCoverage');
+      setText('.vessel-filter[data-filter="out-of-coverage"]', 'filterOutOfCoverage');
+      setText('.vessel-filter[data-filter="overdue"]', 'filterOverdue');
+
+      setText('.wc-title', 'wcTitle');
+      setText('#sea-condition-card .panel-card-header span', 'hdrSeaStatus');
+      setText('.sea-condition-btn.btn-safe', 'btnSeaSafe');
+      setText('.sea-condition-btn.btn-caution', 'btnSeaCaution');
+      setText('.sea-condition-btn.btn-danger', 'btnSeaDanger');
+      setText('label[for="sea-condition-reason"]', 'lblReason');
+      var seaInput = document.getElementById('sea-condition-reason');
+      if (seaInput && dict.phReason) seaInput.placeholder = dict.phReason;
+      setText('#sea-condition-set-btn', 'btnSetStatus');
+
+      setText('#forecast-card .panel-card-header span', 'hdrForecast');
+      setText('#forecast-body .panel-stub-text', 'stubForecast');
+      setText('#rainfall-card .panel-card-header span', 'hdrRainfall');
+      setText('#rainfall-body .panel-stub-text', 'stubRainfall');
+      setText('.emergency-modal-title', 'emTitle');
+      setText('.emergency-modal-subtitle', 'emSubtitle');
+    }
+
+    var btnEn = document.getElementById('dash-lang-en');
+    var btnAkl = document.getElementById('dash-lang-akl');
+    if (btnEn) btnEn.addEventListener('click', function () { applyLanguage('en'); });
+    if (btnAkl) btnAkl.addEventListener('click', function () { applyLanguage('akl'); });
+
+    var prefLangSelect = document.getElementById('pref-lang-select');
+    if (prefLangSelect) {
+      prefLangSelect.addEventListener('change', function (e) {
+        applyLanguage(e.target.value);
+      });
+    }
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'aqone_lang') applyLanguage(e.newValue);
+    });
+
+    var savedLang = localStorage.getItem('aqone_lang') || 'en';
+    applyLanguage(savedLang);
   })();
 
   // ===== PROFILE PAGE: TABS, SAVE HANDLERS, LOGOUT (from profile.html) =====
@@ -2355,7 +2805,8 @@
 
   // ===== WEATHER =====
   var wcBody = document.getElementById('wc-body');
-  const WConditions_INTERVAL_MS = 600000;
+  const WConditions_INTERVAL_MS = 300000;
+  const WEATHER_CACHE_KEY = 'aqone-live-weather-new-washington-v2';
 
   var SAFETY_THRESHOLDS = {
     safe:     { windMax: 20, waveMax: 1.0 },
@@ -2364,10 +2815,10 @@
   };
 
   var SAFETY_TIERS = {
-    safe:     { label: 'SAFE TO SAIL',         cls: 'wc-safety-safe',     color: '#2ecc71' },
-    caution:  { label: 'CAUTION',               cls: 'wc-safety-caution',  color: '#f1c40f' },
-    advisory: { label: 'SMALL CRAFT ADVISORY',  cls: 'wc-safety-advisory', color: '#e67e22' },
-    danger:   { label: 'DO NOT SAIL',           cls: 'wc-safety-danger',   color: '#e74c3c' },
+    safe:     { label: 'MODEL: LOWER RISK',          cls: 'wc-safety-safe',     color: '#2ecc71' },
+    caution:  { label: 'MODEL: CAUTION',             cls: 'wc-safety-caution',  color: '#f1c40f' },
+    advisory: { label: 'MODEL: SMALL CRAFT CAUTION', cls: 'wc-safety-advisory', color: '#e67e22' },
+    danger:   { label: 'MODEL: HIGH MARINE RISK',    cls: 'wc-safety-danger',   color: '#e74c3c' },
     unknown:  { label: 'CONDITIONS UNKNOWN',     cls: 'wc-safety-unknown',  color: '#7f8c8d' }
   };
 
@@ -2449,42 +2900,64 @@
     '</div>';
   }
 
-  function renderWeatherCard(data, waveM) {
-    var code = data.current.weather_code;
+  function renderWeatherCard(data, marineData, meta) {
+    var current = data.current || {};
+    var marineCurrent = marineData && marineData.current ? marineData.current : {};
+    var code = current.weather_code;
     var icon = wmoIcon(code);
-    var temp = Math.round(data.current.temperature_2m);
-    var windKmh = data.current.wind_speed_10m;
-    var windDir = degToCompass(data.current.wind_direction_10m || 0);
+    var temp = Math.round(current.temperature_2m);
+    var feelsLike = Math.round(current.apparent_temperature);
+    var windKmh = Number(current.wind_speed_10m);
+    var gustKmh = Number(current.wind_gusts_10m);
+    var windDir = degToCompass(current.wind_direction_10m || 0);
+    var waveM = Number.isFinite(Number(marineCurrent.wave_height)) ? Number(marineCurrent.wave_height) : null;
+    var wavePeriod = Number.isFinite(Number(marineCurrent.wave_period)) ? Number(marineCurrent.wave_period) : null;
+    var pressure = Number.isFinite(Number(current.pressure_msl)) ? Number(current.pressure_msl) : null;
+    var seaLevel = Number.isFinite(Number(marineCurrent.sea_level_height_msl)) ? Number(marineCurrent.sea_level_height_msl) : null;
     var condText = WMO_MAP[code] ? WMO_MAP[code].label : 'Unknown';
-
-    var safety = classifySafety(windKmh, waveM);
+    var safety = classifySafety(Math.max(windKmh || 0, gustKmh || 0), waveM);
+    var monitorAlerts = meta && Array.isArray(meta.alerts) ? meta.alerts : [];
+    var stale = Boolean(meta && meta.stale);
+    var monitorClass = monitorAlerts.length ? 'wc-monitor-danger' : stale ? 'wc-monitor-stale' : 'wc-monitor-safe';
+    var monitorText = monitorAlerts.length ?
+      monitorAlerts.length + ' incoming severe-weather risk' + (monitorAlerts.length === 1 ? '' : 's') + ' detected' :
+      stale ? 'Live monitor paused \u00b7 showing last-known conditions' : '72-hour monitor \u00b7 no severe thresholds detected';
+    var observedAt = current.time ? new Date(current.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
 
     wcBody.innerHTML =
       safetyBadgeHTML(safety) +
+      '<div class="wc-live-strip"><span class="wc-live-dot ' + (stale ? 'is-stale' : '') + '"></span>' +
+        (stale ? 'LAST KNOWN' : 'LIVE MODEL') + ' \u00b7 Updated ' + observedAt + '</div>' +
       '<div class="wc-main">' +
         '<div class="wc-icon ' + icon.cls + '">' + icon.svg + '</div>' +
         '<div class="wc-temp-group">' +
           '<div class="wc-temp">' + temp + '&deg;C</div>' +
-          '<div class="wc-condition">' + condText + '</div>' +
+          '<div class="wc-condition">' + condText + ' \u00b7 Feels ' + feelsLike + '&deg;</div>' +
         '</div>' +
       '</div>' +
       '<div class="wc-details">' +
         '<div class="wc-detail">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>' +
-          '<span class="wc-detail-val">' + windKmh + ' km/h</span>' +
-          '<span>' + windDir + '</span>' +
+          '<span>Wind</span><span class="wc-detail-val">' + windKmh.toFixed(1) + ' / ' + gustKmh.toFixed(1) + ' km/h ' + windDir + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c1.5-2 3.5-3 5.5-3s4 1 5.5 3 3.5 3 5.5 3 4-1 5.5-3"/></svg>' +
-          '<span class="wc-detail-val">' + (waveM !== null ? waveM.toFixed(1) + ' m' : '\u2014') + '</span>' +
-          '<span>Waves</span>' +
+          '<span>Waves</span><span class="wc-detail-val">' + (waveM !== null ? waveM.toFixed(2) + ' m / ' + wavePeriod.toFixed(1) + ' s' : '\u2014') + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>' +
-          '<span class="wc-detail-val">' + data.current.relative_humidity_2m + '%</span>' +
-          '<span>Humidity</span>' +
+          '<span>Humidity</span><span class="wc-detail-val">' + current.relative_humidity_2m + '%</span>' +
         '</div>' +
-      '</div>';
+        '<div class="wc-detail">' +
+          '<span>Pressure</span><span class="wc-detail-val">' + (pressure !== null ? pressure.toFixed(0) + ' hPa' : '\u2014') + '</span>' +
+        '</div>' +
+        '<div class="wc-detail">' +
+          '<span>Sea level</span><span class="wc-detail-val">' + (seaLevel !== null ? seaLevel.toFixed(2) + ' m MSL' : '\u2014') + '</span>' +
+        '</div>' +
+        '<div class="wc-detail">' +
+          '<span>Rain now</span><span class="wc-detail-val">' + Number(current.precipitation || 0).toFixed(1) + ' mm</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="wc-forecast-monitor ' + monitorClass + '">' + monitorText + '</div>' +
+      '<div class="wc-source-row"><span>Open-Meteo weather + marine</span>' +
+        '<a href="https://www.pagasa.dost.gov.ph/tropical-cyclone/severe-weather-bulletin" target="_blank" rel="noopener">Verify PAGASA</a></div>';
   }
 
   function renderForecast(daily) {
@@ -2533,39 +3006,168 @@
     body.innerHTML = html;
   }
 
-  function fetchWeatherData() {
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude=11.65159&longitude=122.43286' +
-      '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m' +
-      '&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&forecast_days=7&timezone=auto';
-    var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=11.65159&longitude=122.43286' +
-      '&current=wave_height&timezone=auto';
+  function fetchLiveJson(url) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 25000);
+    return fetch(url, { signal: controller.signal })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .finally(function () { clearTimeout(timeout); });
+  }
 
-    Promise.all([
-      fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch(marineUrl).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function () { return null; })
-    ])
-    .then(function (results) {
-      var weatherData = results[0];
-      var marineData  = results[1];
-      var waveM = null;
-      if (marineData && marineData.current && typeof marineData.current.wave_height === 'number') {
-        waveM = marineData.current.wave_height;
+  function readWeatherCache() {
+    try {
+      var cached = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY));
+      return cached && cached.weather ? cached : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeWeatherCache(snapshot) {
+    try {
+      localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+      console.warn('[AqOne] Could not cache live weather conditions');
+    }
+  }
+
+  function forecastTimeLabel(value) {
+    var time = new Date(value);
+    return time.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function buildForecastAlerts(weatherData, marineData) {
+    var weather = weatherData.hourly || {};
+    var marine = marineData && marineData.hourly ? marineData.hourly : {};
+    var marineIndexes = {};
+    (marine.time || []).forEach(function (time, index) { marineIndexes[time] = index; });
+    var stormCandidate = null;
+    var surgeCandidate = null;
+
+    (weather.time || []).slice(0, 72).some(function (time, index) {
+      var gust = Number(weather.wind_gusts_10m[index] || 0);
+      var wind = Number(weather.wind_speed_10m[index] || 0);
+      var direction = Number(weather.wind_direction_10m[index] || 0);
+      var rain = Number(weather.precipitation[index] || 0);
+      var pressure = Number(weather.pressure_msl[index] || 1013);
+      var code = Number(weather.weather_code[index] || 0);
+      var marineIndex = marineIndexes[time];
+      var wave = marineIndex == null ? 0 : Number(marine.wave_height[marineIndex] || 0);
+      var seaLevel = marineIndex == null ? 0 : Number(marine.sea_level_height_msl[marineIndex] || 0);
+      var invertedBarometer = marineIndex == null ? 0 : Number(marine.invert_barometer_height[marineIndex] || 0);
+      var onshoreWind = direction >= 315 || direction <= 90;
+
+      if (!stormCandidate && (gust >= 89 || (gust >= 63 && pressure <= 1000) || (code >= 95 && gust >= 40))) {
+        stormCandidate = { time: time, gust: gust, wind: wind, rain: rain, pressure: pressure, code: code };
       }
-      renderWeatherCard(weatherData, waveM);
-      if (weatherData.daily) {
-        renderForecast(weatherData.daily);
-        renderRainfall(weatherData.daily);
+      if (!surgeCandidate && onshoreWind && wave >= 1.8 && gust >= 40 &&
+          (seaLevel >= 0.55 || invertedBarometer >= 0.12 || pressure <= 1000)) {
+        surgeCandidate = { time: time, gust: gust, wave: wave, seaLevel: seaLevel, pressure: pressure };
       }
-    })
-    .catch(function () {
-      wcBody.innerHTML = '<div class="wc-error">Weather data unavailable</div>';
-      document.getElementById('forecast-body').innerHTML = '<p class="panel-stub-text">Forecast data unavailable</p>';
-      document.getElementById('rainfall-body').innerHTML = '<p class="panel-stub-text">Rainfall data unavailable</p>';
+      return Boolean(stormCandidate && surgeCandidate);
     });
+
+    var alerts = [];
+    if (stormCandidate) {
+      alerts.push({
+        type: 'forecast-storm',
+        desc: 'Forecast model flag: possible incoming tropical-cyclone or severe-storm conditions. Gusts ' +
+          stormCandidate.gust.toFixed(0) + ' km/h, pressure ' + stormCandidate.pressure.toFixed(0) +
+          ' hPa. Verify the latest PAGASA bulletin.',
+        time: 'Forecast ' + forecastTimeLabel(stormCandidate.time),
+        lat: 11.6845,
+        lng: 122.4475,
+        status: 'active',
+        vesselId: null,
+        source: 'forecast-monitor'
+      });
+    }
+    if (surgeCandidate) {
+      alerts.push({
+        type: 'storm-surge',
+        desc: 'Forecast model flag: possible storm-surge risk near New Washington. Sea level ' +
+          surgeCandidate.seaLevel.toFixed(2) + ' m MSL, waves ' + surgeCandidate.wave.toFixed(1) +
+          ' m, gusts ' + surgeCandidate.gust.toFixed(0) + ' km/h. Verify PAGASA storm-surge warnings.',
+        time: 'Forecast ' + forecastTimeLabel(surgeCandidate.time),
+        lat: 11.6845,
+        lng: 122.4475,
+        status: 'active',
+        vesselId: null,
+        source: 'forecast-monitor'
+      });
+    }
+    return alerts;
+  }
+
+  function replaceForecastAlerts(forecastAlerts) {
+    for (var index = alertData.length - 1; index >= 0; index--) {
+      if (alertData[index].source === 'forecast-monitor') alertData.splice(index, 1);
+    }
+    for (var alertIndex = forecastAlerts.length - 1; alertIndex >= 0; alertIndex--) {
+      alertData.unshift(forecastAlerts[alertIndex]);
+    }
+    syncAlertIndicators();
+
+    var signature = forecastAlerts.map(function (alert) { return alert.type + ':' + alert.time; }).join('|');
+    var previousSignature = localStorage.getItem('aqone-forecast-alert-signature') || '';
+    if (signature && signature !== previousSignature && typeof showToast === 'function') {
+      showToast('Proactive Weather Alert', forecastAlerts[0].desc, true);
+    }
+    localStorage.setItem('aqone-forecast-alert-signature', signature);
+  }
+
+  function displayWeatherSnapshot(snapshot, stale, alerts) {
+    renderWeatherCard(snapshot.weather, snapshot.marine, { stale: stale, alerts: alerts || [] });
+    if (snapshot.weather.daily) {
+      renderForecast(snapshot.weather.daily);
+      renderRainfall(snapshot.weather.daily);
+    }
+  }
+
+  function fetchWeatherData() {
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=11.6845&longitude=122.4475' +
+      '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+      '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,weather_code,pressure_msl' +
+      '&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&forecast_days=7&forecast_hours=72&timezone=Asia%2FManila';
+    var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=11.6845&longitude=122.4475' +
+      '&current=wave_height,wave_period,sea_level_height_msl' +
+      '&hourly=wave_height,wave_period,sea_level_height_msl,invert_barometer_height&forecast_hours=72&timezone=Asia%2FManila';
+
+    Promise.allSettled([fetchLiveJson(url), fetchLiveJson(marineUrl)])
+      .then(function (results) {
+        if (results[0].status !== 'fulfilled') throw results[0].reason;
+        var snapshot = {
+          weather: results[0].value,
+          marine: results[1].status === 'fulfilled' ? results[1].value : null,
+          fetchedAt: new Date().toISOString()
+        };
+        var forecastAlerts = buildForecastAlerts(snapshot.weather, snapshot.marine);
+        writeWeatherCache(snapshot);
+        replaceForecastAlerts(forecastAlerts);
+        displayWeatherSnapshot(snapshot, false, forecastAlerts);
+      })
+      .catch(function (error) {
+        var cached = readWeatherCache();
+        if (cached) {
+          var existingAlerts = alertData.filter(function (alert) { return alert.source === 'forecast-monitor'; });
+          displayWeatherSnapshot(cached, true, existingAlerts);
+        } else {
+          wcBody.innerHTML = '<div class="wc-error">Live weather unavailable. Check connection and PAGASA advisories.</div>';
+          document.getElementById('forecast-body').innerHTML = '<p class="panel-stub-text">Forecast data unavailable</p>';
+          document.getElementById('rainfall-body').innerHTML = '<p class="panel-stub-text">Rainfall data unavailable</p>';
+        }
+        console.warn('[AqOne] Live weather monitor unavailable:', error.message);
+      });
   }
 
   fetchWeatherData();
   setInterval(fetchWeatherData, WConditions_INTERVAL_MS);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) fetchWeatherData();
+  });
 
   // ===== EMERGENCY CONTACTS MODAL =====
   const emergencyOverlay = document.getElementById('emergency-modal-overlay');
