@@ -8,6 +8,7 @@ from datetime import timedelta
 
 import asyncpg
 
+from app.ai.eval_store import write_section
 from app.ai.trip_profile import ContactPoint, build_profiles_from_contacts, score_trip
 
 
@@ -91,6 +92,15 @@ async def main() -> None:
     false_alarm_rate = 0.0 if normal_trips == 0 else false_alarms / normal_trips
     print(f'median_detection_latency_minutes: {median_latency:.1f}')
     print(f'false_alarm_rate: {false_alarm_rate:.3%}')
+    write_section(
+        'trip_anomaly',
+        {
+            'median_detection_latency_minutes': median_latency,
+            'false_alarm_rate': false_alarm_rate,
+            'incidents_detected': len(latencies),
+            'normal_trips_evaluated': normal_trips,
+        },
+    )
     if factor_example is not None:
         print('factor_breakdown_example:')
         print(json.dumps(factor_example.to_response()['factors'], indent=2))

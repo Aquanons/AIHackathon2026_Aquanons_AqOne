@@ -1,6 +1,7 @@
 import os
 
 import asyncpg
+from fastapi import HTTPException
 
 _pool: asyncpg.Pool | None = None
 
@@ -30,6 +31,14 @@ async def shutdown_db() -> None:
 
 
 def get_pool() -> asyncpg.Pool:
+    """Return the connection pool, or signal that the service is not ready.
+
+    Raising HTTPException(503) rather than RuntimeError matters during a
+    redeploy: the app boots before Postgres is reachable, and an unhandled
+    RuntimeError would turn every API call into a 500 with a stack trace. A 503
+    is the honest answer - the service is up but its database is not - and the
+    dashboard's error handling renders empty states for it instead of breaking.
+    """
     if _pool is None:
-        raise RuntimeError('database pool is not initialized')
+        raise HTTPException(status_code=503, detail='database not ready')
     return _pool

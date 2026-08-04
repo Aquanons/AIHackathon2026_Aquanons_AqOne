@@ -5,6 +5,7 @@ import os
 
 import asyncpg
 
+from app.ai.eval_store import write_section
 from app.ai.squall import build_buoys, save_bundle, train_from_rows
 
 
@@ -63,6 +64,15 @@ async def main() -> None:
     print(f"recall: {metrics['recall']:.3f}")
     print(f"mean_lead_time: {metrics['mean_lead_time']:.3f}")
     print(f'top_features: {bundle.top_features}')
+    write_section(
+        'squall',
+        {
+            'precision': metrics['precision'],
+            'recall': metrics['recall'],
+            'mean_lead_time_minutes': metrics['mean_lead_time'],
+            'top_features': bundle.top_features,
+        },
+    )
 
 
 if __name__ == '__main__':

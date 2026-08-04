@@ -398,6 +398,11 @@
               <button class="vessel-filter" data-filter="out-of-coverage">Out of Coverage</button>
               <button class="vessel-filter" data-filter="overdue">Overdue</button>
             </div>
+            <div class="ai-risk-header">
+              <span class="ai-risk-title">Vessel risk feed</span>
+              <span class="tab-badge badge-red" id="ai-risk-count">0</span>
+            </div>
+            <div class="ai-risk-list" id="ai-risk-list"></div>
             <div class="vessel-list" id="vessel-list"></div>
           </div>
 
@@ -420,7 +425,9 @@
           <span class="squall-status" id="squall-status">MONITORING</span>
         </div>
         <div class="panel-card-body" id="squall-body">
-          <div class="squall-loading">Reading buoy pressure field...</div>
+          <div class="ai-squall-summary" id="ai-squall-summary"></div>
+          <div class="ai-trace-chart" id="ai-trace-chart"></div>
+          <div class="ai-trace-legend" id="ai-trace-legend"></div>
         </div>
       </div>
 
@@ -431,7 +438,8 @@
           <span>Drift &amp; Search Allocation</span>
         </div>
         <div class="panel-card-body" id="drift-body">
-          <div class="drift-loading">Computing drift probability field...</div>
+          <select id="ai-drift-select" class="ai-drift-select"></select>
+          <div id="ai-drift-meta" class="ai-meta-line"></div>
         </div>
       </div>
 
@@ -750,7 +758,6 @@
               <option value="Weather Advisory">Weather Advisory</option>
               <option value="Squall Warning">Squall Warning</option>
               <option value="Small Craft Advisory">Small Craft Advisory</option>
-              <option value="BFAR Notice">BFAR Notice</option>
               <option value="Emergency">Emergency</option>
               <option value="Community Notice">Community Notice</option>
               <option value="Training">Training</option>

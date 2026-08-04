@@ -13,6 +13,7 @@ from app.ai.drift import (
     max_radius_m,
     predict_drift,
 )
+from app.ai.eval_store import write_section
 
 
 def _incident_class(abnormal_reason: str) -> ObjectClass:
@@ -83,6 +84,15 @@ async def main() -> None:
     print(f'containment_rate: {containment_rate:.3%}')
     print(f'search_area_reduction_factor: {reduction_factor:.2f}x')
     print(f'prediction_runtime_ms: {runtime_ms:.3f}')
+    write_section(
+        'drift',
+        {
+            'containment_rate': containment_rate,
+            'search_area_reduction_factor': reduction_factor,
+            'prediction_runtime_ms': runtime_ms,
+            'incidents_evaluated': len(incidents),
+        },
+    )
 
 
 def _area_reduction_factor(prediction, last_lat: float, last_lon: float) -> float:

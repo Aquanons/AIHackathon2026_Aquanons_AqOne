@@ -3808,42 +3808,7 @@ h3.buoy-drawer-title {
   margin-top: 2px;
 }
 
-.bfar-protected-circle { transition: all 0.5s ease; }
 
-/* ══════════════════════════════════════════════════════════════
-   AI FISH HOTSPOT PREDICTION
-   ══════════════════════════════════════════════════════════════ */
-.hotspot-circle { animation: hotspot-fade-in 0.6s ease forwards; }
-
-@keyframes hotspot-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.hotspot-tooltip {
-  background: rgba(26, 42, 58, 0.95) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 8px !important;
-  padding: 8px 12px !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
-  font-family: inherit !important;
-}
-
-.hotspot-tooltip .leaflet-tooltip-content { font-family: inherit !important; }
-
-.hotspot-tip { text-align: center; }
-
-.hotspot-tip-pct {
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.hotspot-tip-label {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
-  white-space: nowrap;
-}
 
 /* ══════════════════════════════════════════════════════════════
    ZONES TAB

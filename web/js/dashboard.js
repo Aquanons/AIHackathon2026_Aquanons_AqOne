@@ -85,34 +85,6 @@
     [11.75, 121.88], [11.85, 121.87], [11.97, 121.87]
   ];
 
-  // Squall nowcasting state (from buoy barometer array)
-  const squallData = {
-    state: 'return-now', // 'monitoring' | 'watch' | 'return-now'
-    detectingBuoys: ['Buoy Bravo', 'Buoy Charlie'],
-    pressureDrop: '3.1 hPa / 30 min',
-    leadTimeMin: 45,
-    onset: 'est. 14:20',
-    propagation: 'SW 18 km/h',
-    confidence: 88,
-    note: 'Localized convective squall developing across northern approach — every phone in contact range gets a RETURN NOW alert; buoys flash physically.'
-  };
-
-  // Drift prediction / Bayesian search allocation state
-  const driftData = {
-    active: true,
-    vesselId: 'V-002',
-    vesselName: 'San Pedro',
-    lkp: 'Buoy-B, 09:40, heading NW',
-    elapsedMin: 47,
-    lkpLat: 11.7823, lkpLng: 122.1234,
-    searchArea: { h1: '12.4 km²', h6: '68 km²', h24: '210 km²' },
-    sectorsTotal: 6,
-    sectorsSearched: 2,
-    currentField: '0.6 m/s SW (buoy-derived)',
-    survivability: 'High — sea temp 29°C, light sea state',
-    note: 'Probability density propagated from last-contact position; PCG sectors re-tasked as negatives are reported.'
-  };
-
   // ===== MAP INIT =====
   const map = L.map('map', {
     center: OPS_CENTER,
@@ -317,112 +289,6 @@
     dotIdx = (dotIdx + 1) % meshPath.length;
     meshDot.setLatLng(meshPath[dotIdx]);
   }, 60);
-
-  // ===== SQUALL NOWCAST WATCH =====
-  function renderSquallLayer() {
-    squallLayer.clearLayers();
-    var activeBuoys = initialBuoys.filter(function (b) { return squallData.detectingBuoys.indexOf(b.name) !== -1; });
-    activeBuoys.forEach(function (b) {
-      if (b.lat === undefined) return;
-      var circle = L.circle([b.lat, b.lng], {
-        radius: 5000,
-        color: '#e67e22',
-        fillColor: '#e67e22',
-        fillOpacity: squallData.state === 'return-now' ? 0.25 : 0.12,
-        weight: 2,
-        opacity: 0.8,
-        dashArray: '6 6',
-        className: 'squall-watch-circle'
-      });
-      squallLayer.addLayer(circle);
-    });
-
-    var centroid = activeBuoys.length
-      ? activeBuoys.reduce(function (acc, b) { acc[0] += b.lat; acc[1] += b.lng; return acc; }, [0, 0])
-      : null;
-    if (centroid && activeBuoys.length) {
-      centroid[0] /= activeBuoys.length;
-      centroid[1] /= activeBuoys.length;
-      var warning = L.polygon([
-        [centroid[0] - 0.06, centroid[1] - 0.09],
-        [centroid[0] - 0.06, centroid[1] + 0.09],
-        [centroid[0] + 0.10, centroid[1] + 0.06],
-        [centroid[0] + 0.10, centroid[1] - 0.06]
-      ], {
-        color: squallData.state === 'return-now' ? '#e74c3c' : '#e67e22',
-        weight: 2.5,
-        fillColor: squallData.state === 'return-now' ? '#e74c3c' : '#e67e22',
-        fillOpacity: 0.15,
-        className: 'squall-watch-poly'
-      });
-      var labelText = squallData.state === 'return-now'
-        ? 'RETURN NOW — squall onset ' + squallData.onset
-        : 'Squall watch — ' + squallData.detectingBuoys.length + ' buoys detecting pressure drop';
-      warning.bindTooltip(labelText, { permanent: true, direction: 'center', className: 'squall-tooltip' });
-      squallLayer.addLayer(warning);
-    }
-  }
-
-  // ===== DRIFT PROBABILITY FIELD =====
-  function renderDriftLayer() {
-    driftLayer.clearLayers();
-    if (!driftData.active) return;
-    var c = [driftData.lkpLat, driftData.lkpLng];
-    var contours = [
-      { r: 2500,  opacity: 0.30, weight: 2.5 },
-      { r: 5000,  opacity: 0.20, weight: 2 },
-      { r: 8000,  opacity: 0.12, weight: 1.5 },
-      { r: 12000, opacity: 0.06, weight: 1 }
-    ];
-    contours.forEach(function (ct) {
-      var circle = L.circle(c, {
-        radius: ct.r,
-        color: '#e74c3c',
-        fillColor: '#e74c3c',
-        fillOpacity: ct.opacity,
-        weight: ct.weight,
-        opacity: 0.7,
-        className: 'drift-contour'
-      });
-      driftLayer.addLayer(circle);
-    });
-
-    // drift direction arrow (SW current + wind leeway)
-    var dir = { lat: -0.045, lng: -0.06 };
-    var arrowEnd = [c[0] + dir.lat, c[1] + dir.lng];
-    var arrow = L.polyline([c, arrowEnd], {
-      color: '#f1c40f',
-      weight: 2.5,
-      opacity: 0.9
-    });
-    driftLayer.addLayer(arrow);
-
-    // Bayesian search sectors
-    var sectors = [
-      { center: [c[0] + dir.lat * 0.5, c[1] + dir.lng * 0.5], searched: true,  color: '#2ecc71' },
-      { center: [c[0] + dir.lat * 0.8, c[1] + dir.lng * 0.8], searched: false, color: '#f1c40f' },
-      { center: [c[0] + dir.lat * 0.3, c[1] + dir.lng * 1.2], searched: false, color: '#f1c40f' }
-    ];
-    sectors.forEach(function (s, i) {
-      var poly = L.polygon([
-        [s.center[0] - 0.025, s.center[1] - 0.035],
-        [s.center[0] - 0.025, s.center[1] + 0.035],
-        [s.center[0] + 0.035, s.center[1] + 0.03],
-        [s.center[0] + 0.035, s.center[1] - 0.03]
-      ], {
-        color: s.color,
-        weight: 2,
-        fillColor: s.color,
-        fillOpacity: s.searched ? 0.12 : 0.06,
-        dashArray: s.searched ? null : '4 4'
-      });
-      poly.bindTooltip(s.searched ? 'Sector ' + (i + 1) + ' — searched, negative' : 'Sector ' + (i + 1) + ' — next highest probability mass', { direction: 'center', className: 'drift-tooltip' });
-      driftLayer.addLayer(poly);
-    });
-
-    var lkp = L.marker(c, { icon: createOverdueIcon() });
-    driftLayer.addLayer(lkp);
-  }
 
   // ===== INCIDENT MARKERS =====
   const incidentDrawerData = [
@@ -1205,34 +1071,127 @@
   if (liveBanner) liveBanner.classList.toggle('has-alerts', activeAlertCount > 0);
 
   const squallCountEl = document.getElementById('banner-squall-count');
-  if (squallCountEl) squallCountEl.textContent = squallData.state === 'return-now' ? 1 : 0;
+  if (squallCountEl) squallCountEl.textContent = 0;
 
   // ===== SAR METRICS TAB =====
-  const sarMetrics = [
-    { label: 'Time from incident to alert', value: '22 min', target: 'Target: tens of minutes (vs hours/overnight today)' },
-    { label: 'Search area \u2014 hour 1', value: '12.4 km\u00B2', target: 'Shrinks as drift model learns local current field' },
-    { label: 'Search area \u2014 hour 6', value: '68 km\u00B2', target: '' },
-    { label: 'Search area \u2014 hour 24', value: '210 km\u00B2', target: '' },
-    { label: 'Survival rate (alerted incidents)', value: '94%', target: '' },
-    { label: 'False alarm rate', value: '6%', target: 'Confidence scoring keeps this low \u2014 PCG trust is non-negotiable' },
-    { label: 'Buoy coverage of municipal waters', value: '68%', target: 'Retrofit existing aids first, then site by trip density' },
-    { label: 'Squall alert lead time', value: '45 min', target: '30\u201390 min window from pressure-field model' },
-    { label: 'Squall alert hit rate', value: '88%', target: '' },
-    { label: 'App adoption (registered fisherfolk)', value: '1,247 / 2,500', target: 'Distributed via BFAR FishR registration' },
-  ];
+  // SAR metrics come from the evaluation scripts via /api/ai/metrics. There is
+  // deliberately no hardcoded fallback: if the evals have not been run, the tab
+  // says so rather than showing numbers nobody has verified.
+  function sarRowsFromResults(results) {
+    const rows = [];
+    const pct = v => (typeof v === 'number' ? (v * 100).toFixed(1) + '%' : '--');
+    const num = (v, digits, unit) =>
+      typeof v === 'number' ? v.toFixed(digits) + (unit || '') : '--';
 
-  function renderSarMetrics() {
+    const drift = results.drift;
+    if (drift) {
+      rows.push({
+        label: 'Drift containment rate (95% contour)',
+        value: pct(drift.containment_rate),
+        target: 'Share of incidents whose true position fell inside the predicted search area'
+      });
+      rows.push({
+        label: 'Search area reduction vs naive baseline',
+        value: num(drift.search_area_reduction_factor, 2, 'x'),
+        target: 'Against a circle expanding at maximum drift speed'
+      });
+      rows.push({
+        label: 'Drift prediction runtime',
+        value: num(drift.prediction_runtime_ms, 0, ' ms'),
+        target: '24-hour forecast, Monte Carlo particle model'
+      });
+      rows.push({
+        label: 'Incidents evaluated',
+        value: drift.incidents_evaluated != null ? String(drift.incidents_evaluated) : '--',
+        target: ''
+      });
+    }
+
+    const anomaly = results.trip_anomaly;
+    if (anomaly) {
+      rows.push({
+        label: 'Median detection latency',
+        value: num(anomaly.median_detection_latency_minutes, 1, ' min'),
+        target: 'From last buoy contact to reaching alert status'
+      });
+      rows.push({
+        label: 'False alarm rate',
+        value: pct(anomaly.false_alarm_rate),
+        target: 'Measured on normal trips \u2014 responder trust is non-negotiable'
+      });
+      rows.push({
+        label: 'Normal trips evaluated',
+        value: anomaly.normal_trips_evaluated != null ? String(anomaly.normal_trips_evaluated) : '--',
+        target: ''
+      });
+    }
+
+    const squall = results.squall;
+    if (squall) {
+      rows.push({
+        label: 'Squall mean lead time',
+        value: num(squall.mean_lead_time_minutes, 1, ' min'),
+        target: 'Warning issued before arrival \u2014 the number that decides whether it helps'
+      });
+      rows.push({ label: 'Squall precision', value: num(squall.precision, 3), target: '' });
+      rows.push({ label: 'Squall recall', value: num(squall.recall, 3), target: '' });
+    }
+
+    return rows;
+  }
+
+  function renderSarEmpty(message) {
     const list = document.getElementById('sar-list');
-    list.innerHTML = sarMetrics.map(m => `
+    if (list) list.innerHTML = '<div class="ai-empty-state">' + _escHtml(message) + '</div>';
+  }
+
+  function renderSarMetrics(results) {
+    const list = document.getElementById('sar-list');
+    if (!list) return;
+    const rows = sarRowsFromResults(results);
+    if (!rows.length) {
+      renderSarEmpty('Evaluation results are present but contain no metrics.');
+      return;
+    }
+    list.innerHTML = rows.map(m => `
       <div class="sar-row">
         <div class="sar-label">${m.label}</div>
         <div class="sar-value">${m.value}</div>
         ${m.target ? `<div class="sar-target">${m.target}</div>` : ''}
       </div>
     `).join('');
+
+    const footer = document.querySelector('.sar-footer');
+    const calibration =
+      (results.drift && results.drift.calibration) ||
+      (results.squall && results.squall.calibration) ||
+      (results.trip_anomaly && results.trip_anomaly.calibration);
+    if (footer && calibration) {
+      footer.textContent =
+        'Measured by the AqOne evaluation scripts. Models are calibrated on ' +
+        calibration + ' observations.';
+    }
   }
 
-  renderSarMetrics();
+  function loadSarMetrics() {
+    renderSarEmpty('Loading evaluation results\u2026');
+    fetch(API_BASE + '/api/ai/metrics', { headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (res.status === 404) throw new Error('not-run');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(renderSarMetrics)
+      .catch(function (err) {
+        renderSarEmpty(
+          err.message === 'not-run'
+            ? 'No evaluation results yet. Run the eval scripts to populate these figures.'
+            : 'Unable to load evaluation results.'
+        );
+      });
+  }
+
+  loadSarMetrics();
   document.getElementById('badge-sar').textContent = incidentDrawerData.filter(function (d) { return d.alertType === 'overdue' || d.alertType === 'squall'; }).length;
 
   // ===== INCIDENT DRAWER (scored alert / escalation ladder) =====
@@ -1602,8 +1561,6 @@
       gateways: shoreStations.length,
       buoys: initialBuoys.length,
       incidents: incidents.length,
-      squall: squallData,
-      drift: { active: driftData.active, lkp: driftData.lkp },
       timestamp: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1647,10 +1604,51 @@
 
   function clearAiDriftLayers() {
     aiContoursLayer.clearLayers();
+    updateAiMapKey();
   }
 
   function clearAiSquallLayers() {
     aiSquallLayer.clearLayers();
+    updateAiMapKey();
+  }
+
+  // The drift map key describes contour and squall-polygon colours. Showing it
+  // while nothing is drawn advertises layers that are not on the map, so it
+  // tracks the actual layer state.
+  function updateAiMapKey() {
+    var key = document.getElementById('ai-map-key');
+    if (!key) return;
+    var hasLayers =
+      (aiContoursLayer && aiContoursLayer.getLayers().length > 0) ||
+      (aiSquallLayer && aiSquallLayer.getLayers().length > 0);
+    key.style.display = hasLayers ? '' : 'none';
+  }
+
+  // Banner count and header badge follow the live squall feed. The cutoff is
+  // the model's own decision threshold, carried in the payload - not a value
+  // invented on the frontend.
+  function updateSquallBanner(detections, threshold) {
+    var rows = Array.isArray(detections) ? detections : [];
+    var cutoff = typeof threshold === 'number' ? threshold : 0;
+    var returnNow = rows.filter(function (row) {
+      return Number(row.probability || 0) >= cutoff;
+    });
+
+    var countEl = document.getElementById('banner-squall-count');
+    if (countEl) countEl.textContent = String(returnNow.length);
+
+    var statusEl = document.getElementById('squall-status');
+    if (!statusEl) return;
+    statusEl.classList.remove('squall-watch', 'squall-return');
+    if (returnNow.length) {
+      statusEl.textContent = 'RETURN NOW';
+      statusEl.classList.add('squall-return');
+    } else if (rows.length) {
+      statusEl.textContent = 'WATCH';
+      statusEl.classList.add('squall-watch');
+    } else {
+      statusEl.textContent = 'MONITORING';
+    }
   }
 
   function renderDriftContours(payload) {
@@ -1725,6 +1723,8 @@
         'Last contact: ' + incidentTime + ' · ' + _escHtml(incident.abnormal_reason || 'unknown') + '<br>' +
         'Track labeled as ground truth for synthetic evaluation.';
     }
+
+    updateAiMapKey();
   }
 
   function renderDriftIncidentList(items) {
@@ -1733,7 +1733,8 @@
     select.innerHTML = '';
     if (!items || !items.length) {
       select.innerHTML = '<option value="">No incidents available</option>';
-      document.getElementById('ai-drift-meta').textContent = 'No drift incidents were returned by the backend.';
+      var emptyMeta = document.getElementById('ai-drift-meta');
+      if (emptyMeta) emptyMeta.textContent = 'No drift incidents were returned by the backend.';
       clearAiDriftLayers();
       return;
     }
@@ -1877,9 +1878,12 @@
     clearAiSquallLayers();
 
     var detections = payload && payload.detections ? payload.detections : [];
+    var threshold = payload && typeof payload.threshold === 'number' ? payload.threshold : undefined;
+    updateSquallBanner(detections, threshold);
     if (!detections.length) {
       summary.innerHTML = '<div class="ai-empty-state">No active squall detections at the moment.</div>';
       renderSquallChart([]);
+      updateAiMapKey();
       return;
     }
 
@@ -1923,6 +1927,7 @@
       '<div class="ai-squall-meta-row"><span>Arrival window</span><strong>' + (arrival.length ? _escHtml(String(arrival[0].arrival_minutes)) + ' min first arrival' : 'n/a') + '</strong></div>';
 
     renderSquallChart(traceSeries);
+    updateAiMapKey();
   }
 
   function loadDriftIncidentDetail(incidentId) {
@@ -2435,89 +2440,6 @@
 
   fetchWeatherData();
   setInterval(fetchWeatherData, WConditions_INTERVAL_MS);
-
-  // ===== SQUALL NOWCAST CARD =====
-  function renderSquallCard() {
-    var statusEl = document.getElementById('squall-status');
-    var bodyEl = document.getElementById('squall-body');
-
-    if (squallData.state === 'return-now') {
-      statusEl.textContent = 'RETURN NOW';
-      statusEl.className = 'squall-status squall-return';
-    } else if (squallData.state === 'watch') {
-      statusEl.textContent = 'WATCH';
-      statusEl.className = 'squall-status squall-watch';
-    } else {
-      statusEl.textContent = 'MONITORING';
-      statusEl.className = 'squall-status squall-moni';
-    }
-
-    var html = '';
-    html += '<div class="squall-hero">' +
-      '<div class="squall-hero-title">Localized convective squall developing</div>' +
-      '<div class="squall-hero-meta">' +
-        '<span><strong>' + squallData.detectingBuoys.length + '</strong> buoys detecting pressure drop</span>' +
-        '<span><strong>' + squallData.leadTimeMin + ' min</strong> lead \u00b7 ' + squallData.onset + '</span>' +
-      '</div>' +
-      '<div class="squall-hero-note">' + squallData.note + '</div>' +
-    '</div>';
-
-    html += '<div class="squall-buoys">';
-    buoyMonitorData.forEach(function (b) {
-      if (b.pressure == null) return;
-      var trend = b.pressureTrend != null ? b.pressureTrend : 0;
-      var trendColor = trend <= -2.5 ? '#e67e22' : (trend >= 1 ? '#22c55e' : '#94a3b8');
-      var arrow = trend > 0 ? '\u2191' : trend < 0 ? '\u2193' : '\u2192';
-      html += '<div class="squall-buoy">' +
-        '<span class="squall-buoy-name">' + b.name + '</span>' +
-        '<span class="squall-pressure">' + b.pressure.toFixed(1) + ' hPa</span>' +
-        '<span class="squall-trend" style="color:' + trendColor + ';">' + arrow + ' ' + (trend > 0 ? '+' : '') + trend.toFixed(1) + '</span>' +
-      '</div>';
-    });
-    html += '</div>';
-
-    html += '<div class="squall-meta">' +
-      '<span>Propagation: ' + squallData.propagation + '</span>' +
-      '<span>Model confidence: <strong style="color:#f1c40f;">' + squallData.confidence + '%</strong></span>' +
-    '</div>';
-    bodyEl.innerHTML = html;
-  }
-  renderSquallCard();
-
-  // ===== DRIFT & SEARCH CARD =====
-  function renderDriftCard() {
-    var bodyEl = document.getElementById('drift-body');
-    if (!driftData.active) {
-      bodyEl.innerHTML = '<p class="panel-stub-text">No active drift scenario</p>';
-      return;
-    }
-    var searchedPct = Math.round((driftData.sectorsSearched / driftData.sectorsTotal) * 100);
-    var html = '';
-    html += '<div class="drift-hero">' +
-      '<div class="drift-hero-title">' + driftData.vesselName + ' (' + driftData.vesselId + ')</div>' +
-      '<div class="drift-hero-meta">' +
-        '<span>LKP: ' + driftData.lkp + '</span>' +
-        '<span>Elapsed: <strong>' + driftData.elapsedMin + ' min</strong></span>' +
-      '</div>' +
-    '</div>';
-
-    html += '<div class="drift-areas">';
-    html += '<div class="drift-area"><span class="drift-area-label">Hr 1</span><span class="drift-area-value">' + driftData.searchArea.h1 + '</span></div>';
-    html += '<div class="drift-area"><span class="drift-area-label">Hr 6</span><span class="drift-area-value">' + driftData.searchArea.h6 + '</span></div>';
-    html += '<div class="drift-area"><span class="drift-area-label">Hr 24</span><span class="drift-area-value">' + driftData.searchArea.h24 + '</span></div>';
-    html += '</div>';
-
-    html += '<div class="drift-row"><span class="drift-label">Sectors searched</span>' +
-      '<span class="drift-value">' + driftData.sectorsSearched + ' / ' + driftData.sectorsTotal + ' (' + searchedPct + '%)</span></div>';
-    html += '<div class="drift-progress"><div class="drift-progress-fill" style="width:' + searchedPct + '%"></div></div>';
-
-    html += '<div class="drift-row"><span class="drift-label">Current field</span><span class="drift-value">' + driftData.currentField + '</span></div>';
-    html += '<div class="drift-row"><span class="drift-label">Survivability</span><span class="drift-value drift-survivability">' + driftData.survivability + '</span></div>';
-    html += '<div class="drift-note">' + driftData.note + '</div>';
-
-    bodyEl.innerHTML = html;
-  }
-  renderDriftCard();
 
   // ===== EMERGENCY CONTACTS MODAL =====
   const emergencyOverlay = document.getElementById('emergency-modal-overlay');
