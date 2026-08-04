@@ -376,13 +376,21 @@
     var n1 = findNode(link[0]);
     var n2 = findNode(link[1]);
     if (!n1 || !n2) return;
+    // The mesh is the product. Drawn at 1.5px and 45% opacity it was
+    // effectively invisible against the basemap, which made a correctly
+    // connected array look like scattered unconnected buoys.
     var line = L.polyline([[n1.lat, n1.lng], [n2.lat, n2.lng]], {
       color: '#22d3ee',
-      weight: 1.5,
-      opacity: 0.45,
-      dashArray: '5 8',
+      weight: 2.5,
+      opacity: 0.85,
+      dashArray: '6 6',
       smoothFactor: 1
     });
+    line.bindTooltip(
+      link[0] + ' ↔ ' + link[1] + ' · ' +
+      (_metresBetween(n1.lat, n1.lng, n2.lat, n2.lng) / 1000).toFixed(1) + ' km LoRa link',
+      { sticky: true, className: 'drift-incident-label' }
+    );
     meshLayer.addLayer(line);
     meshPolylines.push(line);
   });
@@ -2391,11 +2399,18 @@
           };
         },
         onEachFeature: function (feat, lyr) {
-          lyr.bindTooltip(contourLabel, {
-            sticky: true,
-            direction: 'center',
-            className: 'drift-incident-label'
-          });
+          // The incident id is named in the tooltip so a large red polygon can
+          // never be mistaken for a live emergency. These are replayed
+          // synthetic incidents; the map should say so where someone hovers.
+          lyr.bindTooltip(
+            contourLabel +
+            (incident ? ' · replayed incident #' + incident.id + (incident.is_synthetic ? ' (synthetic)' : '') : ''),
+            {
+              sticky: true,
+              direction: 'center',
+              className: 'drift-incident-label'
+            }
+          );
         }
       });
       layer.addTo(aiContoursLayer);
@@ -2502,6 +2517,9 @@
       }
 
       metaEl.innerHTML =
+        (incident.is_synthetic
+          ? '<span class="drift-replay-badge">REPLAY — SYNTHETIC INCIDENT</span><br>'
+          : '') +
         '<strong>Incident #' + incident.id + '</strong> · Vessel ' + _escHtml(incident.vessel_id) + '<br>' +
         'Last contact: ' + incidentTime + ' · ' + _escHtml(incident.abnormal_reason || 'unknown') + '<br>' +
         (bits.length ? bits.join(' · ') + '<br>' : '') +
