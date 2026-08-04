@@ -5,7 +5,12 @@ from fastapi.testclient import TestClient
 from app import db as app_db
 from app.ai.drift import DriftResult
 from app.api import drift as drift_api
+from app.auth import create_token
 from app.main import app
+
+# These routes now require a bearer token; the endpoint behaviour under test
+# is unchanged, so the tests authenticate as a valid operator.
+AUTH = {'Authorization': f"Bearer {create_token(1, 'ops@example.com', 'mdrrmo')}"}
 
 
 class _FakePool:
@@ -73,6 +78,7 @@ def test_predict_endpoint_returns_geojson_polygons(monkeypatch):
     with TestClient(app) as client:
         response = client.post(
             '/api/ai/drift/predict',
+            headers=AUTH,
             json={
                 'last_lat': 11.69,
                 'last_lon': 122.37,
@@ -99,7 +105,7 @@ def test_incidents_endpoint_lists_summaries(monkeypatch):
     monkeypatch.setattr(app_db.asyncpg, 'create_pool', fake_create_pool)
 
     with TestClient(app) as client:
-        response = client.get('/api/ai/drift/incidents')
+        response = client.get('/api/ai/drift/incidents', headers=AUTH)
 
     assert response.status_code == 200
     payload = response.json()

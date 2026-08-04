@@ -50,65 +50,27 @@ async function handleLogin(event) {
     if (result.token) {
       sessionStorage.setItem('aqoneToken', result.token);
     }
-    showMessage(result.message || 'Login successful.');
+    // The dashboard attributes sea-condition entries to the signed-in account
+    // rather than a hardcoded operator name.
+    if (result.user) {
+      sessionStorage.setItem('aqoneUser', JSON.stringify(result.user));
+    }
     window.location.href = 'dashboard.html';
   } catch (error) {
     showMessage(error.message, true);
   }
 }
 
-async function handleSignup(event) {
-  event.preventDefault();
-
-  const fullName = document.getElementById('fullName')?.value.trim() || '';
-  const email = document.getElementById('email')?.value.trim() || '';
-  const position = document.getElementById('position')?.value.trim() || '';
-  const office = document.getElementById('office')?.value.trim() || '';
-  const role = document.getElementById('role')?.value || '';
-  const password = document.getElementById('password')?.value.trim() || '';
-  const consent = document.getElementById('consent')?.checked || false;
-
-  if (!fullName || !email || !position || !office || !role || !password) {
-    showMessage('Please complete every required field before signing up.');
-    return;
-  }
-
-  if (!consent) {
-    showMessage('Please agree to the privacy policy before continuing.');
-    return;
-  }
-
-  try {
-    const result = await postJson('/api/register', {
-      full_name: fullName,
-      email,
-      position,
-      office,
-      role,
-      password,
-      consent
-    });
-
-    sessionStorage.setItem(LAST_EMAIL_KEY, email);
-    showMessage(result.message || 'Account created successfully.');
-    window.location.href = 'login.html';
-  } catch (error) {
-    showMessage(error.message, true);
-  }
-}
+// There is no public sign-up. Dashboard accounts are created by an
+// administrator through html/admin-signup.html, which requires a server-side
+// setup key and is handled by js/admin-signup.js.
 
 function initAuthForms() {
   fillSavedEmail();
 
   const loginForm = document.getElementById('loginForm');
-  const signupForm = document.getElementById('signupForm');
-
   if (loginForm) {
     loginForm.addEventListener('submit', handleLogin);
-  }
-
-  if (signupForm) {
-    signupForm.addEventListener('submit', handleSignup);
   }
 }
 

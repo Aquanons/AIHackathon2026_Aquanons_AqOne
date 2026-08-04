@@ -8,3 +8,6 @@ python-dotenv==1.2.2
 httpx==0.28.1
 scikit-learn==1.9.0
 joblib==1.5.3
+PyJWT>=2.8.0
+bcrypt>=4.0.0
+email-validator>=2.0.0

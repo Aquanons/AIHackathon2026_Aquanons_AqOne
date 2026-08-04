@@ -4,14 +4,16 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from app.api.anomaly import router as anomaly_router
+from app.api.auth import router as auth_router
 from app.api.drift import router as drift_router
 from app.api.metrics import router as metrics_router
 from app.api.sea_condition import router as sea_condition_router
 from app.api.squall import router as squall_router
+from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
 
 logger = logging.getLogger(__name__)
@@ -30,11 +32,19 @@ app = FastAPI(lifespan=lifespan)
 # routes in registration order, so mounting the dashboard at "/" first would
 # shadow every API path - including /health/ready, which would turn the
 # Railway healthcheck red for reasons that look unrelated to this file.
-app.include_router(anomaly_router)
-app.include_router(drift_router)
-app.include_router(squall_router)
-app.include_router(sea_condition_router)
-app.include_router(metrics_router)
+# Auth is the only unauthenticated API surface: /api/login, /api/admin-signup
+# (itself gated by ADMIN_SETUP_KEY) and /api/me, which authenticates itself.
+app.include_router(auth_router)
+
+# Everything else requires a valid bearer token. Declaring it here rather than
+# on each route means a newly added endpoint is protected by default - the safe
+# direction to fail.
+_protected = [Depends(require_user)]
+app.include_router(anomaly_router, dependencies=_protected)
+app.include_router(drift_router, dependencies=_protected)
+app.include_router(squall_router, dependencies=_protected)
+app.include_router(sea_condition_router, dependencies=_protected)
+app.include_router(metrics_router, dependencies=_protected)
 
 
 @app.get('/healthz')

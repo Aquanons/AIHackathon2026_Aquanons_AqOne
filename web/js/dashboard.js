@@ -24,8 +24,70 @@
 
   const PIN_POLL_INTERVAL_MS = 15000;
 
-  // ===== MOCK CURRENT USER =====
-  const CURRENT_USER = { id: 'pcg_ops_region6', name: 'SAR Duty Officer' };
+  // ===== API + AUTH =====
+  // API_BASE was previously referenced but never declared in this file - the
+  // one in advisoryService.js is scoped inside its IIFE, so every fetch here
+  // threw a ReferenceError. The dashboard is served from the same origin as
+  // the API, so this is simply the current origin.
+  const API_BASE = window.location.origin;
+
+  const TOKEN_KEY = 'aqoneToken';
+  const USER_KEY = 'aqoneUser';
+  const LOGIN_URL = 'login.html';
+
+  function getToken() {
+    return sessionStorage.getItem(TOKEN_KEY) || '';
+  }
+
+  function clearSession() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+  }
+
+  function redirectToLogin() {
+    clearSession();
+    window.location.replace(LOGIN_URL);
+  }
+
+  // Every API route except the auth endpoints requires a bearer token. A 401
+  // means the token is missing, expired or invalid - in all three cases the
+  // operator needs to log in again, so bounce rather than rendering an empty
+  // dashboard that looks like a backend outage.
+  function authFetch(path, options) {
+    const opts = options || {};
+    const headers = Object.assign({ Accept: 'application/json' }, opts.headers || {});
+    const token = getToken();
+    if (token) headers.Authorization = 'Bearer ' + token;
+
+    return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }))
+      .then(function (res) {
+        if (res.status === 401) {
+          redirectToLogin();
+          throw new Error('Session expired');
+        }
+        return res;
+      });
+  }
+
+  // Guard: no token means never logged in, so do not even start the panels.
+  if (!getToken()) {
+    redirectToLogin();
+    return;
+  }
+
+  // ===== CURRENT USER =====
+  // Populated at login. Falls back to the token-less placeholder only if the
+  // stored record is unreadable, so attribution on sea-condition entries is a
+  // real account rather than a hardcoded name.
+  const CURRENT_USER = (function () {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(USER_KEY) || 'null');
+      if (stored && stored.id) return stored;
+    } catch (err) {
+      /* fall through */
+    }
+    return { id: 'unknown', name: 'Operator' };
+  })();
 
   // ===== USER COLOR HASH =====
   const PIN_PALETTE = [
@@ -1175,7 +1237,7 @@
 
   function loadSarMetrics() {
     renderSarEmpty('Loading evaluation results\u2026');
-    fetch(API_BASE + '/api/ai/metrics', { headers: { Accept: 'application/json' } })
+    authFetch('/api/ai/metrics')
       .then(function (res) {
         if (res.status === 404) throw new Error('not-run');
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1586,7 +1648,7 @@
   };
 
   function aiFetchJson(path) {
-    return fetch(API_BASE + path, { headers: { Accept: 'application/json' } })
+    return authFetch(path)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
@@ -2732,7 +2794,7 @@
 
    async function fetchSeaCondition() {
      try {
-       var res = await fetch('/api/sea-condition');
+       var res = await authFetch('/api/sea-condition');
        if (!res.ok) throw new Error('HTTP ' + res.status);
        var data = await res.json();
        var current = data.current || data;
@@ -2779,7 +2841,7 @@
          set_by_name: CURRENT_USER.name
        };
 
-       fetch('/api/sea-condition', {
+       authFetch('/api/sea-condition', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify(body)
