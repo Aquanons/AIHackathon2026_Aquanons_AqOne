@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/config.dart';
 import '../../models/weather_snapshot.dart';
 
 /// Current conditions from Open-Meteo.
@@ -146,10 +147,11 @@ class WeatherCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    // Explicitly a weather note, not a go/no-go call. The
-                    // sea-condition banner above is the decision that counts.
-                    'Rough weather for small boats. Check the sea condition '
-                    'and advisories.',
+                    'Wind ${value.windSpeed.toStringAsFixed(0)} km/h — '
+                    'above the ${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h '
+                    'threshold. Source: Open-Meteo. '
+                    'This is not a PAGASA warning. '
+                    'Always check the official sea condition and advisories.',
                     style: const TextStyle(
                       fontSize: 11.5,
                       height: 1.35,

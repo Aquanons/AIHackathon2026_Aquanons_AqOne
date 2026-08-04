@@ -2334,6 +2334,14 @@
     legend.innerHTML = traceSeries.map(function (series) {
       return '<div class="ai-trace-legend-item"><span class="ai-trace-swatch" style="background:' + series.color + '"></span><span>' + _escHtml(series.label) + '</span></div>';
     }).join('');
+    updateSquallLegendVisibility();
+  }
+
+  function updateSquallLegendVisibility() {
+    var legend = document.getElementById('ai-trace-legend');
+    if (!legend) return;
+    var hasContent = legend.children.length > 0;
+    legend.style.display = hasContent ? '' : 'none';
   }
 
   function renderSquallWatch(payload, traceSeries) {
@@ -2486,9 +2494,10 @@
       }
 
       if (squallResult.status === 'fulfilled') {
-        return loadSquallTrace(squallResult.value || { detections: [] });
+        return loadSquallTrace(squallResult.value || { detections: [] }).then(updateSquallLegendVisibility);
       }
       renderSquallWatch({ detections: [] }, []);
+      updateSquallLegendVisibility();
       return incidentPromise;
     }).catch(function () {
       renderRiskFeed([]);
@@ -2496,12 +2505,13 @@
       clearAiDriftLayers();
       clearAiSquallLayers();
       renderSquallWatch({ detections: [] }, []);
+      updateSquallLegendVisibility();
     });
 
     if (aiRefreshTimer) clearInterval(aiRefreshTimer);
     aiRefreshTimer = setInterval(function () {
       aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function () { renderRiskFeed([]); });
-      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).catch(function () { clearAiSquallLayers(); renderSquallWatch({ detections: [] }, []); });
+      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).then(updateSquallLegendVisibility).catch(function () { clearAiSquallLayers(); renderSquallWatch({ detections: [] }, []); updateSquallLegendVisibility(); });
       var currentSelect = document.getElementById('ai-drift-select');
       if (currentSelect && currentSelect.value) loadDriftIncidentDetail(currentSelect.value);
     }, 60000);

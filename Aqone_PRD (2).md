@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | 2.0 |
+| **Version** | 3.0 |
 | **Date** | August 2026 |
 | **Submission** | AI Fest |
 | **Status** | Concept / PRD |
@@ -180,11 +180,13 @@ Three models, mapped to the three phases of a maritime incident. Each consumes d
 
 **(b) Object classification.** Windage differs enormously between a person in a life vest, a swamped banca, and an inverted fibreglass hull — the same wind pushes them in materially different directions. Aqone infers likely object type from the registered vessel profile, the nature of the alert, and conditions at the time, then selects the corresponding leeway coefficients.
 
-**(c) Bayesian search allocation.** The output is not a point. It is a probability density over water, propagated forward from the last-contact position and timestamp. As PCG assets search sectors and report negative findings, the posterior updates and re-tasks them toward the highest remaining probability mass — operational SAR planning applied to a search that started from a real observation instead of a guess.
+**(c) Bayesian search allocation.** The output is not a point. It is a probability density over water, propagated forward from the last-contact position and timestamp — this part is built, and the 50/75/95% contours come from it.
 
-**Survivability weighting.** Predicted time-in-water viability, given sea state and temperature, prioritises tasking when multiple incidents compete for one asset.
+*The re-tasking half is [Roadmap — not implemented].* As PCG assets search sectors and report negative findings, the posterior should update and re-task them toward the highest remaining probability mass. Today the density is computed once and the contours are static. Nothing consumes a negative search result.
 
-**Residual learning.** Every completed rescue is a labelled example: predicted position versus actual recovery position. The drift model improves with every incident it is used on.
+**Survivability weighting.** [Roadmap — not implemented] Predicted time-in-water viability, given sea state and temperature, prioritises tasking when multiple incidents compete for one asset.
+
+**Residual learning.** [Roadmap — not implemented] Every completed rescue is a labelled example: predicted position versus actual recovery position. The drift model improves with every incident it is used on.
 
 ---
 
@@ -199,6 +201,30 @@ The standard test: remove the AI — does the product still work?
 | Drift prediction | **Impossible.** A last-known position with no drift model is a dot on a map that was wrong an hour ago. |
 
 The buoy network degrades gracefully to an opportunistic messaging service. **All three life-saving functions fail completely.** The AI is not a layer on top of the product — it is the product, and the buoy array is the sensing substrate that makes it trainable.
+
+---
+
+### 5.5 Mass-casualty dispersion — [Roadmap — not implemented]
+
+**Problem.** When multiple vessels are caught in the same event (typhoon, squall line, grounding), search assets must be allocated across incidents simultaneously, not sequentially. The drift model in §5.3 treats each incident independently; it does not account for shared hazards, overlapping search areas, or the resource constraint of a single PCG asset covering multiple victims.
+
+**Approach.** A multi-incident allocation layer that takes the probability density fields from §5.3 for all active incidents and the known asset inventory, then solves for optimal sector assignment. The objective function balances expected survival probability (from survivability weighting) against coverage overlap and transit time.
+
+---
+
+### 5.6 Live roster — [Roadmap — not implemented]
+
+**Problem.** The trip anomaly model in §5.2 detects that a boat has not appeared where expected, but it does not know how many people are on board or whether anyone else is monitoring the situation. The PCG receives a single-vessel alert with no crew count, no passenger manifest, and no visibility into whether other boats in the area witnessed the incident.
+
+**Approach.** A per-vessel crew manifest maintained on the phone (optional, privacy-preserving) that is included in the SOS payload. When the backend receives an SOS, it broadcasts a situational request to nearby buoys: any vessel that was in the area within the last N minutes is asked for a brief witness report (saw / did not see, conditions at time of observation). The roster aggregates these into a common operating picture.
+
+---
+
+### 5.7 Nearest-responder broadcast — [Roadmap — not implemented]
+
+**Problem.** The current system routes all SOS traffic through the gateway to the backend, then to the PCG. But the nearest other fisher may be 500 metres away and able to render assistance in minutes, while the PCG asset is an hour out. The LoRa mesh already connects nearby buoys; it can also connect nearby vessels.
+
+**Approach.** When an SOS is received, the buoy network broadcasts a prioritised assistance request to all phones within LoRa range of the incident position. The request includes the incident type, position, and the sender's estimated distance. Nearby fishers can acknowledge and redirect, providing immediate assistance while the PCG asset transits. Acknowledgements propagate back to the PCG console so dispatchers know whether self-rescue is underway.
 
 ---
 
@@ -225,7 +251,8 @@ The buoy network degrades gracefully to an opportunistic messaging service. **Al
 - Phone app: opportunistic messaging, weather sync, manual SOS
 - Squall nowcasting with RETURN NOW alerts, including buoy-side physical signalling
 - Learned trip profiles and overdue/anomaly detection with confidence scoring
-- Drift prediction with Bayesian search allocation
+- Drift prediction producing a probability density and 50/75/95% search contours
+  (Bayesian re-tasking on negative search results is roadmap — see §5.3(c))
 - PCG / BFAR operations console
 
 ### Explicitly out of scope

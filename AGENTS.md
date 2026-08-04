@@ -36,8 +36,17 @@ steps. If you are unsure whether a step is done, ask.
 ## Deliberately NOT building (do not implement)
 
 These are scoped-out decisions, not gaps. See `docs/07_SCOPE_OUT.md` for the
-full list. Short version: no AI model, no catch logging, no advisories, no
-photos, no float-plan, no BFAR/LGU regulator roles.
+full list and for the items that have since been amended into scope.
+
+Still out: no catch logging, no photos, no fisheries-enforcement or
+surveillance features, no LoRa downlink to the handset.
+
+**Do not treat this file as the scope of record.** The canonical scope is
+`Aqone_PRD (2).md` (v3.0); unbuilt sections there are tagged
+`[Roadmap — not implemented]`. Advisories, accounts, "did not return" detection
+and three AI models were once listed here as out of scope and now exist — an
+outside audit read the stale version and reported the project as having built
+neither AI nor a backend.
 
 ## Shared contracts (do not diverge from these)
 

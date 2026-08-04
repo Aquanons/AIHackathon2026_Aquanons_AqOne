@@ -380,7 +380,7 @@ class _VenturePageState extends State<VenturePage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                unsafe ? 'Take care out there' : 'Conditions look calm',
+                unsafe ? 'Wind above threshold' : 'Conditions look calm',
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -402,19 +402,18 @@ class _VenturePageState extends State<VenturePage> {
               style: const TextStyle(fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 12),
-            // Labelled as informational on purpose. This is a wind and
-            // weather-code threshold, not an official assessment, and must
-            // not be mistaken for the MDRRMO sea condition.
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF4E0),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                'This is a rough weather check only. Always follow the '
-                'official sea condition and advisories before going out.',
-                style: TextStyle(
+              child: Text(
+                'Source: Open-Meteo · threshold '
+                    '${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h. '
+                    'This is not a PAGASA warning. '
+                    'Always follow the official sea condition and advisories.',
+                style: const TextStyle(
                   fontSize: 11.5,
                   color: Color(0xFF8A5A12),
                   height: 1.35,
