@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'core/tokens.dart';
 import 'data/app_database.dart';
-import 'data/catch_store.dart';
 import 'data/identity_store.dart';
 import 'data/outbox_store.dart';
 import 'services/backend_client.dart';
 import 'services/buoy_client.dart';
-import 'services/catch_service.dart';
 import 'services/location_service.dart';
 import 'services/sos_service.dart';
 import 'services/venture_feeds.dart';
@@ -30,7 +28,6 @@ class _AqOneAppState extends State<AqOneApp> {
   late final AppDatabase _db;
   late final IdentityStore _identityStore;
   late final SosService _service;
-  late final CatchService _catches;
   late final VentureFeeds _feeds;
   late final LocationService _location;
   late final BackendClient _backend;
@@ -53,12 +50,6 @@ class _AqOneAppState extends State<AqOneApp> {
       backend: _backend,
       location: _location,
     );
-    _catches = CatchService(
-      store: CatchStore(_db),
-      identity: _identityStore,
-      backend: _backend,
-      location: _location,
-    );
     _feeds = VentureFeeds(backend: _backend);
     _restore();
   }
@@ -66,7 +57,6 @@ class _AqOneAppState extends State<AqOneApp> {
   @override
   void dispose() {
     _service.dispose();
-    _catches.dispose();
     _feeds.close();
     _backend.close();
     super.dispose();
@@ -102,7 +92,6 @@ class _AqOneAppState extends State<AqOneApp> {
     // Background sync only starts once the user is actually in the app, so a
     // half-finished registration never puts traffic on the wire.
     _service.start();
-    _catches.start();
     setState(() {
       _identity = identity;
       _entered = true;
@@ -128,7 +117,6 @@ class _AqOneAppState extends State<AqOneApp> {
     return AppShell(
       identity: identity,
       sos: _service,
-      catches: _catches,
       feeds: _feeds,
       location: _location,
     );

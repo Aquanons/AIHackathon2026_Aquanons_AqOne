@@ -84,6 +84,10 @@
     <span class="banner-text">Last updated: <strong class="banner-time">0s ago</strong></span>
   </div>
 
+  <div class="demo-data-banner">
+    Demonstration data — models calibrated on synthetic observations.
+  </div>
+
   <!-- ══════════════════════════════════════════════════════════════
        APP BODY — TWO-COLUMN LAYOUT
        ══════════════════════════════════════════════════════════════ -->
@@ -310,6 +314,60 @@
             <div class="advisory-list" id="advisory-list"></div>
           </div>
 
+        </div>
+      </div>
+
+      <div class="panel-card ai-ops-card" id="ai-ops-card">
+        <div class="panel-card-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2v2a4 4 0 0 0 8 0v-2h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><path d="M9 10v4m6-4v4m-3-4v4"/></svg>
+          <span>AI Operations</span>
+          <span class="ai-card-badge">Synthetic only</span>
+        </div>
+        <div class="panel-card-body ai-ops-body">
+          <section class="ai-subpanel ai-risk-subpanel">
+            <div class="ai-subpanel-head">
+              <div>
+                <div class="ai-subpanel-title">Active vessel risk</div>
+                <div class="ai-subpanel-caption">/api/ai/anomaly/active</div>
+              </div>
+              <span class="ai-subpanel-count" id="ai-risk-count">0</span>
+            </div>
+            <div class="ai-risk-list" id="ai-risk-list">
+              <div class="ai-empty-state">Loading vessel risk feed...</div>
+            </div>
+          </section>
+
+          <section class="ai-subpanel ai-drift-subpanel">
+            <div class="ai-subpanel-head">
+              <div>
+                <div class="ai-subpanel-title">Drift search map</div>
+                <div class="ai-subpanel-caption">50/75/95% contours on the main map</div>
+              </div>
+            </div>
+            <label class="ai-select-label" for="ai-drift-select">Incident</label>
+            <select class="ai-select" id="ai-drift-select">
+              <option value="">Loading incidents...</option>
+            </select>
+            <div class="ai-meta-line" id="ai-drift-meta">Contours render on the left map when an incident is selected.</div>
+          </section>
+
+          <section class="ai-subpanel ai-squall-subpanel">
+            <div class="ai-subpanel-head">
+              <div>
+                <div class="ai-subpanel-title">Squall watch</div>
+                <div class="ai-subpanel-caption">Affected area plus buoy pressure trace</div>
+              </div>
+            </div>
+            <div class="ai-squall-summary" id="ai-squall-summary">
+              <div class="ai-empty-state">Loading squall watch...</div>
+            </div>
+            <div class="ai-trace-card">
+              <div class="ai-trace-legend" id="ai-trace-legend"></div>
+              <div class="ai-trace-chart" id="ai-trace-chart">
+                <div class="ai-empty-state">Pressure trace unavailable.</div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -563,6 +621,15 @@
         <div class="panel-card-body" id="rainfall-body">
           <p class="panel-stub-text">Rainfall data coming soon</p>
         </div>
+      </div>
+
+      <div class="ai-map-key" id="ai-map-key">
+        <div class="ai-map-key-title">Drift map key</div>
+        <div class="ai-map-key-row"><span class="ai-map-chip contour-95"></span><span>95% search area</span></div>
+        <div class="ai-map-key-row"><span class="ai-map-chip contour-75"></span><span>75% search area</span></div>
+        <div class="ai-map-key-row"><span class="ai-map-chip contour-50"></span><span>50% search area</span></div>
+        <div class="ai-map-key-row"><span class="ai-map-chip track"></span><span>Ground truth track</span></div>
+        <div class="ai-map-key-row"><span class="ai-map-chip squall"></span><span>Squall watch polygon</span></div>
       </div>
     </aside>
   </div>
