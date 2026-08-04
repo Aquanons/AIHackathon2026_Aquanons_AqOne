@@ -26,18 +26,18 @@ class AppDatabase {
       version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
+        // Each step is wrapped in try/catch so a partially-applied migration
+        // (e.g. column already added on a previous crash) doesn't kill the
+        // entire openDatabase call.
         if (oldVersion < 2) {
-          // v2 records how corroborated the sending vessel was at the moment
-          // the SOS was raised. Rows written before this predate the profile
-          // fields, so they are self-declared by definition.
-          await db.execute(
-            'ALTER TABLE outbox ADD COLUMN trust_tier TEXT NOT NULL '
-            "DEFAULT 'self_declared'",
-          );
+          try {
+            await db.execute(
+              'ALTER TABLE outbox ADD COLUMN trust_tier TEXT NOT NULL '
+              "DEFAULT 'self_declared'",
+            );
+          } catch (_) {}
         }
         if (oldVersion < 3) {
-          // v3 queues the legacy outbox rows so they survive being logged at
-          // sea.
           await _createLegacyOutbox(db);
         }
         if (oldVersion < 4) {

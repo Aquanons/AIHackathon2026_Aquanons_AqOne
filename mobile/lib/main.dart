@@ -63,14 +63,26 @@ class _AqOneAppState extends State<AqOneApp> {
   }
 
   Future<void> _restore() async {
-    final identity = await _identityStore.read();
-    if (!mounted) {
-      return;
+    try {
+      final identity = await _identityStore.read();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _identity = identity;
+        _loading = false;
+      });
+    } catch (e) {
+      // DB open / query failed (corrupt file, wrong path, platform channel
+      // issue).  Rather than spinning forever, let the user through to
+      // onboarding where they can re-register.
+      debugPrint('AqOne: _restore failed — $e');
+      if (!mounted) return;
+      setState(() {
+        _identity = null;
+        _loading = false;
+      });
     }
-    setState(() {
-      _identity = identity;
-      _loading = false;
-    });
   }
 
   @override
@@ -85,7 +97,12 @@ class _AqOneAppState extends State<AqOneApp> {
   }
 
   Future<void> _enterApp() async {
-    final identity = await _identityStore.read();
+    VesselIdentity? identity;
+    try {
+      identity = await _identityStore.read();
+    } catch (e) {
+      debugPrint('AqOne: _enterApp read failed — $e');
+    }
     if (!mounted) {
       return;
     }
