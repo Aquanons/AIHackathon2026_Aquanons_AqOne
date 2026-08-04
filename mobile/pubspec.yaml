@@ -1,0 +1,55 @@
+name: aqone
+description: AqOne fisherman app - offline SOS handoff to LoRa buoys.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  sqflite: ^2.3.3
+  sqflite_common_ffi_web: any
+  path: ^1.9.0
+
+  # Bumped from ^13.0.1 to match the version the Venture code is proven
+  # against. LocationService already uses the modern locationSettings API,
+  # so no call-site changes were needed.
+  geolocator: ^14.0.3
+
+  # Venture map. Versions pinned to what the source project resolved.
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+
+  # Tappable emergency contact numbers.
+  url_launcher: ^6.3.2
+
+  # List and join WiFi networks (buoy SoftAP handoff). Android only.
+  wifi_iot: ^0.3.19+2
+  # Android 13+ needs a runtime NEARBY_WIFI_DEVICES grant to scan/join WiFi.
+  permission_handler: ^12.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icons/
+
+  # Brand assets are optional. Every Image.asset in the app has an
+  # errorBuilder fallback, so the app runs without them. To enable the real
+  # artwork, copy background.png, aqoneLogo2.png and aqoneLogo3.png into
+  # mobile/assets/ and uncomment the block below. Declaring an asset that
+  # does not exist fails the build, so keep these commented until the files
+  # are present.
+  #
+  # assets:
+  #   - assets/images/background.png
+  #   - assets/icons/aqoneLogo2.png
+  #   - assets/icons/aqoneLogo3.png
