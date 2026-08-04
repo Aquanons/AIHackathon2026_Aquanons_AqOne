@@ -82,6 +82,15 @@ class AqOneConfig {
   static const String advisoriesPath = '/api/advisories?status=Published';
   static const String publicAdvisoriesPath = '/api/public/advisories';
 
+  /// Squall nowcast (AI #1). Public because the handset has no account - see
+  /// backend/app/api/public.py.
+  static const String publicSquallPath = '/api/public/squall';
+
+  /// How often the handset re-checks for a squall. Short enough that the
+  /// warning is useful (the model forecasts tens of minutes of lead time),
+  /// long enough not to drain a battery at sea.
+  static const Duration squallPollInterval = Duration(seconds: 60);
+
   static const int maxVesselIdLength = 32;
   static const int maxBoatLength = 32;
   static const int maxNoteLength = 64;
