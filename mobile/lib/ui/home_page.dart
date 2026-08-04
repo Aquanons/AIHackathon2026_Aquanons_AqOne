@@ -9,14 +9,17 @@ import '../models/advisory.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
 import '../models/sos_record.dart';
+import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
+import '../services/squall_alarm.dart';
 import '../services/venture_feeds.dart';
 import 'widgets/advisory_card.dart';
 import 'widgets/buoy_status_card.dart';
 import 'widgets/delivery_state_tile.dart';
 import 'widgets/sea_condition_banner.dart';
+import 'widgets/squall_banner.dart';
 import 'widgets/weather_card.dart';
 
 class HomePage extends StatefulWidget {
@@ -65,6 +68,11 @@ class _HomePageState extends State<HomePage> {
   /// Whether the current reading is for the device position or the fallback.
   bool _weatherAtDevice = false;
 
+  // Squall nowcast (AI #1) and its alarm.
+  SquallWatch _squall = SquallWatch.unavailable;
+  Timer? _squallTimer;
+  final SquallAlarm _alarm = SquallAlarm();
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +83,7 @@ class _HomePageState extends State<HomePage> {
     _loadSea();
     _loadAdvisories();
     _loadWeather();
+    _loadSquall();
     _buoyTimer = Timer.periodic(
       AqOneConfig.buoyPollInterval,
       (_) => _pollBuoy(),
@@ -83,14 +92,53 @@ class _HomePageState extends State<HomePage> {
       AqOneConfig.seaConditionInterval,
       (_) => _loadSea(),
     );
+    _squallTimer = Timer.periodic(
+      AqOneConfig.squallPollInterval,
+      (_) => _loadSquall(),
+    );
   }
 
   @override
   void dispose() {
     _buoyTimer?.cancel();
     _seaTimer?.cancel();
+    _squallTimer?.cancel();
+    _alarm.dispose();
     _changes?.cancel();
     super.dispose();
+  }
+
+  /// Poll the squall nowcast and drive the alarm from it.
+  ///
+  /// A failed request yields `SquallLevel.unknown`, never `clear` - the app
+  /// must not imply calm weather just because it could not reach the model.
+  /// An already-ringing alarm is left alone on a failed poll for the same
+  /// reason: losing signal is not evidence the squall has passed.
+  Future<void> _loadSquall() async {
+    final squall = await widget.feeds.squall();
+    if (!mounted) {
+      return;
+    }
+
+    if (squall.returnNow) {
+      _alarm.start(squall.identity);
+    } else if (squall.level != SquallLevel.unknown) {
+      // Only a definite non-alarm reading from the backend clears it.
+      _alarm.clear();
+    }
+
+    setState(() {
+      if (squall.level != SquallLevel.unknown || !_squall.shouldDisplay) {
+        _squall = squall;
+      }
+      // If we lost contact while a squall was showing, keep the last known
+      // warning on screen rather than blanking it.
+    });
+  }
+
+  void _acknowledgeSquall() {
+    _alarm.acknowledge();
+    setState(() {});
   }
 
   Future<void> _loadSea() async {
@@ -253,6 +301,40 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
               const SizedBox(height: AqSpace.lg),
+              // Squall nowcast sits ABOVE the sea condition. The MDRRMO's
+              // declaration is a standing judgement about the day; a squall is
+              // happening now and has minutes of lead time, so it must be the
+              // first thing seen. Renders nothing when there is no squall.
+              if (_squall.shouldDisplay) ...<Widget>[
+                SquallBanner(
+                  watch: _squall,
+                  acknowledged: _alarm.isAcknowledged(_squall.identity),
+                  onAcknowledge: _acknowledgeSquall,
+                ),
+                const SizedBox(height: AqSpace.base),
+              ],
+              if (_squall.level == SquallLevel.returnNow &&
+                  !_alarm.isAcknowledged(_squall.identity)) ...<Widget>[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _acknowledgeSquall,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text(
+                      "I'm heading back",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AqSpace.base),
+              ],
               SeaConditionBanner(condition: _sea, isLoading: _seaLoading),
               const SizedBox(height: AqSpace.base),
               WeatherCard(

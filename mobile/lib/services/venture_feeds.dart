@@ -8,6 +8,7 @@ import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
 import '../models/hazard_alert.dart';
 import '../models/sea_condition.dart';
+import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import 'backend_client.dart';
 
@@ -75,6 +76,20 @@ class VentureFeeds {
       return null;
     }
     return SeaCondition.tryParse(decoded);
+  }
+
+  /// Squall nowcast (AI #1).
+  ///
+  /// Returns `SquallWatch.unavailable` rather than null on failure, so the
+  /// caller gets `SquallLevel.unknown` instead of something that could be
+  /// mistaken for "no squall". A warning system that cannot reach its model
+  /// must say so, not imply calm.
+  Future<SquallWatch> squall() async {
+    final decoded = await _backend.getJson(AqOneConfig.publicSquallPath);
+    if (decoded == null) {
+      return SquallWatch.unavailable;
+    }
+    return SquallWatch.tryParse(decoded) ?? SquallWatch.unavailable;
   }
 
   Future<List<Advisory>?> advisories() async {
