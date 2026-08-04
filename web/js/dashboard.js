@@ -2,8 +2,11 @@
   'use strict';
 
   // ===== CONFIG =====
-  const OPS_CENTER = [11.65159, 122.43286];
-  const OPS_ZOOM = 11;
+  // New Washington, Aklan municipal centre (PhilAtlas: 11.6473 N, 122.4356 E).
+  // Zoom 11 framed the whole province; 12 frames the municipality and its
+  // waters, which is the actual service area.
+  const OPS_CENTER = [11.6473, 122.4356];
+  const OPS_ZOOM = 12;
 
   const TILES = {
     streets: {
@@ -108,19 +111,26 @@
 
   // ===== SAMPLE DATA =====
   // Shore gateways (coastal barangay / BFAR / PCG stations) — LoRa mesh exit to backend
+  // Shore gateways are ON LAND - they are the mesh's exit to the internet.
+  // Coordinates mirror SHORE_STATIONS in backend/app/geo.py, which is the
+  // single source of truth for the service area.
   const shoreStations = [
-    { name: 'PCG Aklan Station', lat: 11.7059, lng: 122.3693, type: 'PCG Station', status: 'active', role: 'Shore gateway' },
-    { name: 'BFAR New Washington', lat: 11.7641, lng: 122.4296, type: 'BFAR Station', status: 'active', role: 'Shore gateway' },
-    { name: 'Malay Gateway', lat: 11.9007, lng: 121.9191, type: 'Gateway', status: 'warning', role: 'Shore gateway' },
+    { name: 'New Washington Municipal Hall', lat: 11.6473, lng: 122.4356, type: 'MDRRMO Station', status: 'active', role: 'Shore gateway' },
+    { name: 'Dumaguit Port', lat: 11.6700, lng: 122.4370, type: 'Port Facility', status: 'active', role: 'Shore gateway' },
+    { name: 'BFAR Kalibo', lat: 11.7086, lng: 122.3653, type: 'BFAR Station', status: 'warning', role: 'Shore gateway' },
   ];
 
   // Buoy nodes — GPS, barometer, current sensing, solar + battery, LoRa mesh radio
   const initialBuoys = [
-    { name: 'Buoy Alpha',   id: 'buoy-alpha',   lat: 11.82, lng: 122.20, status: 'active',  battery: 87, signal: 'Strong',   pressure: 1008.4, pressureTrend: -1.2, current: '0.6 m/s', currentDir: 'SW',  coverageRadius: 2000, isGateway: true },
-    { name: 'Buoy Bravo',   id: 'buoy-bravo',   lat: 11.95, lng: 121.95, status: 'active',  battery: 72, signal: 'Moderate', pressure: 1007.1, pressureTrend: -2.8, current: '0.9 m/s', currentDir: 'S',   coverageRadius: 2000 },
-    { name: 'Buoy Charlie', id: 'buoy-charlie', lat: 11.75, lng: 122.38, status: 'warning', battery: 31, signal: 'Weak',     pressure: 1006.3, pressureTrend: -3.4, current: '0.4 m/s', currentDir: 'W',   coverageRadius: 2000 },
-    { name: 'Buoy Delta',   id: 'buoy-delta',   lat: 11.65, lng: 122.15, status: 'active',  battery: 94, signal: 'Strong',   pressure: 1008.9, pressureTrend: -0.5, current: '0.3 m/s', currentDir: 'SE',  coverageRadius: 2000 },
-    { name: 'Buoy Echo',    id: 'buoy-echo',    lat: 11.88, lng: 122.45, status: 'danger',  battery: 12, signal: 'Lost',     pressure: null,   pressureTrend: null, current: null,     currentDir: null, coverageRadius: 2000 },
+    // All positions are AT SEA inside New Washington's municipal waters,
+    // ordered nearshore to offshore. Verified against WATER_POLYGON in
+    // backend/app/geo.py - the previous set spanned 55 km of Aklan province
+    // and several sat inland over Panay.
+    { name: 'Buoy Alpha',   id: 'buoy-alpha',   lat: 11.7213, lng: 122.4457, status: 'active',  battery: 87, signal: 'Strong',   pressure: 1008.4, pressureTrend: -1.2, current: '0.6 m/s', currentDir: 'SW',  coverageRadius: 2000, isGateway: true },
+    { name: 'Buoy Bravo',   id: 'buoy-bravo',   lat: 11.7283, lng: 122.4534, status: 'active',  battery: 72, signal: 'Moderate', pressure: 1007.1, pressureTrend: -2.8, current: '0.9 m/s', currentDir: 'S',   coverageRadius: 2000 },
+    { name: 'Buoy Charlie', id: 'buoy-charlie', lat: 11.6893, lng: 122.5335, status: 'warning', battery: 31, signal: 'Weak',     pressure: 1006.3, pressureTrend: -3.4, current: '0.4 m/s', currentDir: 'W',   coverageRadius: 2000 },
+    { name: 'Buoy Delta',   id: 'buoy-delta',   lat: 11.7663, lng: 122.4153, status: 'active',  battery: 94, signal: 'Strong',   pressure: 1008.9, pressureTrend: -0.5, current: '0.3 m/s', currentDir: 'SE',  coverageRadius: 2000 },
+    { name: 'Buoy Echo',    id: 'buoy-echo',    lat: 11.8163, lng: 122.3978, status: 'danger',  battery: 12, signal: 'Lost',     pressure: null,   pressureTrend: null, current: null,     currentDir: null, coverageRadius: 2000 },
   ];
 
   const meshLinks = [
@@ -134,17 +144,23 @@
     ['Buoy Bravo', 'Malay Gateway'],
   ];
 
+  // Incidents occur at sea within the service area. The Boracay entry was
+  // ~50 km outside New Washington and has been removed.
   const incidents = [
-    { name: 'Overdue Vessel — San Pedro', lat: 11.7823, lng: 122.1234, severity: 'danger', date: '2026-08-04', type: 'Overdue Vessel' },
-    { name: 'Squall Watch — Boracay North', lat: 11.9850, lng: 121.9100, severity: 'warning', date: '2026-08-04', type: 'Squall Nowcast' },
-    { name: 'Overdue Vessel — Maria Gracia', lat: 11.6789, lng: 122.4567, severity: 'warning', date: '2026-08-04', type: 'Overdue Vessel' },
+    { name: 'Overdue Vessel — San Pedro', lat: 11.7256, lng: 122.5485, severity: 'danger', date: '2026-08-04', type: 'Overdue Vessel' },
+    { name: 'Squall Watch — Sibuyan Sea N', lat: 11.8010, lng: 122.3813, severity: 'warning', date: '2026-08-04', type: 'Squall Nowcast' },
+    { name: 'Overdue Vessel — Maria Gracia', lat: 11.8125, lng: 122.5238, severity: 'warning', date: '2026-08-04', type: 'Overdue Vessel' },
   ];
 
+  // Service area = New Washington municipal waters. Mirrors WATER_POLYGON in
+  // backend/app/geo.py. The previous ring spanned the whole province, from
+  // Boracay in the west to Batan in the east.
   const opsBoundary = [
-    [11.97, 121.87], [12.00, 121.95], [11.95, 122.10], [11.92, 122.25],
-    [11.85, 122.45], [11.78, 122.55], [11.65, 122.50], [11.55, 122.42],
-    [11.50, 122.30], [11.52, 122.15], [11.58, 122.00], [11.65, 121.92],
-    [11.75, 121.88], [11.85, 121.87], [11.97, 121.87]
+    [11.6620, 122.4600], [11.6560, 122.4900], [11.6750, 122.5250],
+    [11.7150, 122.5500], [11.9600, 122.7400], [12.0200, 122.5600],
+    [12.0200, 122.3400], [11.9000, 122.2900], [11.7850, 122.3700],
+    [11.7350, 122.3900], [11.7050, 122.4250], [11.6820, 122.4450],
+    [11.6620, 122.4600]
   ];
 
   // ===== MAP INIT =====

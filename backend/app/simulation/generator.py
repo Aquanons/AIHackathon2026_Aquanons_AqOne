@@ -14,8 +14,14 @@ from typing import Any
 import asyncpg
 import numpy as np
 
-CENTER_LAT = 11.6892
-CENTER_LON = 122.3667
+from app import geo
+
+# Geography is defined once in app.geo and shared with the dashboard. The
+# previous centre here (11.6892, 122.3667) was ~8 km north-west of the real
+# municipality - effectively Kalibo - which is why generated positions spread
+# across Aklan and onto land.
+CENTER_LAT = geo.CENTER_LAT
+CENTER_LON = geo.CENTER_LON
 MANILA_TZ = timezone(timedelta(hours=8))
 DEFAULT_START = datetime(2026, 8, 1, tzinfo=MANILA_TZ)
 BARO_STEP = timedelta(minutes=5)
@@ -34,6 +40,39 @@ def _offset(lat: float, lon: float, north_km: float = 0.0, east_km: float = 0.0)
         lat + north_km / KM_PER_DEG_LAT,
         lon + east_km / _km_per_deg_lon(lat),
     )
+
+
+def _water_positions_within(
+    rng: np.random.Generator,
+    count: int,
+    min_km: float,
+    max_km: float,
+) -> list[tuple[float, float]]:
+    """Sample water positions in a distance band around the municipal centre.
+
+    The water polygon extends well offshore so drift simulations have room to
+    run, but buoys and vessels belong in municipal waters. Sampling the whole
+    polygon uniformly would scatter them far out to sea, so positions are drawn
+    from a band measured from the town centre.
+    """
+    kept: list[tuple[float, float]] = []
+    for _ in range(40):
+        for lat, lon in geo.sample_water_points(rng, count * 8):
+            distance = _distance_km(CENTER_LAT, CENTER_LON, lat, lon)
+            if min_km <= distance <= max_km:
+                kept.append((lat, lon))
+        if len(kept) >= count:
+            break
+
+    if len(kept) < count:
+        raise RuntimeError(
+            f'Only found {len(kept)} of {count} water positions between '
+            f'{min_km} and {max_km} km of the centre. Widen the band or check '
+            f'WATER_POLYGON.'
+        )
+
+    picks = rng.choice(len(kept), size=count, replace=False)
+    return [kept[int(i)] for i in picks]
 
 
 def _distance_km(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> float:
@@ -206,18 +245,18 @@ def build_plan(days: int, seed: int, start_at: datetime = DEFAULT_START) -> Simu
 
 def _build_buoys(rng: np.random.Generator, start_at: datetime) -> list[dict[str, Any]]:
     count = int(rng.integers(8, 13))
-    radii = np.linspace(4.0, 24.5, count)
-    bearings = np.linspace(24.0, 148.0, count)
     rows: list[dict[str, Any]] = []
+
+    # Sampled inside the water polygon rather than swept along a bearing arc
+    # from a centre point. The old arc (24deg-148deg out to 24.5 km) crossed
+    # the coastline and put buoys inland over Panay.
+    positions = _water_positions_within(rng, count, min_km=3.5, max_km=24.0)
+    # Sort seaward so buoy numbering runs from nearshore outward, which makes
+    # the mesh-relay story legible on the map.
+    positions.sort(key=lambda p: _distance_km(CENTER_LAT, CENTER_LON, p[0], p[1]))
+
     for index in range(count):
-        radius_km = float(_clip(radii[index] + rng.normal(0, 0.7), 3.5, 24.5))
-        bearing = float((bearings[index] + rng.normal(0, 7.0)) % 360.0)
-        lat, lon = _offset(
-            CENTER_LAT,
-            CENTER_LON,
-            north_km=radius_km * math.cos(math.radians(bearing)),
-            east_km=radius_km * math.sin(math.radians(bearing)),
-        )
+        lat, lon = positions[index]
         rows.append(
             {
                 'id': f'B{index + 1:02d}',
@@ -240,15 +279,14 @@ def _build_vessels(
     count = int(rng.integers(30, 51))
     profiles: list[VesselProfile] = []
     rows: list[dict[str, Any]] = []
+
+    # Home anchorages sit just off the coastal barangays, inshore of the buoys.
+    home_positions = _water_positions_within(rng, count, min_km=1.0, max_km=8.0)
+
     for index in range(count):
         vessel_id = f'V{index + 1:03d}'
         boat_name = f'NW-{index + 1:03d}'
-        home_lat, home_lon = _offset(
-            CENTER_LAT,
-            CENTER_LON,
-            north_km=rng.uniform(-3.8, -1.2),
-            east_km=rng.uniform(-4.0, -1.5),
-        )
+        home_lat, home_lon = home_positions[index]
         preferred_heading_deg = float(rng.uniform(18.0, 145.0))
         cruising_speed_kph = float(rng.uniform(12.0, 18.5))
         departure_minutes = int(rng.integers(260, 395))
@@ -800,8 +838,20 @@ def _simulate_drift_track(
             }
         )
         dt_seconds = TRACK_STEP.total_seconds()
-        lat += (v * dt_seconds) / 1000.0 / KM_PER_DEG_LAT
-        lon += (u * dt_seconds) / 1000.0 / _km_per_deg_lon(lat)
+        next_lat = lat + (v * dt_seconds) / 1000.0 / KM_PER_DEG_LAT
+        next_lon = lon + (u * dt_seconds) / 1000.0 / _km_per_deg_lon(lat)
+
+        # Beaching. Advection is pure physics and knows nothing about the
+        # coastline, so an unconstrained track walks straight across Panay.
+        # A real drifting object that reaches the shore stops there, so the
+        # track terminates at the last position still in the water rather than
+        # being nudged back out to sea - which would fake a drift path that
+        # never happened.
+        if not geo.point_in_water(next_lat, next_lon):
+            break
+
+        lat = next_lat
+        lon = next_lon
     return track
 
 
