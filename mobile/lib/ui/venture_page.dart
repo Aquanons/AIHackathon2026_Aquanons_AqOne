@@ -450,9 +450,10 @@ class _VenturePageState extends State<VenturePage> {
               child: _buildWeatherCapsule(isDark),
             ),
             Positioned(
-              bottom: 24 + widget.bottomInset,
+              top: 72,
+              bottom: 16 + widget.bottomInset,
               right: 16,
-              child: _buildActionRail(isDark),
+              child: _buildRightControls(isDark),
             ),
             if (_isLocating)
               Positioned(
@@ -468,12 +469,6 @@ class _VenturePageState extends State<VenturePage> {
                 right: 96,
                 child: _buildChecklist(isDark),
               ),
-            // Chat Hub FAB — bottom-left, above the attribution.
-            Positioned(
-              left: 16,
-              bottom: 60 + widget.bottomInset,
-              child: _buildChatHubButton(isDark),
-            ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
             Positioned(
@@ -644,13 +639,29 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
+  Widget _buildRightControls(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        Expanded(
+          child: Align(
+            alignment: const Alignment(1, -0.12),
+            child: _buildActionRail(isDark),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildChatHubButton(isDark),
+      ],
+    );
+  }
+
   Widget _buildActionRail(bool isDark) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
         _buildCompass(isDark),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         _RoundButton(
           icon: Icons.my_location_rounded,
           tooltip: 'My location',
@@ -810,7 +821,7 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
-  // --- Chat Hub FAB (bottom-left) — iOS Messages icon shape ---
+  // --- Chat Hub FAB (bottom-right) — iOS Messages icon shape ---
   Widget _buildChatHubButton(bool isDark) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
