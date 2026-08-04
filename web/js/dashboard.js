@@ -247,7 +247,14 @@
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
-    const colors = { facility: '#3498db', incident: '#e74c3c', buoy: '#9b59b6', vessel: '#22c55e' };
+    // Vessels are slate, not green.
+    //
+    // Every other colour here encodes a status - blue facility, red incident,
+    // purple buoy, and green for "safe" throughout the rest of the dashboard.
+    // A vessel is an entity, not a verdict, and painting it green made boats
+    // indistinguishable from the safe-route layer. Slate reads as neutral and
+    // keeps green meaning only one thing.
+    const colors = { facility: '#3498db', incident: '#e74c3c', buoy: '#9b59b6', vessel: '#334155' };
     const color = colors[type] || '#3498db';
     return L.divIcon({
       className: 'custom-marker',
