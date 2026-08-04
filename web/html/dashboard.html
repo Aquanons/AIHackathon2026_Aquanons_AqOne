@@ -106,13 +106,13 @@
           <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
         </svg>
       </button>
-      <div class="user-pill" id="user-profile">
+      <a class="user-pill" id="user-profile" href="Systemprofile.html" aria-label="Open LGU administrator profile">
         <div class="user-avatar">LG</div>
         <span class="user-name">
           Kalibo, Aklan<br>
           LGU Administrator
         </span>
-      </div>
+      </a>
     </div>
   </header>
 
@@ -134,6 +134,21 @@
     <!-- ─── MAP COLUMN (left 68%) ─── -->
     <div class="map-column">
       <div id="map"></div>
+
+      <div class="danger-zone-status" id="danger-zone-status" aria-live="polite">
+        <span class="danger-zone-status-icon">!</span>
+        <span class="danger-zone-status-copy">
+              <strong>Live near-shore danger scan</strong>
+          <span id="danger-zone-status-text">Loading live weather and marine observations...</span>
+          <span class="danger-zone-disclosure">Experimental · Not for navigation</span>
+        </span>
+        <button type="button" class="danger-zone-refresh" id="danger-zone-refresh" title="Recalculate danger zones">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+            <path d="M20 4v7h-7" />
+          </svg>
+        </button>
+      </div>
 
       <!-- Measure HUD -->
       <div class="measure-hud" id="measure-hud">
@@ -261,6 +276,11 @@
                 <input type="checkbox" id="toggle-incidents" checked />
                 <span class="toggle-label">Incident Reports</span>
                 <span class="dot dot-red"></span>
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" id="toggle-danger-zones" checked />
+                <span class="toggle-label">AI Danger Zones <small>Real data</small></span>
+                <span class="dot dot-danger-zone"></span>
               </label>
               <label class="toggle-row">
                 <input type="checkbox" id="toggle-buoys" checked />
@@ -524,6 +544,10 @@
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg></div>
             <div class="legend-text">Active alert / distress signal</div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-icon danger-zone-legend-icon">!</div>
+            <div class="legend-text">Model-assessed sea sector <small>Not navigation</small></div>
           </div>
           <div class="legend-item" id="legend-pins">
             <div class="legend-icon" style="color:#00bcd4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -855,6 +879,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-fullscreen@1.0.2/dist/leaflet.fullscreen.js"></script>
   <script src="../js/advisoryService.js"></script>
+  <script src="../js/dangerZoneModel.js"></script>
+  <script src="../js/dangerZonePredictor.js"></script>
   <script src="../js/dashboard.js"></script>
 </body>
 
