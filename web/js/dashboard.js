@@ -2353,14 +2353,28 @@
     var incident = payload && payload.incident;
     var track = (payload && payload.ground_truth_track) || [];
     var metaEl = document.getElementById('ai-drift-meta');
-    if (!prediction || !prediction.contours || !prediction.contours.length) {
+
+    // The response carries two contour sets. `prediction.contours` is the raw
+    // Monte Carlo output - the prior, which never changes. `payload.contours`
+    // is computed from the posterior grid and therefore reflects any sectors
+    // already searched and eliminated.
+    //
+    // We previously drew the prior, which meant a dispatcher could report "we
+    // searched here, nothing found", the posterior would correctly update in
+    // the database, and the map would carry on showing the original search
+    // area. The whole point of Bayesian re-tasking was invisible.
+    var contours = (payload && payload.contours && payload.contours.length)
+      ? payload.contours
+      : (prediction && prediction.contours);
+
+    if (!contours || !contours.length) {
       if (metaEl) metaEl.textContent = 'No drift contours available for the selected incident.';
       return;
     }
 
     var contourBounds = L.latLngBounds([]);
 
-    prediction.contours.forEach(function (feature) {
+    contours.forEach(function (feature) {
       var mass = feature.properties && feature.properties.mass;
       var contourLabel = mass >= 0.9 ? '95% search area' : (mass >= 0.7 ? '75% search area' : '50% search area');
       var color = mass >= 0.9 ? aiColors.contour95 : (mass >= 0.7 ? aiColors.contour75 : aiColors.contour50);
@@ -2408,15 +2422,89 @@
       contourBounds.extend(trackLine.getBounds());
     }
 
+    // Sectors already searched, drawn as hatched grey boxes. Seeing where has
+    // been eliminated is half the value of a probability map - otherwise the
+    // dispatcher cannot tell which part of the remaining area is new.
+    //
+    // Sector bounds arrive in metres relative to the posterior grid's origin,
+    // so they are converted back on the same local tangent plane the backend
+    // used (see KM_PER_DEG_LAT in backend/app/ai/drift.py).
+    var grid = payload && payload.posterior_grid;
+    var origin = grid && grid.origin;
+    var sectors = (payload && payload.search_sectors) || [];
+    if (origin && sectors.length) {
+      var mPerDegLat = 110574.0;
+      var mPerDegLon = 111320.0 * Math.cos(origin.lat * Math.PI / 180);
+      sectors.forEach(function (sector) {
+        var south = origin.lat + sector.y_min_m / mPerDegLat;
+        var north = origin.lat + sector.y_max_m / mPerDegLat;
+        var west = origin.lon + sector.x_min_m / mPerDegLon;
+        var east = origin.lon + sector.x_max_m / mPerDegLon;
+        var box = L.rectangle([[south, west], [north, east]], {
+          pane: 'aiContoursPane',
+          color: '#94a3b8',
+          weight: 1.5,
+          opacity: 0.9,
+          fillColor: '#64748b',
+          fillOpacity: 0.22,
+          dashArray: '4 4'
+        }).addTo(aiContoursLayer);
+        var pod = typeof sector.detection_probability === 'number'
+          ? Math.round(sector.detection_probability * 100) + '% detection probability'
+          : 'searched';
+        box.bindTooltip('Searched — ' + pod, {
+          sticky: true,
+          direction: 'center',
+          className: 'drift-incident-label'
+        });
+      });
+    }
+
     if (contourBounds.isValid()) {
       map.fitBounds(contourBounds.pad(0.12), { animate: true, duration: 0.9, maxZoom: 14 });
     }
 
     if (metaEl && incident) {
       var incidentTime = incident.last_contact_at ? new Date(incident.last_contact_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+
+      // These four came down the wire on every request and were thrown away.
+      // They are what turns a coloured blob into a forecast a dispatcher can
+      // reason about - and, in the case of the current source, they are how we
+      // stay honest on stage about which parts are real.
+      var bits = [];
+
+      if (prediction && prediction.object_class) {
+        bits.push('Drift class: <strong>' + _escHtml(String(prediction.object_class).replace(/_/g, ' ')) + '</strong>');
+      }
+
+      // Share of particles whose current came from real buoy observations
+      // rather than the synthetic fallback field. 0% is not a failure - it is
+      // the truthful state until buoys are in the water - so it is labelled
+      // rather than hidden.
+      if (typeof payload.observation_fraction === 'number') {
+        var pct = Math.round(payload.observation_fraction * 100);
+        bits.push(
+          pct > 0
+            ? 'Currents: <strong>' + pct + '% from buoy observations</strong>'
+            : 'Currents: <strong>simulated</strong> (no buoy observations yet)'
+        );
+      }
+
+      if (prediction && prediction.wind_source) {
+        bits.push('Wind: ' + _escHtml(prediction.wind_source) +
+          (prediction.degraded ? ' <span class="drift-degraded">(degraded — live wind unavailable)</span>' : ''));
+      }
+
+      var searched = (payload && payload.search_sectors) || [];
+      if (searched.length) {
+        bits.push('<strong>' + searched.length + '</strong> sector' + (searched.length === 1 ? '' : 's') +
+          ' searched — contours show the updated posterior');
+      }
+
       metaEl.innerHTML =
         '<strong>Incident #' + incident.id + '</strong> · Vessel ' + _escHtml(incident.vessel_id) + '<br>' +
         'Last contact: ' + incidentTime + ' · ' + _escHtml(incident.abnormal_reason || 'unknown') + '<br>' +
+        (bits.length ? bits.join(' · ') + '<br>' : '') +
         'Track labeled as ground truth for synthetic evaluation.';
     }
 
