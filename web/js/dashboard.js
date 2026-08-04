@@ -1320,6 +1320,16 @@
     { type: 'capsizing-risk',  desc: 'Resolved \u2014 false alarm from single-vessel deviation',            time: '2 hours ago',     lat: 11.6563, lng: 122.5327, status: 'resolved', vesselId: null, confidence: 41, stage: 'STAGE 1 \u2014 SILENT CHECK-IN' },
   ];
 
+  // Real SOS events from the backend. Kept in a separate array from the demo
+  // rows above so that nothing scripted can ever be mistaken for a live
+  // distress call: live entries carry isLive and a real sosEventId, demo rows
+  // carry neither. Live entries always sort first.
+  let liveAlerts = [];
+
+  function allAlerts() {
+    return liveAlerts.concat(alertData);
+  }
+
   function alertIcon(type) {
     const icons = {
       'sos': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
@@ -1344,19 +1354,37 @@
     return '#f1c40f';
   }
 
-  function renderAlerts() {
-    const list = document.getElementById('alert-list');
-    list.innerHTML = alertData.map((a, i) => `
-      <div class="alert-row" data-alert-index="${i}">
-        ${alertIcon(a.type)}
-        <div class="alert-info">
-          <div class="alert-desc">${a.desc}</div>
-          <div class="alert-meta">${a.time} &middot; ${a.lat}&deg; N, ${a.lng}&deg; E</div>
-          <div class="aq-alert-conf">
+  // A live SOS shows no confidence score. The other alert types are model
+  // output and a percentage is meaningful; a person pressing the button is a
+  // fact, and dressing it in a fabricated confidence number would be a lie in
+  // the one place on this dashboard where lying costs the most.
+  function alertConfidenceRow(a) {
+    if (a.isLive) {
+      return `<div class="aq-alert-conf">
+            <span class="aq-stage-mini">${a.stage}</span>
+          </div>`;
+    }
+    return `<div class="aq-alert-conf">
             <span class="aq-conf-mini" style="color:${confidenceColor(a.confidence)};">${a.confidence}% conf</span>
             <span class="aq-conf-bar"><span class="aq-conf-fill" style="width:${a.confidence}%;background:${confidenceColor(a.confidence)};"></span></span>
             <span class="aq-stage-mini">${a.stage}</span>
-          </div>
+          </div>`;
+  }
+
+  function renderAlerts() {
+    const list = document.getElementById('alert-list');
+    const rows = allAlerts();
+    list.innerHTML = rows.map((a, i) => `
+      <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}">
+        ${alertIcon(a.type)}
+        <div class="alert-info">
+          <div class="alert-desc">${a.isLive ? '<span class="alert-live-badge">LIVE</span>' : ''}${a.desc}</div>
+          <div class="alert-meta">${a.time} &middot; ${
+            a.lat == null || a.lng == null
+              ? '<span class="alert-nofix">no GPS fix</span>'
+              : a.lat + '&deg; N, ' + a.lng + '&deg; E'
+          }${a.etaAt ? ' &middot; <span data-eta-at="' + a.etaAt + '"></span>' : ''}</div>
+          ${alertConfidenceRow(a)}
         </div>
         ${alertStatusPill(a.status)}
       </div>
@@ -1364,9 +1392,17 @@
 
     list.querySelectorAll('.alert-row').forEach(row => {
       row.addEventListener('click', () => {
-        var a = alertData[row.dataset.alertIndex];
+        var a = rows[row.dataset.alertIndex];
         if (!a) return;
-        map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
+        // An SOS sent without a GPS fix is still a real distress call and must
+        // stay clickable. There is simply nowhere to pan the map to.
+        if (a.lat != null && a.lng != null) {
+          map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
+        }
+        if (a.isLive && a.drawerData) {
+          openIncidentDrawer(a.drawerData, liveSosMarkers[a.sosEventId] || null);
+          return;
+        }
         if (a.vesselId) {
           var vm = vesselMarkers[a.vesselId];
           if (vm) vm.openPopup();
@@ -1377,7 +1413,7 @@
 
   renderAlerts();
 
-  const activeAlertCount = alertData.filter(a => a.status === 'active').length;
+  const activeAlertCount = allAlerts().filter(a => a.status === 'active').length;
   document.getElementById('badge-alerts').textContent = activeAlertCount;
 
   const liveBanner = document.getElementById('live-alert-banner');
@@ -1396,7 +1432,7 @@
   // ReferenceError on that path. This is the branch's logic minus the hotspot
   // parts, reusing the elements resolved just above.
   function syncAlertIndicators() {
-    const activeCount = alertData.filter(function (alert) {
+    const activeCount = allAlerts().filter(function (alert) {
       return alert.status === 'active';
     }).length;
     const alertBadge = document.getElementById('badge-alerts');
@@ -1405,6 +1441,165 @@
     if (liveBanner) liveBanner.classList.toggle('has-alerts', activeCount > 0);
     renderAlerts();
   }
+
+  // ===== LIVE SOS FEED =====
+  //
+  // The dashboard previously rendered only the hardcoded demo rows above, so a
+  // real distress call could sit in the database while the screen showed three
+  // fictional vessels. This is the path that makes a pressed button visible.
+  //
+  // Polling rather than SSE: /api/sos/active already exists and needs no
+  // reconnect logic. Ten seconds is well inside a dispatcher's reaction time,
+  // and a missed poll self-heals on the next tick, which a dropped socket does
+  // not.
+  const LIVE_SOS_POLL_MS = 10000;
+  const liveSosLayer = L.layerGroup().addTo(map);
+  const liveSosMarkers = {};
+  let liveSosFirstLoad = true;
+  let knownSosIds = Object.create(null);
+
+  function liveSosIcon() {
+    return L.divIcon({
+      className: 'live-sos-marker',
+      html: '<span class="live-sos-pulse"></span><span class="live-sos-core">SOS</span>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+  }
+
+  function relativeTime(iso) {
+    const then = new Date(iso).getTime();
+    if (!isFinite(then)) return 'unknown time';
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 60) return secs + ' seconds ago';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+    const hrs = Math.floor(mins / 60);
+    return hrs + (hrs === 1 ? ' hour ' : ' hours ') + (mins % 60) + ' minutes ago';
+  }
+
+  // How the SOS reached us, stated plainly. The dispatcher needs to know
+  // whether the mesh carried this or whether the handset had signal, because
+  // it changes what they can assume about the vessel's situation.
+  function deliveryPath(ev) {
+    const paths = [];
+    if (ev.delivered_via_buoy) paths.push('LoRa mesh' + (ev.buoy_id ? ' via ' + ev.buoy_id : ''));
+    if (ev.delivered_direct) paths.push('direct internet');
+    if (!paths.length) return 'Path unrecorded';
+    return paths.join(' + ');
+  }
+
+  function sosPosition(ev) {
+    if (typeof ev.latitude !== 'number' || typeof ev.longitude !== 'number') {
+      return 'No GPS fix reported';
+    }
+    return ev.latitude.toFixed(4) + '° N, ' + ev.longitude.toFixed(4) + '° E';
+  }
+
+  function liveAlertFromEvent(ev) {
+    const boat = ev.boat || ev.vessel_id || 'Unidentified vessel';
+    const hasFix = typeof ev.latitude === 'number' && typeof ev.longitude === 'number';
+    const alert = {
+      isLive: true,
+      sosEventId: ev.id,
+      type: 'sos',
+      desc: 'SOS — ' + boat + (ev.note ? ' — “' + ev.note + '”' : ''),
+      time: relativeTime(ev.created_at),
+      lat: hasFix ? Number(ev.latitude.toFixed(4)) : null,
+      lng: hasFix ? Number(ev.longitude.toFixed(4)) : null,
+      status: ev.acknowledged_at ? 'acknowledged' : 'active',
+      vesselId: ev.vessel_id || null,
+      confidence: null,
+      stage: 'DISTRESS CALL — ' + deliveryPath(ev)
+    };
+    alert.drawerData = {
+      alertType: 'sos',
+      headerText: 'SOS — DISTRESS CALL RECEIVED',
+      sosEventId: ev.id,
+      vesselId: ev.vessel_id || 'Unknown',
+      owner: boat,
+      position: sosPosition(ev),
+      lat: alert.lat,
+      lng: alert.lng,
+      buoy: ev.buoy_id || 'Not relayed by a buoy',
+      coverage: deliveryPath(ev) + (ev.trust_tier ? ' · trust tier ' + ev.trust_tier : ''),
+      confidence: null,
+      stage: 'DISTRESS CALL — human pressed the button',
+      nextContact: ev.note || 'No message attached',
+      timerBaseline: Math.max(0, Math.floor((Date.now() - new Date(ev.created_at).getTime()) / 1000))
+    };
+    return alert;
+  }
+
+  function syncLiveSosMarkers() {
+    const seen = Object.create(null);
+    liveAlerts.forEach(function (a) {
+      if (a.lat == null || a.lng == null) return;
+      seen[a.sosEventId] = true;
+      let marker = liveSosMarkers[a.sosEventId];
+      if (!marker) {
+        marker = L.marker([a.lat, a.lng], { icon: liveSosIcon(), zIndexOffset: 1000 });
+        marker.bindTooltip(a.desc, { direction: 'top', offset: [0, -14] });
+        liveSosLayer.addLayer(marker);
+        liveSosMarkers[a.sosEventId] = marker;
+      } else {
+        marker.setLatLng([a.lat, a.lng]);
+      }
+      marker.off('click');
+      marker.on('click', function () { openIncidentDrawer(a.drawerData, marker); });
+    });
+
+    // Acknowledged events leave /active, so their markers must go too.
+    Object.keys(liveSosMarkers).forEach(function (id) {
+      if (!seen[id]) {
+        liveSosLayer.removeLayer(liveSosMarkers[id]);
+        delete liveSosMarkers[id];
+      }
+    });
+  }
+
+  function loadActiveSos() {
+    return authFetch('/api/sos/active')
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        const events = (data && data.events) || [];
+        liveAlerts = events.map(liveAlertFromEvent);
+
+        // Announce genuinely new calls, but never on the first load - a
+        // dispatcher opening the dashboard should not be hit with a klaxon for
+        // events they already handled before the page refreshed.
+        if (!liveSosFirstLoad) {
+          events.forEach(function (ev) {
+            if (!knownSosIds[ev.id]) {
+              showToast(
+                'SOS received',
+                (ev.boat || ev.vessel_id || 'A vessel') + ' · ' + sosPosition(ev),
+                true
+              );
+            }
+          });
+        }
+        knownSosIds = Object.create(null);
+        events.forEach(function (ev) { knownSosIds[ev.id] = true; });
+        liveSosFirstLoad = false;
+
+        syncLiveSosMarkers();
+        syncAlertIndicators();
+        renderIncidentFeed();
+      })
+      .catch(function (err) {
+        // A failed poll must not blank the list. The last known set of live
+        // alerts stays on screen rather than a distress call silently
+        // vanishing because one request timed out.
+        console.warn('[AqOne] Live SOS poll failed:', err.message);
+      });
+  }
+
+  loadActiveSos();
+  setInterval(loadActiveSos, LIVE_SOS_POLL_MS);
 
   // ===== SAR METRICS TAB =====
   // SAR metrics come from the evaluation scripts via /api/ai/metrics. There is
@@ -1571,12 +1766,31 @@
     document.getElementById('sos-coverage').textContent  = data.coverage;
 
     // confidence + escalation
-    var conf = data.confidence != null ? data.confidence : 0;
-    document.getElementById('sos-confidence-value').textContent = conf + '%';
-    document.getElementById('sos-confidence-value').style.color = confidenceColor(conf);
+    //
+    // A real SOS carries no confidence score and must not be shown with one.
+    // The old code coerced a missing score to 0, which would have rendered a
+    // human distress call as "0% confidence" - the most damaging possible
+    // misreading on this screen. Null hides the meter instead.
+    var confValueEl = document.getElementById('sos-confidence-value');
     var fill = document.getElementById('sos-confidence-fill');
-    fill.style.width = conf + '%';
-    fill.style.background = confidenceColor(conf);
+    var confBlock = confValueEl ? confValueEl.closest('.sos-conf') : null;
+    if (data.confidence == null) {
+      if (confValueEl) confValueEl.textContent = 'Not scored';
+      if (confValueEl) confValueEl.style.color = 'var(--text-muted, #94a3b8)';
+      if (fill) fill.style.width = '0%';
+      if (confBlock) confBlock.classList.add('is-unscored');
+    } else {
+      var conf = data.confidence;
+      if (confBlock) confBlock.classList.remove('is-unscored');
+      if (confValueEl) {
+        confValueEl.textContent = conf + '%';
+        confValueEl.style.color = confidenceColor(conf);
+      }
+      if (fill) {
+        fill.style.width = conf + '%';
+        fill.style.background = confidenceColor(conf);
+      }
+    }
     var stageEl = document.getElementById('sos-stage');
     stageEl.textContent = data.stage || 'Stage 1 \u2014 silent check-in';
     stageEl.className = 'aq-stage-badge';
@@ -1707,14 +1921,19 @@
       if (currentDrawerData) {
         currentDrawerData.etaAt = new Date(Date.now() + etaMinutes * 60000).toISOString();
         currentDrawerData.responderStatus = status;
-        const idx = alertData.findIndex(function (a) {
+
+        // Match on the event id when there is one. The old positional match on
+        // vesselId-or-coordinates could acknowledge the wrong row when two
+        // alerts shared a vessel, and could not address a live event at all.
+        const row = allAlerts().find(function (a) {
+          if (eventId) return a.sosEventId === eventId;
           return a.vesselId === currentDrawerData.vesselId ||
                  (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
         });
-        if (idx !== -1) {
-          alertData[idx].status = 'acknowledged';
-          alertData[idx].etaAt = currentDrawerData.etaAt;
-          renderAlerts();
+        if (row) {
+          row.status = 'acknowledged';
+          row.etaAt = currentDrawerData.etaAt;
+          syncAlertIndicators();
         }
       }
       closeAckModal();
@@ -1773,13 +1992,18 @@
 
   sosBtnResolve.addEventListener('click', function () {
     console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' resolved');
-    if (currentDrawerMarker) incidentLayer.removeLayer(currentDrawerMarker);
+    if (currentDrawerMarker) {
+      incidentLayer.removeLayer(currentDrawerMarker);
+      liveSosLayer.removeLayer(currentDrawerMarker);
+    }
     if (currentDrawerData) {
-      const idx = alertData.findIndex(function (a) {
+      const eventId = currentDrawerData.sosEventId;
+      const row = allAlerts().find(function (a) {
+        if (eventId) return a.sosEventId === eventId;
         return a.vesselId === currentDrawerData.vesselId ||
                (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
       });
-      if (idx !== -1) { alertData[idx].status = 'resolved'; renderAlerts(); }
+      if (row) { row.status = 'resolved'; syncAlertIndicators(); }
     }
     closeSOSDrawer();
   });
@@ -1795,23 +2019,31 @@
   // ===== INCIDENT FEED =====
   function renderIncidentFeed() {
     var el = document.getElementById('incident-feed-list');
-    var active = alertData.filter(function (a) { return a.status !== 'resolved'; });
+    if (!el) return;
+    var active = allAlerts().filter(function (a) { return a.status !== 'resolved'; });
     if (active.length === 0) {
       el.innerHTML = '<p class="panel-stub-text">No active incidents</p>';
       return;
     }
-    el.innerHTML = active.slice(0, 4).map(function (a, i) {
-      return '<div class="incident-feed-row" data-idx="' + i + '">' +
+    var shown = active.slice(0, 4);
+    el.innerHTML = shown.map(function (a, i) {
+      return '<div class="incident-feed-row' + (a.isLive ? ' incident-feed-live' : '') +
+        '" data-idx="' + i + '">' +
         alertIcon(a.type) +
         '<div class="incident-feed-info">' +
-          '<div class="incident-feed-desc">' + a.desc + '</div>' +
+          '<div class="incident-feed-desc">' +
+            (a.isLive ? '<span class="alert-live-badge">LIVE</span>' : '') + a.desc + '</div>' +
           '<div class="incident-feed-meta">' + a.time + '</div>' +
         '</div>' +
       '</div>';
     }).join('');
     el.querySelectorAll('.incident-feed-row').forEach(function (row) {
       row.addEventListener('click', function () {
-        var a = alertData[row.dataset.idx];
+        // Indexes into the filtered list that was actually rendered. This
+        // previously indexed the unfiltered array, so a click could pan to a
+        // different incident than the one clicked.
+        var a = shown[row.dataset.idx];
+        if (!a || a.lat == null || a.lng == null) return;
         map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
       });
     });

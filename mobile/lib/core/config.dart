@@ -6,9 +6,18 @@ class AqOneConfig {
     defaultValue: 'http://10.0.0.1',
   );
 
+  /// The deployed Railway service. Override at build time with
+  /// `--dart-define=BACKEND_BASE_URL=https://...` when pointing a build at a
+  /// different environment.
+  ///
+  /// This default was previously `aqone-backend.up.railway.app`, a name taken
+  /// from the docs that was never provisioned. Every direct SOS delivery
+  /// failed host lookup, and because the error was swallowed the app reported
+  /// only the buoy's timeout - so a phone with working internet showed
+  /// "no buoy nearby, will send automatically" and never sent anything.
   static const String backendBaseUrl = String.fromEnvironment(
     'BACKEND_BASE_URL',
-    defaultValue: 'https://aqone-backend.up.railway.app',
+    defaultValue: 'https://incredible-liberation-production-aad7.up.railway.app',
   );
 
   static const int protocolVersion = 1;

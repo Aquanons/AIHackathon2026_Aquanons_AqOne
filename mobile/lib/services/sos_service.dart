@@ -176,14 +176,20 @@ class SosService {
       return true;
     }
 
-    // Neither route worked. Keep the reason from the buoy attempt, which is
-    // the more informative of the two, and leave the record pending so the
-    // retry timer picks it up again.
-    final reason = buoyResult is BuoyRejected
+    // Neither route worked. Report both reasons rather than only the buoy's.
+    //
+    // Previously this preferred the buoy's message unconditionally, so a phone
+    // with perfectly good internet and a misconfigured backend URL displayed a
+    // buoy timeout - pointing every debugging effort at the mesh while the
+    // actual fault was the internet path. Whatever is shown here is the only
+    // diagnostic a field tester gets.
+    final buoyReason = buoyResult is BuoyRejected
         ? buoyResult.reason
         : buoyResult is BuoyUnreachable
             ? buoyResult.reason
-            : 'no buoy in range and no internet connection';
+            : 'no buoy in range';
+    final directReason = _backend.lastDirectError ?? 'internet path failed';
+    final reason = 'buoy: $buoyReason · internet: $directReason';
     await _outbox.recordFailure(localId, reason);
     if (notify) {
       _changes.add(null);

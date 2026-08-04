@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -97,6 +98,15 @@ class BackendClient {
   /// (vessel_id, client_ts), so a call that arrives twice is one incident on
   /// the dispatcher's screen. Returns true when the backend has the SOS,
   /// whether this request created it or found it already there.
+  /// The reason the last direct attempt failed, or null if it succeeded.
+  ///
+  /// This exists because the previous `catch (_) { return false; }` collapsed
+  /// every possible failure - bad hostname, TLS error, HTTP 500, blocked
+  /// cleartext - into an indistinguishable false with nothing logged. A
+  /// misconfigured base URL then looked identical to being out of signal, and
+  /// the app blamed the buoy for a problem the internet path was having.
+  String? lastDirectError;
+
   Future<bool> postSos(SosRecord record) async {
     final payload = record.toBuoyPayload()
       ..['local_id'] = record.localId
@@ -114,10 +124,39 @@ class BackendClient {
       // 200 covers both "created" and "already known": the emergency is
       // recorded either way, which is all the handset needs to stop retrying
       // this route.
-      return response.statusCode == 200;
-    } catch (_) {
+      if (response.statusCode == 200) {
+        lastDirectError = null;
+        return true;
+      }
+      lastDirectError = 'backend returned HTTP ${response.statusCode}';
+      return false;
+    } on TimeoutException {
+      lastDirectError =
+          'backend did not answer within ${AqOneConfig.backendTimeout.inSeconds}s';
+      return false;
+    } catch (error) {
+      lastDirectError = _describeNetworkError(error);
       return false;
     }
+  }
+
+  /// Turns a raw exception into something a person can act on. The hostname is
+  /// included deliberately: a wrong base URL is the failure most likely to
+  /// survive to a demo, and it is invisible unless the message names it.
+  /// Matched on message text rather than on `SocketException` /
+  /// `HandshakeException`, because those live in `dart:io` and importing it
+  /// here would break the web build.
+  String _describeNetworkError(Object error) {
+    final text = error.toString();
+    if (text.contains('Failed host lookup') ||
+        text.contains('SocketException') ||
+        text.contains('ClientException')) {
+      return 'cannot reach $_baseUrl (check the backend URL and connectivity)';
+    }
+    if (text.contains('HandshakeException') || text.contains('CERTIFICATE')) {
+      return 'TLS handshake failed for $_baseUrl';
+    }
+    return text;
   }
 
   /// Ask the backend what has happened to this vessel's SOS records.

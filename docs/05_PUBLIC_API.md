@@ -13,7 +13,7 @@ Out of scope: ingest (`docs/04_INGEST_API.md`) and the radio hops.
 
 ## Transport
 
-- HTTPS. Base URL is `https://aqone-backend.up.railway.app`.
+- HTTPS. Base URL is `https://incredible-liberation-production-aad7.up.railway.app`.
 - Dashboard requests are authenticated by API key (`X-Api-Key`); the mobile
   app may use unauthenticated read endpoints while the app has no login (role
   `fisherman` only sees its own vessel status client-side).

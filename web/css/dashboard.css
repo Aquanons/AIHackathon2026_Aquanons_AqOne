@@ -4650,3 +4650,84 @@ h3.buoy-drawer-title {
 /* Countdown shown on an acknowledged incident row. */
 .ack-countdown { font-family: "Consolas", "SF Mono", monospace; font-weight: 700; }
 .ack-countdown.is-overdue { color: #e67e22; }
+
+/* ===== LIVE SOS =====
+   Real distress calls from /api/sos/active. Styled deliberately louder than
+   every other marker and row on the dashboard, and paired with muted styling
+   on the scripted demo rows, so that a dispatcher can never confuse rehearsal
+   data with a person in the water. */
+
+.live-sos-marker {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+}
+
+.live-sos-core {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.7);
+}
+
+.live-sos-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.55);
+  animation: live-sos-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes live-sos-ping {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+.alert-live-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
+
+.alert-row-live {
+  background: rgba(220, 38, 38, 0.07);
+  border-left: 3px solid #dc2626;
+}
+
+.alert-row-live .alert-desc { font-weight: 700; }
+
+/* Non-SOS rows (demo scaffolding and model-derived forecast alerts) stay
+   legible but visibly secondary to a live distress call. */
+.alert-row-secondary { opacity: 0.78; }
+
+.alert-nofix {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.incident-feed-live { border-left: 3px solid #dc2626; }
+
+/* An SOS is a fact, not a prediction, so its confidence meter is suppressed
+   rather than shown at zero. */
+.sos-conf.is-unscored .aq-conf-bar,
+.sos-conf.is-unscored .aq-conf-fill { display: none; }

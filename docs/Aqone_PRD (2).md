@@ -182,7 +182,7 @@ Three models, mapped to the three phases of a maritime incident. Each consumes d
 
 **(c) Bayesian search allocation.** The output is not a point. It is a probability density over water, propagated forward from the last-contact position and timestamp — this part is built, and the 50/75/95% contours come from it.
 
-*The re-tasking half is [Roadmap — not implemented].* As PCG assets search sectors and report negative findings, the posterior should update and re-task them toward the highest remaining probability mass. Today the density is computed once and the contours are static. Nothing consumes a negative search result.
+The re-tasking half is now built. As assets search sectors and report negative findings, `POST /api/ai/drift/incident/{id}/searched` applies the sector's detection probability to the posterior, renormalises, persists the updated grid to `incidents.posterior_grid`, and returns fresh contours — so the search area shifts toward the highest remaining probability mass rather than staying static. Implemented in `backend/app/ai/search.py` (`update_posterior`, `contours_from_grid`), covered by `backend/tests/test_search.py`.
 
 **Survivability weighting.** [Roadmap — not implemented] Predicted time-in-water viability, given sea state and temperature, prioritises tasking when multiple incidents compete for one asset.
 
@@ -251,8 +251,8 @@ The buoy network degrades gracefully to an opportunistic messaging service. **Al
 - Phone app: opportunistic messaging, weather sync, manual SOS
 - Squall nowcasting with RETURN NOW alerts, including buoy-side physical signalling
 - Learned trip profiles and overdue/anomaly detection with confidence scoring
-- Drift prediction producing a probability density and 50/75/95% search contours
-  (Bayesian re-tasking on negative search results is roadmap — see §5.3(c))
+- Drift prediction producing a probability density and 50/75/95% search contours,
+  with Bayesian re-tasking on negative search results (§5.3(c))
 - PCG / BFAR operations console
 
 ### Explicitly out of scope
