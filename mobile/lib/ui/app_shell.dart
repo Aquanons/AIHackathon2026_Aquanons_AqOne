@@ -82,6 +82,18 @@ class _AppShellState extends State<AppShell> {
 
   bool _dialogOpen = false;
 
+  /// True from the moment a check starts until it has either found nothing
+  /// or committed to opening a dialog.
+  ///
+  /// [_dialogOpen] alone is not enough to prevent duplicates: it is only set
+  /// true *after* `await widget.sos.history()` below, so a burst of
+  /// `sos.changes` events (routine during an ack/outbox flush) can start
+  /// several overlapping calls that all pass the `_dialogOpen` check before
+  /// any of them sets it, each independently scheduling its own dialog for
+  /// the same acknowledgement. This flag closes that window by being set
+  /// synchronously, before the first `await`.
+  bool _checkingAcknowledgement = false;
+
   @override
   void initState() {
     super.initState();
@@ -96,46 +108,52 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _checkForAcknowledgement() async {
-    if (!mounted || _dialogOpen) {
+    if (!mounted || _dialogOpen || _checkingAcknowledgement) {
       return;
     }
+    _checkingAcknowledgement = true;
 
-    final records = await widget.sos.history();
-    if (!mounted) {
-      return;
-    }
-
-    SosRecord? pending;
-    for (final record in records) {
-      final acknowledged = record.state == DeliveryState.acknowledged ||
-          record.etaAt != null;
-      if (acknowledged && !_announced.contains(record.localId)) {
-        pending = record;
-        break;
-      }
-    }
-
-    if (pending == null) {
-      return;
-    }
-
-    _announced.add(pending.localId);
-    _dialogOpen = true;
-
-    // Scheduled after the current frame so this can safely fire from a stream
-    // callback during a build without tripping a setState-during-build error.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    try {
+      final records = await widget.sos.history();
       if (!mounted) {
-        _dialogOpen = false;
         return;
       }
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => ResponderEtaDialog(record: pending!),
-      );
-      _dialogOpen = false;
-    });
+
+      SosRecord? pending;
+      for (final record in records) {
+        final acknowledged = record.state == DeliveryState.acknowledged ||
+            record.etaAt != null;
+        if (acknowledged && !_announced.contains(record.localId)) {
+          pending = record;
+          break;
+        }
+      }
+
+      if (pending == null) {
+        return;
+      }
+
+      _announced.add(pending.localId);
+      _dialogOpen = true;
+
+      // Scheduled after the current frame so this can safely fire from a
+      // stream callback during a build without tripping a
+      // setState-during-build error.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) {
+          _dialogOpen = false;
+          return;
+        }
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => ResponderEtaDialog(record: pending!),
+        );
+        _dialogOpen = false;
+      });
+    } finally {
+      _checkingAcknowledgement = false;
+    }
   }
 
   /// Venture is not built until the user first opens it, so entering the app
