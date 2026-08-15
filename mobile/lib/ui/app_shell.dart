@@ -7,6 +7,7 @@ import '../data/identity_store.dart';
 import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
 import '../services/catch_service.dart';
+import '../services/fishing_spot_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
@@ -36,6 +37,7 @@ class AppShell extends StatefulWidget {
     required this.sos,
     required this.catches,
     required this.checklist,
+    required this.spots,
     required this.feeds,
     required this.location,
     required this.identityStore,
@@ -49,6 +51,7 @@ class AppShell extends StatefulWidget {
   final SosService sos;
   final CatchService catches;
   final ChecklistStore checklist;
+  final FishingSpotService spots;
   final VentureFeeds feeds;
   final LocationService location;
 
@@ -170,6 +173,7 @@ class _AppShellState extends State<AppShell> {
       sos: widget.sos,
       catches: widget.catches,
       checklist: widget.checklist,
+      spots: widget.spots,
       feeds: widget.feeds,
       location: widget.location,
       bottomInset: bottomInset,

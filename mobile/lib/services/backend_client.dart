@@ -309,6 +309,46 @@ class BackendClient {
   /// page, a stack trace, a body that doesn't parse - falls back to a plain
   /// "Rejected (4xx)" rather than dumping raw server output onto the
   /// fisher's phone.
+  /// Uploads one queued fishing-spot report. Mirrors [postCatchLog]'s
+  /// retry/reject distinction and idempotency-on-local_id behaviour.
+  Future<SpotUploadResult> postFishingSpot(Map<String, Object?> payload) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl${AqOneConfig.spotsPath}'),
+            headers: const <String, String>{
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(AqOneConfig.backendTimeout);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        String? serverId;
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map) {
+            final spot = decoded['spot'];
+            final source = spot is Map ? spot : decoded;
+            serverId = source['id']?.toString();
+          }
+        } catch (_) {
+          // A 2xx with an unreadable body still means it was accepted.
+        }
+        return SpotUploadResult.success(serverId);
+      }
+
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        return SpotUploadResult.rejected(
+          _catchErrorMessage(response.body, response.statusCode),
+        );
+      }
+      return SpotUploadResult.retry('Server error ${response.statusCode}');
+    } catch (_) {
+      return const SpotUploadResult.retry('No connection');
+    }
+  }
+
   static String _catchErrorMessage(String body, int statusCode) {
     final trimmed = body.trim();
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
@@ -351,3 +391,24 @@ class CatchUploadResult {
 }
 
 enum CatchUploadKind { success, retry, rejected }
+
+/// Outcome of a single fishing-spot upload attempt. Mirrors
+/// [CatchUploadResult] in shape.
+class SpotUploadResult {
+  const SpotUploadResult._(this.kind, {this.serverId, this.message});
+
+  const SpotUploadResult.success(String? id)
+      : this._(SpotUploadKind.success, serverId: id);
+
+  const SpotUploadResult.retry(String reason)
+      : this._(SpotUploadKind.retry, message: reason);
+
+  const SpotUploadResult.rejected(String reason)
+      : this._(SpotUploadKind.rejected, message: reason);
+
+  final SpotUploadKind kind;
+  final String? serverId;
+  final String? message;
+}
+
+enum SpotUploadKind { success, retry, rejected }

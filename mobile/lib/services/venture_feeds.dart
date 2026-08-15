@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../core/config.dart';
 import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
+import '../models/community_spot.dart';
 import '../models/hazard_alert.dart';
 import '../models/sea_condition.dart';
 import '../models/squall_watch.dart';
@@ -54,6 +55,17 @@ class VentureFeeds {
       return null;
     }
     return BuoyMarker.parseList(decoded);
+  }
+
+  /// Every fishing spot reported by any fisherman with the app - including
+  /// this handset's own reports, once they've synced. See CommunitySpot's
+  /// doc comment for why this is a separate type from the local outbox.
+  Future<List<CommunitySpot>?> spots() async {
+    final decoded = await _backend.getJson(AqOneConfig.spotsPath);
+    if (decoded == null) {
+      return null;
+    }
+    return CommunitySpot.parseList(decoded);
   }
 
   Future<List<HazardAlert>?> hazards(HazardKind kind) async {

@@ -6,11 +6,13 @@ import 'core/tokens.dart';
 import 'data/app_database.dart';
 import 'data/catch_store.dart';
 import 'data/checklist_store.dart';
+import 'data/fishing_spot_store.dart';
 import 'data/identity_store.dart';
 import 'data/outbox_store.dart';
 import 'services/backend_client.dart';
 import 'services/buoy_client.dart';
 import 'services/catch_service.dart';
+import 'services/fishing_spot_service.dart';
 import 'services/location_service.dart';
 import 'services/sos_service.dart';
 import 'services/venture_feeds.dart';
@@ -101,6 +103,7 @@ class _AqOneAppState extends State<AqOneApp> {
   late final SosService _service;
   late final CatchService _catches;
   late final ChecklistStore _checklist;
+  late final FishingSpotService _spots;
   late final VentureFeeds _feeds;
   late final LocationService _location;
   late final BackendClient _backend;
@@ -130,6 +133,11 @@ class _AqOneAppState extends State<AqOneApp> {
       location: _location,
     );
     _checklist = ChecklistStore(_db);
+    _spots = FishingSpotService(
+      store: FishingSpotStore(_db),
+      identity: _identityStore,
+      backend: _backend,
+    );
     _feeds = VentureFeeds(backend: _backend);
     _restore();
   }
@@ -138,6 +146,7 @@ class _AqOneAppState extends State<AqOneApp> {
   void dispose() {
     _service.dispose();
     _catches.dispose();
+    _spots.dispose();
     _feeds.close();
     _backend.close();
     super.dispose();
@@ -161,6 +170,7 @@ class _AqOneAppState extends State<AqOneApp> {
       if (remembered) {
         _service.start();
         _catches.start();
+        _spots.start();
       }
       setState(() {
         _identity = identity;
@@ -235,6 +245,7 @@ class _AqOneAppState extends State<AqOneApp> {
     // half-finished registration never puts traffic on the wire.
     _service.start();
     _catches.start();
+    _spots.start();
     setState(() {
       _identity = identity;
       _entered = true;
@@ -262,6 +273,7 @@ class _AqOneAppState extends State<AqOneApp> {
       sos: _service,
       catches: _catches,
       checklist: _checklist,
+      spots: _spots,
       feeds: _feeds,
       location: _location,
       identityStore: _identityStore,

@@ -19,6 +19,7 @@ from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
 from app.api.sos import protected_router as sos_read_router
 from app.api.sos import router as sos_ingest_router
+from app.api.spots import router as spots_router
 from app.api.squall import router as squall_router
 from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
@@ -51,6 +52,13 @@ app.include_router(sos_ingest_router)
 # Catch logging - unauthenticated for the same reason SOS ingest is: the
 # handset has no account. See app/api/catch.py.
 app.include_router(catch_ingest_router)
+
+# Fishing spots (community-reported "fish hotspots") - both ingest and read
+# are unauthenticated here, unlike catch logging: this is public, shared
+# data every fisherman with the app needs to see, not per-vessel dispatcher
+# reporting. Also what the dashboard's fetchHotspots() already expects to
+# call unauthenticated. See app/api/spots.py.
+app.include_router(spots_router)
 
 # Read-only safety feeds for the handset. Unauthenticated for the same reason
 # ingest is: the fisherman app has no account by design, so anything it needs

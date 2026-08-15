@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 9,
+      version: 10,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         // Each step is wrapped in try/catch so a partially-applied migration
@@ -88,6 +88,12 @@ class AppDatabase {
           // list, never sent to the backend.
           await _createChecklistItems(db);
         }
+        if (oldVersion < 10) {
+          // v10: fish hotspots. Community-reported fishing spots, queued and
+          // synced the same way catch logs are - see FishingSpot's doc
+          // comment for why this carries no prediction/trend/health columns.
+          await _createFishingSpotOutbox(db);
+        }
       },
       onCreate: (db, version) async {
         await db.execute('''
@@ -136,6 +142,7 @@ class AppDatabase {
         );
         await _createCatchOutbox(db);
         await _createChecklistItems(db);
+        await _createFishingSpotOutbox(db);
       },
     );
   }
@@ -249,6 +256,34 @@ class AppDatabase {
         created_at INTEGER NOT NULL
       )
     ''');
+  }
+
+  /// Community-reported fishing spots, queued locally the same way catch
+  /// logs are. No prediction/trend/health/reporter-count columns exist here
+  /// - see FishingSpot's doc comment for why fabricating those would be
+  /// dishonest about a model that doesn't exist.
+  static Future<void> _createFishingSpotOutbox(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fishing_spot_outbox (
+        local_id     TEXT PRIMARY KEY,
+        vessel_id    TEXT NOT NULL,
+        posted_by    TEXT,
+        latitude     REAL NOT NULL,
+        longitude    REAL NOT NULL,
+        species_name TEXT,
+        notes        TEXT,
+        client_ts    INTEGER NOT NULL,
+        state        TEXT NOT NULL,
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        last_error   TEXT,
+        server_id    TEXT,
+        synced_at    INTEGER
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_fishing_spot_state '
+      'ON fishing_spot_outbox (state, client_ts DESC)',
+    );
   }
 
   Future<void> close() async {

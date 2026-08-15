@@ -101,6 +101,13 @@ class AqOneConfig {
   /// feeds); this is a write endpoint, same family as sos.py.
   static const String catchLogsPath = '/api/catch-logs';
 
+  /// Community-reported fishing spots ("fish hotspots"). Unlike
+  /// [catchLogsPath], the GET side is also unauthenticated here - every
+  /// fisherman with the app needs to see every reported spot, and it is
+  /// also the exact path the dispatcher dashboard's fetchHotspots() already
+  /// calls. See backend/app/api/spots.py.
+  static const String spotsPath = '/api/spots';
+
   /// Squall nowcast (AI #1). Public because the handset has no account - see
   /// backend/app/api/public.py.
   static const String publicSquallPath = '/api/public/squall';
@@ -117,6 +124,7 @@ class AqOneConfig {
   /// Catch notes are stored locally and uploaded over HTTP, never squeezed
   /// into a LoRa frame, so they can be far more generous than SOS notes.
   static const int maxCatchNoteLength = 240;
+  static const int maxSpotNoteLength = 240;
   static const int maxNameLength = 64;
   static const int maxPhoneLength = 20;
   static const int minLicenseLength = 5;
