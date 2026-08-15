@@ -96,6 +96,11 @@ class AqOneConfig {
   static const String advisoriesPath = '/api/advisories?status=Published';
   static const String publicAdvisoriesPath = '/api/public/advisories';
 
+  /// Unauthenticated like /api/sos - a fisherman logging a catch at sea has
+  /// no account either. Not "public" (that prefix is for dashboard read
+  /// feeds); this is a write endpoint, same family as sos.py.
+  static const String catchLogsPath = '/api/catch-logs';
+
   /// Squall nowcast (AI #1). Public because the handset has no account - see
   /// backend/app/api/public.py.
   static const String publicSquallPath = '/api/public/squall';
@@ -108,6 +113,10 @@ class AqOneConfig {
   static const int maxVesselIdLength = 32;
   static const int maxBoatLength = 32;
   static const int maxNoteLength = 64;
+
+  /// Catch notes are stored locally and uploaded over HTTP, never squeezed
+  /// into a LoRa frame, so they can be far more generous than SOS notes.
+  static const int maxCatchNoteLength = 240;
   static const int maxNameLength = 64;
   static const int maxPhoneLength = 20;
   static const int minLicenseLength = 5;

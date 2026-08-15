@@ -11,6 +11,8 @@ from app.api.advisories import public_router as public_advisories_router
 from app.api.advisories import router as advisories_router  # <-- ONLY ADDED THIS IMPORT
 from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
+from app.api.catch import protected_router as catch_read_router
+from app.api.catch import router as catch_ingest_router
 from app.api.drift import router as drift_router
 from app.api.metrics import router as metrics_router
 from app.api.public import router as public_router
@@ -46,6 +48,10 @@ app.include_router(auth_router)
 # authenticate. Reading and acknowledging SOS events stays protected.
 app.include_router(sos_ingest_router)
 
+# Catch logging - unauthenticated for the same reason SOS ingest is: the
+# handset has no account. See app/api/catch.py.
+app.include_router(catch_ingest_router)
+
 # Read-only safety feeds for the handset. Unauthenticated for the same reason
 # ingest is: the fisherman app has no account by design, so anything it needs
 # in an emergency cannot sit behind a token. See app/api/public.py.
@@ -69,6 +75,7 @@ app.include_router(squall_router, dependencies=_protected)
 app.include_router(sea_condition_router, dependencies=_protected)
 app.include_router(metrics_router, dependencies=_protected)
 app.include_router(sos_read_router, dependencies=_protected)
+app.include_router(catch_read_router, dependencies=_protected)
 
 
 @app.get('/healthz')

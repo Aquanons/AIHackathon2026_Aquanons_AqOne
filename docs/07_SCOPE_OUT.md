@@ -30,10 +30,11 @@ doc is amended first.
 
 ## Product scope (existed in v1, cut for this build)
 
-- **No catch logging.** Fish catch / sales records are a separate product.
-  Still true, and now doubly so: the product is life-safety only.
 - **No photos.** SOS is text + optional GPS only; the LoRa channel is narrow.
   Still true.
+
+Catch logging was cut here too, in the original build. It has since been
+brought back - see "Amended — now in scope" below.
 
 ## Why (for Q&A)
 
@@ -84,3 +85,20 @@ than taken on trust.
   danger-zone model in `web/ml/`. All are calibrated on synthetic data except
   the danger-zone model, which is trained on real Open-Meteo history. See
   `docs/14_PRD_AUDIT.md` for what is genuinely built versus claimed.
+
+- **Catch logging.** Cut in the original 15-hour build for the same reason
+  every item at the top of this doc was: it is a separable product that would
+  have consumed the integration budget, and the demo story was airplane-mode
+  SOS end to end. With that budget no longer a constraint, it is back:
+  species, quantity, method and notes, queued on-device
+  (`mobile/lib/services/catch_service.dart`) and uploaded over plain HTTP -
+  never LoRa, that airtime stays reserved for distress - to
+  `POST /api/catch-logs` (`backend/app/api/catch.py`, migration
+  `011_catch_logs`). Trust model is unchanged from SOS: `vessel_id` is trusted
+  from the body, because the app still has no accounts for fishermen and there
+  is nothing to authenticate against. This was flagged as a real gap in the
+  original v1 implementation (`docs/guides/07_SECURITY.md`), but it is not a
+  gap introduced by this feature specifically - it is the trust model the
+  whole handset-facing API already runs on for SOS ingest, and fixing it
+  properly means adding accounts for fishermen, which product scope
+  deliberately rejects (see "Accounts and passwords" above).

@@ -224,5 +224,120 @@ class BackendClient {
     }
   }
 
+  /// Uploads one queued catch log.
+  ///
+  /// Distinguishes "try again later" from "the server said no": a network
+  /// failure or 5xx should be retried, but a 4xx means the entry itself is
+  /// unacceptable and retrying forever would just burn battery.
+  Future<CatchUploadResult> postCatchLog(Map<String, Object?> payload) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl${AqOneConfig.catchLogsPath}'),
+            headers: const <String, String>{
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(AqOneConfig.backendTimeout);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        String? serverId;
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map) {
+            final log = decoded['catch_log'];
+            final source = log is Map ? log : decoded;
+            serverId = source['id']?.toString();
+          }
+        } catch (_) {
+          // A 2xx with an unreadable body still means it was accepted.
+        }
+        return CatchUploadResult.success(serverId);
+      }
+
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        return CatchUploadResult.rejected(
+          _catchErrorMessage(response.body, response.statusCode),
+        );
+      }
+      return CatchUploadResult.retry('Server error ${response.statusCode}');
+    } catch (_) {
+      return const CatchUploadResult.retry('No connection');
+    }
+  }
+
+  /// Pushes a reweighed, confirmed figure for a catch already on the
+  /// backend. Separate from [postCatchLog] on purpose - see
+  /// [CatchRecord.toConfirmWeightPayload] - and best-effort in the same way:
+  /// a failure here just leaves the confirmation queued for the next sync
+  /// tick, so it returns a bare bool rather than the retry/reject
+  /// distinction [postCatchLog] needs (there is nothing here the server
+  /// could reject on its merits; the only failure mode is connectivity).
+  Future<bool> confirmCatchWeight(
+    String catchLogId,
+    Map<String, Object?> payload,
+  ) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse(
+              '$_baseUrl${AqOneConfig.catchLogsPath}/$catchLogId/confirm-weight',
+            ),
+            headers: const <String, String>{
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(AqOneConfig.backendTimeout);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String _catchErrorMessage(String body, int statusCode) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) {
+      return 'Rejected ($statusCode)';
+    }
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is Map) {
+          final detail = decoded['detail'];
+          if (detail is String && detail.trim().isNotEmpty) {
+            return detail.trim();
+          }
+        } else if (decoded is String && decoded.trim().isNotEmpty) {
+          return decoded.trim();
+        }
+      } catch (_) {
+        // Fall through to the raw text.
+      }
+    }
+    return trimmed.length <= 120 ? trimmed : trimmed.substring(0, 120);
+  }
+
   void close() => _client.close();
 }
+
+/// Outcome of a single catch-log upload attempt.
+class CatchUploadResult {
+  const CatchUploadResult._(this.kind, {this.serverId, this.message});
+
+  const CatchUploadResult.success(String? id)
+      : this._(CatchUploadKind.success, serverId: id);
+
+  const CatchUploadResult.retry(String reason)
+      : this._(CatchUploadKind.retry, message: reason);
+
+  const CatchUploadResult.rejected(String reason)
+      : this._(CatchUploadKind.rejected, message: reason);
+
+  final CatchUploadKind kind;
+  final String? serverId;
+  final String? message;
+}
+
+enum CatchUploadKind { success, retry, rejected }

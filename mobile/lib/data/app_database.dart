@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 6,
+      version: 8,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         // Each step is wrapped in try/catch so a partially-applied migration
@@ -58,6 +58,28 @@ class AppDatabase {
           // with toString(). This upgrade step exists only to document the
           // version bump and the reasoning, so a future migration does not
           // assume buoy_id is still numeric.
+        }
+        if (oldVersion < 7) {
+          // v7 brings catch logging back. It was queued in v3, dropped in
+          // v4 during a hackathon rescope (see docs/07_SCOPE_OUT.md), and is
+          // now back in scope. Recreated fresh rather than reusing the old
+          // v3 step, which a handset that already passed through v4 will
+          // never run again.
+          await _createCatchOutbox(db);
+        }
+        if (oldVersion < 8) {
+          // v8 splits catch weight into a quick estimate (always set, from a
+          // preset tap) and a real, reweighed figure that is confirmed
+          // separately and may arrive much later - see CatchRecord's doc
+          // comment. quantity_kg moves from NOT NULL to nullable, which
+          // SQLite cannot do with a plain ALTER TABLE, so the table is
+          // recreated. Catch logging only shipped in v7, in this same round
+          // of work, so there is no real fleet with rows to preserve here -
+          // any not-yet-synced catch is dropped rather than migrated. A
+          // later breaking change to this table will not have that luxury
+          // and must migrate data properly.
+          await db.execute('DROP TABLE IF EXISTS catch_outbox');
+          await _createCatchOutbox(db);
         }
       },
       onCreate: (db, version) async {
@@ -105,6 +127,7 @@ class AppDatabase {
         await db.execute(
           'CREATE INDEX idx_outbox_seq ON outbox (vessel_id, seq)',
         );
+        await _createCatchOutbox(db);
       },
     );
   }
@@ -159,6 +182,46 @@ class AppDatabase {
     ''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_catch_state '
+      'ON catch_outbox (state, client_ts DESC)',
+    );
+  }
+
+  /// Recreates `catch_outbox` for v8 (estimate/confirm weight split) and for
+  /// fresh installs.
+  ///
+  /// Deliberately a separate method from [_createLegacyOutbox] above rather
+  /// than reusing it: that method is dead code kept only so the ancient
+  /// v2->v3 upgrade step still runs correctly on a handset frozen at v2, and
+  /// changing what it does would change what that historical step means.
+  static Future<void> _createCatchOutbox(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS catch_outbox (
+        local_id              TEXT PRIMARY KEY,
+        vessel_id             TEXT NOT NULL,
+        species_name          TEXT,
+        -- Quick preset tapped at the moment of catching. Always set - see
+        -- CatchRecord's doc comment for why weight is split in two.
+        estimated_quantity_kg REAL NOT NULL,
+        -- The real, reweighed figure. Null until deliberately confirmed,
+        -- which may happen long after the estimate above already synced.
+        quantity_kg           REAL,
+        quantity_confirmed_at INTEGER,
+        quantity_synced_at    INTEGER,
+        catch_date            TEXT NOT NULL,
+        client_ts             INTEGER NOT NULL,
+        state                 TEXT NOT NULL,
+        lat                   REAL,
+        lon                   REAL,
+        method                TEXT,
+        notes                 TEXT,
+        attempts              INTEGER NOT NULL DEFAULT 0,
+        last_error            TEXT,
+        server_id             TEXT,
+        synced_at             INTEGER
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_catch_state2 '
       'ON catch_outbox (state, client_ts DESC)',
     );
   }
