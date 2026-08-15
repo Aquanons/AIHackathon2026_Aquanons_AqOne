@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.auth import require_user
 from app.db import get_pool
@@ -66,31 +66,57 @@ router = APIRouter(prefix='/api/sos', tags=['sos'])
 protected_router = APIRouter(prefix='/api/sos', tags=['sos'])
 
 
+VALID_TRUST_TIERS = {'self_declared', 'phone_verified', 'confirmed_by_responder'}
+
+
 class SosIn(BaseModel):
     """An SOS as delivered by either transport.
 
     `client_ts` is mandatory: with `vessel_id` it forms the de-duplication key
     that lets the direct and buoy routes deliver the same emergency without
     creating two incidents.
+
+    This endpoint is deliberately unauthenticated (see the router comment
+    below), so it is also the only untrusted-input boundary in this file.
+    Length limits mirror the caps already enforced on the handset
+    (`mobile/lib/core/config.dart`: maxVesselIdLength/maxBoatLength = 32,
+    maxNoteLength = 64) and on the buoy firmware, which truncates into fixed
+    C buffers of the same sizes (`firmware/buoy/AqOneBuoy/AqOneBuoy.ino`
+    `SosItem`: `vesselId[33]`, `boat[32]`, `note[64]`). A real client can
+    never exceed these; something that does is not a distress call this
+    endpoint needs to accept as-is. Rejecting it with 422 does not drop a
+    real SOS - it is Pydantic validation ahead of any DB write, so nothing
+    is silently discarded, and a caller within these limits is unaffected.
     """
 
-    vessel_id: str
+    vessel_id: str = Field(min_length=1, max_length=32)
     client_ts: int = Field(description='Origin epoch seconds, from the handset')
-    boat: str = ''
-    lat: float | None = None
-    lon: float | None = None
-    note: str | None = None
+    boat: str = Field(default='', max_length=32)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    note: str | None = Field(default=None, max_length=64)
     trust_tier: str = 'self_declared'
 
-    # Direct path only - the LoRa frame has no room for a UUID.
-    local_id: str | None = None
+    # Direct path only - the LoRa frame has no room for a UUID. Generous cap:
+    # the handset's own _newLocalId() produces roughly 22 characters.
+    local_id: str | None = Field(default=None, max_length=64)
 
-    # Buoy path only - taken from the LoRa frame header.
-    buoy_id: str | None = None
+    # Buoy path only - taken from the LoRa frame header. Matches the
+    # firmware's BUOY_ID convention (e.g. "BUOY01").
+    buoy_id: str | None = Field(default=None, max_length=32)
     src_id: int | None = None
     seq: int | None = None
 
     source: Literal['direct', 'buoy'] = 'direct'
+
+    @field_validator('trust_tier')
+    @classmethod
+    def _normalise_trust_tier(cls, value: str) -> str:
+        # Corroboration metadata only - it is never used to decide whether an
+        # SOS is relayed (see the router comment below), so an unexpected
+        # value is normalised rather than used as a reason to 422 a distress
+        # call over a field that does not affect delivery.
+        return value if value in VALID_TRUST_TIERS else 'self_declared'
 
 
 @router.post('', status_code=200)

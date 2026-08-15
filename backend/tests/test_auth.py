@@ -81,6 +81,32 @@ def test_admin_signup_rejects_short_password(client, monkeypatch):
     assert response.status_code == 422
 
 
+def test_advisory_alert_requires_token(client):
+    """Phase 4 fix: POST /api/advisories/alert previously had no auth
+    dependency at all, despite publishing directly to `status: 'Published'`
+    - visible immediately on GET /api/public/advisories, which has no token
+    requirement by design. No caller of this route exists anywhere in this
+    repo (checked web/js/dangerZonePredictor.js, web/js/advisoryService.js,
+    and backend/app) - it was a live, unauthenticated
+    publish-to-the-public-dashboard endpoint. See app/api/advisories.py
+    trigger_danger_alert() for the full audit note.
+    """
+    response = client.post(
+        '/api/advisories/alert',
+        json={
+            'id': 'zone-1',
+            'name': 'Test Zone',
+            'score': 90,
+            'level': 'danger',
+            'trigger': 'test',
+            'reasons': ['test'],
+            'source': 'test',
+            'observedAt': '2026-08-15T00:00:00Z',
+        },
+    )
+    assert response.status_code == 401
+
+
 def test_me_requires_token(client):
     assert client.get('/api/me').status_code == 401
 

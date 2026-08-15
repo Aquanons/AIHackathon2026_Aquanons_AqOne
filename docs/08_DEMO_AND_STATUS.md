@@ -1,5 +1,14 @@
 # 08 — DEMO, CONTINGENCY & STATUS
 
+> **This file predates the current build** (it was written for the original
+> Day 1–3 hackathon push; the status table below still shows placeholder ⬜
+> rows for capabilities the README now reports as built). It has not been
+> retrofitted as part of the Week 1 dashboard/Flutter sprint - that would be
+> a larger rewrite than this sprint's scope. For status that has actually
+> been verified this week, see the root [`README.md`](../README.md) "Week 1
+> dashboard/Flutter contract sprint" section and
+> [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
+
 ## Judging weights — build toward these
 
 | Criterion | Weight | Where it's won |

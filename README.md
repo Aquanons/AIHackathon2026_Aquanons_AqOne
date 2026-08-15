@@ -56,6 +56,44 @@ an SOS, it reaches the deployed backend, appears on the MDRRMO dashboard within
 10 seconds, a dispatcher acknowledges with an ETA, and that ETA appears on the
 fisher's handset. **No LoRa hardware is required for this path.**
 
+### Week 1 dashboard/Flutter contract sprint (in progress)
+
+Tracked in full, phase by phase with exact commands and results, in
+[`docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
+What that sprint changed, and what is and isn't independently verified so far:
+
+- **Buoy Wi-Fi/JSON contract.** The Flutter app was pointed at the wrong buoy
+  IP (`10.0.0.1` instead of the firmware's actual `192.168.4.1`) and parsing
+  fields the firmware doesn't send (`batt`, `mesh`, integer `buoy_id`) instead
+  of the ones it does (`uplink`, `queue_depth`, string `buoy_id`). Fixed, and
+  an offline handset now falls back to polling the buoy for a responder's ETA
+  when the backend is unreachable, instead of giving up. **Not verified by
+  `flutter analyze`/`flutter test`** — no Flutter SDK was available in the
+  environment these changes were made in. Manually reviewed only; treat as
+  unverified until run for real.
+- **Dashboard honesty and XSS fixes.** The header's "LIVE" badge and the
+  "Last updated" banner text were previously fake (static markup / an
+  independent counter unrelated to whether a refresh had actually succeeded).
+  Both now reflect the real time since `/api/sos/active` last succeeded, with
+  visible STALE/OFFLINE states. Fixed real unescaped-HTML injection points
+  where a fisher's SOS note/boat name reached the dashboard's `innerHTML` and
+  a Leaflet tooltip unescaped. **Verified** — `node --check web/js/dashboard.js`
+  and `node --test web/test/dashboard-utils.test.js` (21 cases) both ran and
+  passed in the same environment.
+- **Backend input validation and one real auth gap.** `POST /api/sos` now
+  rejects oversized `vessel_id`/`boat`/`note` (mirroring the handset's own
+  caps) instead of accepting arbitrary-length text on an unauthenticated
+  route. `POST /api/advisories/alert` had no auth dependency at all despite
+  publishing directly to the public advisory feed and no caller for it exists
+  anywhere in this repo; it now requires a token like every other write in
+  that router. **Not verified by `pytest`** — this sandbox's Python is 3.10,
+  and the backend's own dependencies (`datetime.UTC`, `numpy==2.4.6`) require
+  3.11+, so test collection fails before any test runs, unchanged from
+  before this sprint. `ruff check .` passes. Manually reviewed and
+  `py_compile`-checked only.
+- **APK.** Not rebuilt this sprint — no Android/Flutter build toolchain was
+  available. `mobile/AqOne.apk` below is still the pre-sprint build.
+
 ---
 
 ## Problem Statement and AI-Based Solution

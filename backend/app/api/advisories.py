@@ -240,7 +240,26 @@ async def delete_advisory(
 
 
 @router.post('/alert')
-async def trigger_danger_alert(payload: DangerAlertPayload) -> dict[str, Any]:
+async def trigger_danger_alert(
+    payload: DangerAlertPayload,
+    _: Any = Depends(require_user),
+) -> dict[str, Any]:
+    """Publish (or update) a danger-zone advisory. Dispatcher-authenticated.
+
+    This previously had no auth dependency at all - not even `require_user` -
+    despite publishing directly to `status: 'Published'`, which every
+    unauthenticated caller of `GET /api/public/advisories` can see. Week 1
+    Phase 4 audit (docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md)
+    found no caller anywhere in this repo - not `web/js/dangerZonePredictor.js`
+    (GET-only, talks to Open-Meteo, never posts here), not
+    `web/js/advisoryService.js` (posts to `/api/advisories`, not `/alert`),
+    nor any backend script. It was a live, unauthenticated
+    publish-to-the-public-dashboard endpoint with no known legitimate caller.
+    Gated behind `require_user` like every other write in this router; if a
+    specific automated evaluator needs to call this without a dispatcher
+    logged in, that needs its own documented service-account design, not an
+    open endpoint.
+    """
     try:
         observed_date = date.fromisoformat(payload.observedAt[:10])
     except ValueError:

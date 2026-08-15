@@ -51,8 +51,12 @@ app.include_router(sos_ingest_router)
 # in an emergency cannot sit behind a token. See app/api/public.py.
 app.include_router(public_router)
 
-# Advisories handles its own auth per-route to avoid breaking JS alert triggers
-app.include_router(advisories_router)  # <-- ONLY ADDED THIS LINE
+# Advisories handles its own auth per-route rather than a blanket dependency
+# here, because public_advisories_router (below) is intentionally
+# unauthenticated - see app/api/public.py's reasoning for the handset feeds.
+# Every route on advisories_router itself now requires a token
+# (app/api/advisories.py), including POST /alert, which previously had none.
+app.include_router(advisories_router)
 app.include_router(public_advisories_router)
 
 # Everything else requires a valid bearer token. Declaring it here rather than

@@ -73,6 +73,95 @@ def test_buoy_payload_needs_no_local_id(monkeypatch):
     assert response.status_code == 503  # reached the handler, no DB in tests
 
 
+def test_oversized_vessel_id_is_rejected(monkeypatch):
+    """Phase 4: length limits mirror the handset's own caps (config.dart
+    maxVesselIdLength = 32) and the firmware's fixed C buffers - see the
+    SosIn docstring in app/api/sos.py. A real client can never send more than
+    this; something that does is not a legitimate distress call this
+    endpoint needs to accept as-is.
+    """
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(vessel_id='V' * 33)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    assert response.status_code == 422
+
+
+def test_vessel_id_at_the_exact_limit_is_accepted(monkeypatch):
+    """The boundary itself must still work - only over the limit rejects."""
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(vessel_id='V' * 32)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    # 503 because there is no database in this test - the point is it is not 422.
+    assert response.status_code == 503
+
+
+def test_oversized_boat_name_is_rejected(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(boat='B' * 33)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    assert response.status_code == 422
+
+
+def test_oversized_note_is_rejected(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(note='n' * 65)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    assert response.status_code == 422
+
+
+def test_note_containing_html_is_accepted_and_preserved(monkeypatch):
+    """The backend's job is to store the fisher's text faithfully, not to
+    sanitise it - escaping on render is the dashboard's responsibility
+    (web/js/dashboard-utils.js escapeHtml(), web/test/dashboard-utils.test.js).
+    A backend that stripped or mangled this would corrupt a real distress
+    message; a backend that stored it verbatim and unauthenticated-rendered
+    it unescaped would be the XSS gap Phase 3 closed. This test pins the
+    backend side of that contract: accept and preserve, do not escape here.
+    """
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(note='<img src=x onerror=alert(1)>')
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    # Valid per the length/shape contract (well within 64 chars) - 503 only
+    # because there is no database in this test, never 422.
+    assert response.status_code == 503
+
+
+def test_lat_out_of_range_is_rejected(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(lat=91.0)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    assert response.status_code == 422
+
+
+def test_lon_out_of_range_is_rejected(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(lon=-181.0)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    assert response.status_code == 422
+
+
+def test_unrecognised_trust_tier_is_normalised_not_rejected(monkeypatch):
+    """trust_tier is corroboration metadata, not a routing field (see
+    docs/06_DELIVERY_STATES.md and the SosIn._normalise_trust_tier
+    validator) - an unexpected value must never cause a distress call to
+    422. It is coerced to the safe default instead.
+    """
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = _payload(trust_tier='not-a-real-tier')
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post('/api/sos', json=body)
+    # Must reach the handler (503, no DB) rather than 422 - the whole point
+    # is this field is never a reason to drop a real SOS.
+    assert response.status_code == 503
+
+
 def test_dedup_key_is_stable_across_transports():
     """The two routes describe the same emergency with the same key.
 
