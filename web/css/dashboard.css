@@ -317,6 +317,30 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Honest LIVE/STALE/OFFLINE indicator states - see updateSyncStatus() in
+   dashboard.js and web/js/dashboard-utils.js classifyFreshness(). A stale or
+   offline feed must look visibly different, not just say different words in
+   the same green pill. */
+.sync-status.is-stale {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.3);
+}
+.sync-status.is-stale .sync-dot {
+  background: var(--warning);
+  animation: none;
+}
+.sync-status.is-stale .sync-text { color: var(--warning); }
+
+.sync-status.is-offline {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.3);
+}
+.sync-status.is-offline .sync-dot {
+  background: var(--danger);
+  animation: none;
+}
+.sync-status.is-offline .sync-text { color: var(--danger); }
+
 /* ══════════════════════════════════════════════════════════════
    THEME TOGGLE
    ══════════════════════════════════════════════════════════════ */
@@ -4757,6 +4781,22 @@ h3.buoy-drawer-title {
 }
 
 .alert-row-live .alert-desc { font-weight: 700; }
+
+/* Marks a scripted/sample row so it cannot be mistaken for a real incident -
+   see docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md Phase 3 rule 4
+   ("no fake operational state") and web/js/dashboard.js alertData. */
+.alert-demo-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--text-dim);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
 
 /* Non-SOS rows (demo scaffolding and model-derived forecast alerts) stay
    legible but visibly secondary to a live distress call. */

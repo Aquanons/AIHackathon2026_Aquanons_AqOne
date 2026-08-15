@@ -14,6 +14,30 @@
     console.error('[AqOne] Dashboard init failed:', event.message, 'at', event.filename + ':' + event.lineno);
   });
 
+  // ===== SHARED HELPERS (web/js/dashboard-utils.js) =====
+  // Loaded before this script in dashboard.html. The inline fallback below
+  // only runs if that tag failed to load - degrading to "still escapes text
+  // and still reports itself offline" rather than throwing ReferenceErrors
+  // through every call site that follows.
+  var dashboardUtils = window.AqOneDashboardUtils || {
+    escapeHtml: function (value) {
+      if (value == null) return '';
+      return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+    classifyFreshness: function () { return 'offline'; },
+    freshnessLabel: function (state) { return (state || 'offline').toUpperCase(); }
+  };
+  var escapeHtml = dashboardUtils.escapeHtml;
+  var classifyFreshness = dashboardUtils.classifyFreshness;
+  var freshnessLabel = dashboardUtils.freshnessLabel;
+  var alertBadge = dashboardUtils.alertBadge || function (isLive) {
+    return isLive
+      ? { text: 'LIVE', cssClass: 'alert-live-badge' }
+      : { text: 'DEMO', cssClass: 'alert-demo-badge' };
+  };
+
   // ===== CONFIG =====
   // New Washington, Aklan municipal centre (PhilAtlas: 11.6473 N, 122.4356 E).
   // Zoom 11 framed the whole province; 12 frames the municipality and its
@@ -318,11 +342,16 @@
     var pressureRow = b.pressure != null
       ? [['Pressure', b.pressure.toFixed(1) + ' hPa (' + (b.pressureTrend > 0 ? '+' : '') + b.pressureTrend + ')']]
       : [];
+    // These readings (battery, signal, pressure, current) are the fixed
+    // sample values in initialBuoys above, not live telemetry from hardware -
+    // no buoy in this deployment reports them yet. Rule 4 of
+    // docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md bans presenting
+    // that as if it were live, so every buoy popup says so explicitly.
     const marker = L.marker([b.lat, b.lng], { icon: createMarkerIcon('buoy') })
       .bindPopup(makePopup(b.name, [
         ['Status', b.status.charAt(0).toUpperCase() + b.status.slice(1)],
-        ['Battery', b.battery + '%'],
-        ['Signal', b.signal]
+        ['Battery', b.battery + '% (simulated)'],
+        ['Signal', b.signal + ' (simulated)']
       ].concat(pressureRow, extraRows), { cls: b.status, text: b.status }));
     buoyLayer.addLayer(marker);
   });
@@ -1376,13 +1405,13 @@
   function alertConfidenceRow(a) {
     if (a.isLive) {
       return `<div class="aq-alert-conf">
-            <span class="aq-stage-mini">${a.stage}</span>
+            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
           </div>`;
     }
     return `<div class="aq-alert-conf">
             <span class="aq-conf-mini" style="color:${confidenceColor(a.confidence)};">${a.confidence}% conf</span>
             <span class="aq-conf-bar"><span class="aq-conf-fill" style="width:${a.confidence}%;background:${confidenceColor(a.confidence)};"></span></span>
-            <span class="aq-stage-mini">${a.stage}</span>
+            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
           </div>`;
   }
 
@@ -1393,12 +1422,16 @@
       <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}">
         ${alertIcon(a.type)}
         <div class="alert-info">
-          <div class="alert-desc">${a.isLive ? '<span class="alert-live-badge">LIVE</span>' : ''}${a.desc}</div>
+          <div class="alert-desc">${(function () {
+            var badge = alertBadge(a.isLive);
+            var title = a.isLive ? '' : ' title="Scripted sample data, not a real incident"';
+            return '<span class="' + badge.cssClass + '"' + title + '>' + badge.text + '</span>';
+          })()}${escapeHtml(a.desc)}</div>
           <div class="alert-meta">${a.time} &middot; ${
             a.lat == null || a.lng == null
               ? '<span class="alert-nofix">no GPS fix</span>'
               : a.lat + '&deg; N, ' + a.lng + '&deg; E'
-          }${a.etaAt ? ' &middot; <span data-eta-at="' + a.etaAt + '"></span>' : ''}</div>
+          }${a.etaAt ? ' &middot; <span data-eta-at="' + escapeHtml(a.etaAt) + '"></span>' : ''}</div>
           ${alertConfidenceRow(a)}
         </div>
         ${alertStatusPill(a.status)}
@@ -1471,6 +1504,50 @@
   const liveSosMarkers = {};
   let liveSosFirstLoad = true;
   let knownSosIds = Object.create(null);
+
+  // ===== FEED FRESHNESS (LIVE / STALE / OFFLINE) =====
+  //
+  // Previously the "LIVE" badge in the header was static markup - it read
+  // LIVE even while loadActiveSos() had been failing silently, and the "Last
+  // updated" banner text was an independent 30-second counter with no
+  // connection to whether a poll had actually succeeded. Both were fake
+  // operational state (Hard Reset rule 4). This tracks the one fact that
+  // matters - when a poll last actually succeeded - and both indicators are
+  // now driven from it.
+  let lastSosSuccessMs = null;
+  const syncStatusEl = document.getElementById('sync-status');
+  const syncTextEl = document.getElementById('sync-text');
+  const bannerTimeEl = document.querySelector('.banner-time');
+
+  function updateSyncStatus() {
+    const state = classifyFreshness(lastSosSuccessMs, Date.now(), {
+      pollIntervalMs: LIVE_SOS_POLL_MS
+    });
+
+    if (syncStatusEl) {
+      syncStatusEl.classList.toggle('is-stale', state === 'stale');
+      syncStatusEl.classList.toggle('is-offline', state === 'offline');
+    }
+    if (syncTextEl) {
+      syncTextEl.textContent = freshnessLabel(state);
+    }
+    if (syncStatusEl) {
+      syncStatusEl.title = lastSosSuccessMs == null
+        ? 'The live SOS feed has not loaded successfully yet'
+        : 'Live SOS feed last refreshed ' + Math.max(0, Math.round((Date.now() - lastSosSuccessMs) / 1000)) + 's ago';
+    }
+    if (bannerTimeEl) {
+      bannerTimeEl.textContent = lastSosSuccessMs == null
+        ? 'never'
+        : Math.max(0, Math.round((Date.now() - lastSosSuccessMs) / 1000)) + 's ago';
+    }
+  }
+
+  updateSyncStatus();
+  // Ticks independently of the poll interval so STALE/OFFLINE appears
+  // promptly even between polls, instead of only updating when a poll
+  // happens to run.
+  setInterval(updateSyncStatus, 1000);
 
   function liveSosIcon() {
     return L.divIcon({
@@ -1553,7 +1630,10 @@
       let marker = liveSosMarkers[a.sosEventId];
       if (!marker) {
         marker = L.marker([a.lat, a.lng], { icon: liveSosIcon(), zIndexOffset: 1000 });
-        marker.bindTooltip(a.desc, { direction: 'top', offset: [0, -14] });
+        // Leaflet renders tooltip content as innerHTML, not textContent - see
+        // https://leafletjs.com/reference.html#tooltip. a.desc carries the
+        // fisher's own note text, so it must be escaped here too.
+        marker.bindTooltip(escapeHtml(a.desc), { direction: 'top', offset: [0, -14] });
         liveSosLayer.addLayer(marker);
         liveSosMarkers[a.sosEventId] = marker;
       } else {
@@ -1600,6 +1680,12 @@
         events.forEach(function (ev) { knownSosIds[ev.id] = true; });
         liveSosFirstLoad = false;
 
+        // The one fact updateSyncStatus() needs: this poll actually
+        // succeeded, right now. Everything the LIVE/STALE/OFFLINE indicator
+        // shows is derived from this single timestamp.
+        lastSosSuccessMs = Date.now();
+        updateSyncStatus();
+
         syncLiveSosMarkers();
         syncAlertIndicators();
         renderIncidentFeed();
@@ -1607,8 +1693,13 @@
       .catch(function (err) {
         // A failed poll must not blank the list. The last known set of live
         // alerts stays on screen rather than a distress call silently
-        // vanishing because one request timed out.
+        // vanishing because one request timed out. It must, however, be
+        // visible in the sync indicator - updateSyncStatus() will move to
+        // STALE/OFFLINE on its own once enough time has passed without a
+        // fresh lastSosSuccessMs, which this call makes immediate instead of
+        // waiting up to a second for the next tick.
         console.warn('[AqOne] Live SOS poll failed:', err.message);
+        updateSyncStatus();
       });
   }
 
@@ -3909,10 +4000,12 @@
     });
   }
 
+  // Delegates to the shared, DOM-free implementation
+  // (web/js/dashboard-utils.js) so there is exactly one escaping function in
+  // this codebase, not two that can silently drift apart. Kept under its
+  // original name because ~15 call sites already use it.
   function _escHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+    return escapeHtml(str);
   }
 
   function closeDeleteModal() {
@@ -4045,13 +4138,13 @@
 
    fetchSeaCondition();
 
-   // ===== BANNER "LAST UPDATED" TICKER =====
-   var bannerElapsed = 0;
-   setInterval(function () {
-     bannerElapsed += 30;
-     var el = document.querySelector('.banner-time');
-     if (el) el.textContent = bannerElapsed + 's ago';
-   }, 30000);
+   // The banner's "Last updated" ticker used to be an independent counter
+   // here, incrementing every 30s regardless of whether anything had
+   // actually refreshed - a second copy of the fake-freshness problem
+   // updateSyncStatus() above now fixes for the header pill. Removed rather
+   // than kept in sync by hand: updateSyncStatus() already writes
+   // .banner-time every second from the one real timestamp
+   // (lastSosSuccessMs), so a second writer here could only drift from it.
 
    // ===== TOAST =====
    function showToast(title, msg, isError) {
@@ -4059,7 +4152,9 @@
      var toast = document.createElement('div');
      toast.className = 'toast';
      if (isError) toast.classList.add('toast-error');
-     toast.innerHTML = '<div class="toast-title">' + title + '</div><div class="toast-msg">' + msg + '</div>';
+     // title/msg can carry server-provided SOS text (boat name, position) -
+     // see the loadActiveSos() call site - so both must be escaped.
+     toast.innerHTML = '<div class="toast-title">' + escapeHtml(title) + '</div><div class="toast-msg">' + escapeHtml(msg) + '</div>';
      container.appendChild(toast);
      setTimeout(function () {
        toast.classList.add('toast-leave');

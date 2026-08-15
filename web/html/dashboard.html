@@ -71,9 +71,12 @@
         <button class="lang-btn active" id="dash-lang-en">EN</button>
         <button class="lang-btn" id="dash-lang-akl">AKL</button>
       </div>
-      <div class="sync-status">
-        <span class="sync-dot"></span>
-        <span class="sync-text">LIVE</span>
+      <!-- Text/color are set by updateSyncStatus() in dashboard.js, driven by
+           when /api/sos/active last actually succeeded - never hardcoded.
+           See docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md Phase 3. -->
+      <div class="sync-status" id="sync-status" title="Time since the live SOS feed last refreshed successfully">
+        <span class="sync-dot" id="sync-dot"></span>
+        <span class="sync-text" id="sync-text">OFFLINE</span>
       </div>
       <button id="btn-theme" class="icon-btn-top" title="Toggle Theme">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -981,6 +984,7 @@
   <script src="../js/advisoryService.js"></script>
   <script src="../js/dangerZoneModel.js"></script>
   <script src="../js/dangerZonePredictor.js"></script>
+  <script src="../js/dashboard-utils.js"></script>
   <script src="../js/dashboard.js"></script>
 </body>
 
