@@ -166,6 +166,21 @@ class OutboxStore {
     return true;
   }
 
+  /// Updates the note on an SOS already in the outbox.
+  ///
+  /// Used by the post-dispatch "what's wrong?" follow-up: the initial send
+  /// goes out with no note so it is never delayed waiting on the fisher to
+  /// type, and the chosen emergency type/description is attached afterwards.
+  Future<void> updateNote(String localId, String note) async {
+    final db = await _db.database;
+    await db.update(
+      'outbox',
+      <String, Object?>{'note': note},
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+    );
+  }
+
   /// Record the fisher's own reply locally, so the button reflects reality even
   /// if the network call to the backend fails.
   Future<void> saveFisherReply(String localId, int reply) async {

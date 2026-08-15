@@ -224,6 +224,66 @@ class SosService {
     return _backend.replyToSos(int.tryParse(remoteId) ?? -1, reply);
   }
 
+  /// Attaches (or fills in) the note on an SOS already dispatched.
+  ///
+  /// The initial `raiseSos()` call is deliberately sent with no note, so
+  /// choosing an emergency type never delays the alert itself. This is what
+  /// the fisher's "what's wrong?" follow-up calls once they pick one.
+  ///
+  /// Best-effort: the note is saved locally immediately (so the app's own
+  /// history always shows it), and a single attempt is made to push it to
+  /// the backend right away over whichever transport is reachable. The
+  /// backend's ingest is idempotent on (vessel_id, client_ts) and only fills
+  /// a note that is still empty, so re-posting the same SOS is always safe -
+  /// it can never overwrite a note that was already recorded. If neither
+  /// transport is reachable at that moment, the note stays local-only for
+  /// this version rather than being retried indefinitely in the background.
+  Future<SosRecord> amendNote(String localId, String note) async {
+    await _outbox.updateNote(localId, note);
+    final updated = await _outbox.byLocalId(localId);
+    _changes.add(null);
+    if (updated == null) {
+      throw StateError('amendNote called for an SOS that no longer exists');
+    }
+
+    unawaited(() async {
+      try {
+        await _buoy.handoff(updated);
+      } catch (_) {}
+      try {
+        await _backend.postSos(updated);
+      } catch (_) {}
+    }());
+
+    return updated;
+  }
+
+  /// The fisher standing down their own SOS - "false alarm, disregard" -
+  /// from the post-dispatch follow-up screen rather than waiting for a
+  /// responder to acknowledge first.
+  ///
+  /// Reuses the same reply=2 ("safe now") signal the acknowledgement flow
+  /// sends, since that is the only thing on the backend that resolves an
+  /// incident and takes it off the MDRRMO's active queue - there is no
+  /// separate cancel endpoint. The reply requires a backend event id, which
+  /// an SOS only gets once it has actually reached the backend. If that
+  /// has not happened yet, the stand-down is saved locally and
+  /// [_applyRemote] sends it the moment reconcile learns the event id -
+  /// see the fisherReply check there.
+  Future<void> standDown(String localId) async {
+    await _outbox.saveFisherReply(localId, 2);
+    _changes.add(null);
+
+    final record = await _outbox.byLocalId(localId);
+    final remoteId = record?.remoteId;
+    if (remoteId == null) {
+      // Nothing more to do now - reconcile() will flush this once the
+      // event id arrives.
+      return;
+    }
+    await _backend.replyToSos(int.tryParse(remoteId) ?? -1, 2);
+  }
+
   Future<BuoyStatus?> pollBuoy() async {
     try {
       return await _buoy.status();
@@ -348,6 +408,16 @@ class SosService {
       );
       if (stored) {
         changed = true;
+      }
+
+      // A stand-down requested before the backend had assigned this SOS an
+      // event id (see standDown()) could not be sent at the time. This is
+      // where it catches up: `record` here is the pre-update snapshot, so
+      // `record.remoteId == null` with `match.id` non-empty means the event
+      // id just arrived for the first time this tick - exactly once, never
+      // repeated on later ticks once remoteId is set.
+      if (record.isStoodDown && record.remoteId == null && match.id.isNotEmpty) {
+        unawaited(_backend.replyToSos(int.tryParse(match.id) ?? -1, 2));
       }
     }
     return changed;

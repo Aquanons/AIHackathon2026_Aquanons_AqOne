@@ -91,6 +91,12 @@ class SosRecord {
 
   bool get hasFix => lat != null && lon != null;
 
+  /// The fisher stood this SOS down themselves (reply 2 = "safe now"),
+  /// raised either through the responder-acknowledgement flow or the
+  /// post-dispatch "slide to stand down" control. The dashboard treats both
+  /// the same way - resolved, off the active queue - so the app does too.
+  bool get isStoodDown => fisherReply == 2;
+
   bool get awaitsRelay => state == DeliveryState.saved;
 
   bool get awaitsReconcile =>
