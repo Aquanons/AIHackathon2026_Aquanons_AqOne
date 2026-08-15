@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/config.dart';
+import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
 import '../models/buoy_marker.dart';
 import '../models/catch_record.dart';
@@ -20,6 +21,7 @@ import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
 import 'catch_history_page.dart';
 import 'chathubb.dart';
+import 'checklist_page.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
@@ -64,6 +66,7 @@ class VenturePage extends StatefulWidget {
     required this.identity,
     required this.sos,
     required this.catches,
+    required this.checklist,
     required this.feeds,
     required this.location,
     this.bottomInset = 0,
@@ -72,6 +75,7 @@ class VenturePage extends StatefulWidget {
   final VesselIdentity identity;
   final SosService sos;
   final CatchService catches;
+  final ChecklistStore checklist;
   final VentureFeeds feeds;
   final LocationService location;
 
@@ -115,16 +119,6 @@ class _VenturePageState extends State<VenturePage> {
   bool _repeatingCatch = false;
   StreamSubscription<void>? _catchSub;
 
-  bool _isChecklistOpen = false;
-  final List<_ChecklistItem> _checklist = <_ChecklistItem>[
-    _ChecklistItem('Life jacket'),
-    _ChecklistItem('Flashlight'),
-    _ChecklistItem('Bailer'),
-    _ChecklistItem('Radio check'),
-    _ChecklistItem('First aid kit', isDone: true),
-  ];
-  final TextEditingController _newItem = TextEditingController();
-
   /// True while a hazard dialog is on screen, so a second alert arriving from
   /// the same poll cannot stack a dialog on top of the first.
   bool _hazardDialogOpen = false;
@@ -155,7 +149,6 @@ class _VenturePageState extends State<VenturePage> {
     _pollTimer?.cancel();
     _sosSub?.cancel();
     _catchSub?.cancel();
-    _newItem.dispose();
     _mapController.dispose();
     unawaited(_sosAlarm.dispose());
     super.dispose();
@@ -525,13 +518,6 @@ class _VenturePageState extends State<VenturePage> {
                 right: 0,
                 child: Center(child: _buildLocatingPill(isDark)),
               ),
-            if (_isChecklistOpen)
-              Positioned(
-                bottom: 95 + widget.bottomInset,
-                left: 16,
-                right: 96,
-                child: _buildChecklist(isDark),
-              ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
             Positioned(
@@ -720,9 +706,9 @@ class _VenturePageState extends State<VenturePage> {
         _RoundButton(
           icon: Icons.checklist_rounded,
           tooltip: 'Trip checklist',
-          isActive: _isChecklistOpen,
+          isActive: false,
           isDark: isDark,
-          onTap: () => setState(() => _isChecklistOpen = !_isChecklistOpen),
+          onTap: _openChecklist,
         ),
         const SizedBox(height: 10),
         // Chat sits immediately above SOS rather than in its own corner, so
@@ -850,6 +836,14 @@ class _VenturePageState extends State<VenturePage> {
       ),
     );
     await _refreshCatchCount();
+  }
+
+  Future<void> _openChecklist() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChecklistPage(checklist: widget.checklist),
+      ),
+    );
   }
 
   Widget _buildSosStatus(bool isDark, SosRecord record) {
@@ -1017,121 +1011,6 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
-  Widget _buildChecklist(bool isDark) {
-    return Material(
-      elevation: 6,
-      borderRadius: BorderRadius.circular(16),
-      color: isDark ? _surfaceDark : Colors.white,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 280),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.checklist_rounded,
-                    size: 18,
-                    color: isDark ? _accentDark : _brandPrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Trip checklist',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : _canvasDark,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => setState(() => _isChecklistOpen = false),
-                  ),
-                ],
-              ),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _checklist.length,
-                  itemBuilder: (context, index) {
-                    final item = _checklist[index];
-                    return Row(
-                      children: <Widget>[
-                        Checkbox(
-                          value: item.isDone,
-                          onChanged: (value) => setState(
-                            () => item.isDone = value ?? false,
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            item.title,
-                            style: TextStyle(
-                              fontSize: 13,
-                              decoration: item.isDone
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                              color: isDark ? Colors.white : _canvasDark,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          onPressed: () =>
-                              setState(() => _checklist.removeAt(index)),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      controller: _newItem,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Add an item',
-                      ),
-                      onSubmitted: (_) => _addChecklistItem(),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded),
-                    onPressed: _addChecklistItem,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _addChecklistItem() {
-    final text = _newItem.text.trim();
-    if (text.isEmpty) {
-      return;
-    }
-    setState(() {
-      _checklist.add(_ChecklistItem(text));
-      _newItem.clear();
-    });
-  }
-}
-
-class _ChecklistItem {
-  _ChecklistItem(this.title, {this.isDone = false});
-
-  final String title;
-  bool isDone;
 }
 
 class _RoundButton extends StatelessWidget {

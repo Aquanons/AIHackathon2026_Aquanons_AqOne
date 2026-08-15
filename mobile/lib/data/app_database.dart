@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 8,
+      version: 9,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         // Each step is wrapped in try/catch so a partially-applied migration
@@ -81,6 +81,13 @@ class AppDatabase {
           await db.execute('DROP TABLE IF EXISTS catch_outbox');
           await _createCatchOutbox(db);
         }
+        if (oldVersion < 9) {
+          // v9: the trip checklist moves from in-memory state (reset on
+          // every app launch) to a real table, so gear items survive
+          // restarts. Persisted locally only - this is a personal packing
+          // list, never sent to the backend.
+          await _createChecklistItems(db);
+        }
       },
       onCreate: (db, version) async {
         await db.execute('''
@@ -128,6 +135,7 @@ class AppDatabase {
           'CREATE INDEX idx_outbox_seq ON outbox (vessel_id, seq)',
         );
         await _createCatchOutbox(db);
+        await _createChecklistItems(db);
       },
     );
   }
@@ -224,6 +232,23 @@ class AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_catch_state2 '
       'ON catch_outbox (state, client_ts DESC)',
     );
+  }
+
+  /// The trip checklist. `is_done` resets to 0 for every row when a
+  /// fisherman taps "New trip" - deliberately not row deletion, so the gear
+  /// list itself (and any custom items he's added) survives across trips
+  /// and only the checkmarks need re-doing. A boat that goes out two or
+  /// three times a day needs that reset to be cheap and frequent.
+  static Future<void> _createChecklistItems(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS checklist_items (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        is_done    INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   Future<void> close() async {

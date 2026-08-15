@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/tokens.dart';
 import 'data/app_database.dart';
 import 'data/catch_store.dart';
+import 'data/checklist_store.dart';
 import 'data/identity_store.dart';
 import 'data/outbox_store.dart';
 import 'services/backend_client.dart';
@@ -31,6 +32,7 @@ class _AqOneAppState extends State<AqOneApp> {
   late final IdentityStore _identityStore;
   late final SosService _service;
   late final CatchService _catches;
+  late final ChecklistStore _checklist;
   late final VentureFeeds _feeds;
   late final LocationService _location;
   late final BackendClient _backend;
@@ -59,6 +61,7 @@ class _AqOneAppState extends State<AqOneApp> {
       backend: _backend,
       location: _location,
     );
+    _checklist = ChecklistStore(_db);
     _feeds = VentureFeeds(backend: _backend);
     _restore();
   }
@@ -190,6 +193,7 @@ class _AqOneAppState extends State<AqOneApp> {
       identity: identity,
       sos: _service,
       catches: _catches,
+      checklist: _checklist,
       feeds: _feeds,
       location: _location,
       identityStore: _identityStore,
