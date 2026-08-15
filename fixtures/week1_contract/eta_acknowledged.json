@@ -1,0 +1,33 @@
+{
+  "_source": "backend/app/api/sos.py vessel_sos(), lines 293-344, proxied verbatim by firmware/buoy/AqOneBuoy/AqOneBuoy.ino pollEta(), lines 267-285",
+  "_scenario": "GET /v1/sos/status?vessel_id=<id> - dispatcher acknowledged and set an ETA, buoy has already polled the backend and cached the answer",
+  "response": {
+    "status": 200,
+    "body": {
+      "vessel_id": "fisher-7f3a",
+      "server_time": "2026-08-15T09:12:44.120000+00:00",
+      "events": [
+        {
+          "id": 118,
+          "local_id": "a3f9c2e1-88d1-4b0a-9d4e-2f6a7b0c9e11",
+          "seq": 42,
+          "client_ts": 1755248500,
+          "delivery_state": "acknowledged",
+          "acknowledged_at": "2026-08-15T09:10:02+00:00",
+          "acked_by": "dispatcher_maria",
+          "eta_at": "2026-08-15T09:40:00+00:00",
+          "responder_status": 2,
+          "responder_status_label": "Rescue boat on the way",
+          "responder_note": "Coast Guard boat en route from Dumaguit",
+          "fisher_reply": null,
+          "resolved_at": null
+        }
+      ]
+    }
+  },
+  "_notes": [
+    "The firmware caches this body in a 320-byte buffer (char payload[320] in Tracked) and serves it back unmodified. A response bigger than 320 bytes is silently truncated mid-JSON by the firmware - test that the client survives truncated/invalid JSON here, not just this well-formed example.",
+    "responder_status enum: 1 received, 2 dispatched, 3 coast guard, 4 nearest vessel, 5 delayed (RESPONDER_STATUS_LABELS in backend/app/api/sos.py).",
+    "delivery_state must only move forward on the client per docs/06_DELIVERY_STATES.md - do not let a merge regress an already-confirmed 'delivered' or 'acknowledged' state."
+  ]
+}

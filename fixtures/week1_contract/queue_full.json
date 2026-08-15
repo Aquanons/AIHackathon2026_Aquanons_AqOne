@@ -1,0 +1,12 @@
+{
+  "_source": "firmware/buoy/AqOneBuoy/AqOneBuoy.ino handlePostSos(), lines 328-331",
+  "_scenario": "POST /v1/sos rejected - buoy's store-and-forward queue is full",
+  "response": {
+    "status": 503,
+    "body": { "error": "queue full" }
+  },
+  "_notes": [
+    "mobile/lib/services/buoy_client.dart already special-cases 503 as BuoyRejected(503, 'buoy queue full').",
+    "Delivery state must stay 'saved' - the SOS was not accepted, so it must not advance to 'relayed'."
+  ]
+}
