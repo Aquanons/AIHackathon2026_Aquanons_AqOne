@@ -232,6 +232,18 @@ class SosService {
     }
   }
 
+  /// Reconciles pending SOS records against whichever source can currently
+  /// answer for them.
+  ///
+  /// The direct internet path is preferred when it is up - it is the
+  /// backend's own data, not a relay of it. But a handset with no cellular
+  /// signal is exactly the case this whole app exists for, and it is
+  /// precisely when the backend's `/healthz` check will fail. Previously
+  /// reconcile() simply gave up at that point: an offline fisher who had
+  /// already been acknowledged and given an ETA would never find out, even
+  /// though the buoy in range of the phone had that answer cached
+  /// (`GET /v1/sos/status`, which the firmware fills in by polling the
+  /// backend on the handset's behalf - docs/21_WEEK1_CONTRACT_FIXTURES.md).
   Future<void> reconcile() async {
     if (_reconcileRunning) {
       return;
@@ -242,61 +254,30 @@ class SosService {
       if (pending.isEmpty) {
         return;
       }
-      if (!await _backend.isReachable()) {
-        return;
-      }
 
       final vesselIds = pending.map((record) => record.vesselId).toSet();
       var changed = false;
+      final cloudUp = await _backend.isReachable();
 
       for (final vesselId in vesselIds) {
-        final remote = await _backend.vesselSos(vesselId);
-        if (remote.isEmpty) {
-          continue;
-        }
-        final bySeq = <int, RemoteSos>{
-          for (final row in remote)
-            if (row.seq != null) row.seq!: row,
-        };
-
-        // Match on local_id first, seq only as a fallback.
-        //
-        // seq is assigned by the buoy ack, so an SOS that reached the backend
-        // over the direct path never has one. Matching on seq alone meant those
-        // records could never be reconciled and the fisher never learned they
-        // had been acknowledged - which, now that the direct path exists, is
-        // the common case rather than the edge case.
-        final byLocalId = <String, RemoteSos>{
-          for (final row in remote)
-            if (row.localId != null && row.localId!.isNotEmpty) row.localId!: row,
-        };
-
-        for (final record in pending.where((r) => r.vesselId == vesselId)) {
-          final seq = record.seq;
-          final match = byLocalId[record.localId] ?? (seq == null ? null : bySeq[seq]);
-          if (match == null) {
+        final records = pending.where((r) => r.vesselId == vesselId).toList();
+        List<RemoteSos> remote;
+        if (cloudUp) {
+          remote = await _backend.vesselSos(vesselId);
+        } else {
+          try {
+            remote = await _buoy.sosStatus(vesselId);
+          } catch (_) {
+            // Buoy unreachable, rejected the query, or sent an unreadable
+            // body. Skip this vessel this tick - the record stays exactly as
+            // it was (no regression) and the next reconcile tick tries
+            // again. One bad vessel/buoy must not stop the others in
+            // [vesselIds] from being checked.
             continue;
           }
-          final advanced = await _outbox.advance(
-            record.localId,
-            match.deliveryState,
-            ackedBy: match.ackedBy,
-          );
-          if (advanced != null && advanced.state != record.state) {
-            changed = true;
-          }
-          // Responder details live alongside the delivery state: the ETA and
-          // status are what the fisher is actually waiting to see.
-          final stored = await _outbox.saveResponder(
-            record.localId,
-            remoteId: match.id,
-            etaAt: match.etaAt,
-            responderStatus: match.responderStatus,
-            responderNote: match.responderNote ?? match.responderStatusLabel,
-          );
-          if (stored) {
-            changed = true;
-          }
+        }
+        if (await _applyRemote(records, remote)) {
+          changed = true;
         }
       }
 
@@ -308,6 +289,68 @@ class SosService {
     } finally {
       _reconcileRunning = false;
     }
+  }
+
+  /// Matches this vessel's pending outbox records against a set of remote
+  /// events (from either the backend directly or the buoy's cached proxy of
+  /// it) and applies whatever is new. Returns true if anything changed.
+  Future<bool> _applyRemote(
+    List<SosRecord> records,
+    List<RemoteSos> remote,
+  ) async {
+    if (remote.isEmpty) {
+      return false;
+    }
+    var changed = false;
+
+    final bySeq = <int, RemoteSos>{
+      for (final row in remote)
+        if (row.seq != null) row.seq!: row,
+    };
+
+    // Match on local_id first, seq only as a fallback.
+    //
+    // seq is assigned by the buoy ack, so an SOS that reached the backend
+    // over the direct path never has one. Matching on seq alone meant those
+    // records could never be reconciled and the fisher never learned they
+    // had been acknowledged - which, now that the direct path exists, is
+    // the common case rather than the edge case.
+    final byLocalId = <String, RemoteSos>{
+      for (final row in remote)
+        if (row.localId != null && row.localId!.isNotEmpty) row.localId!: row,
+    };
+
+    for (final record in records) {
+      final seq = record.seq;
+      final match = byLocalId[record.localId] ?? (seq == null ? null : bySeq[seq]);
+      if (match == null) {
+        continue;
+      }
+      // _outbox.advance() merges state forward only (DeliveryState.merge),
+      // so a stale or partial answer from either source can never regress an
+      // already-confirmed state - see docs/06_DELIVERY_STATES.md.
+      final advanced = await _outbox.advance(
+        record.localId,
+        match.deliveryState,
+        ackedBy: match.ackedBy,
+      );
+      if (advanced != null && advanced.state != record.state) {
+        changed = true;
+      }
+      // Responder details live alongside the delivery state: the ETA and
+      // status are what the fisher is actually waiting to see.
+      final stored = await _outbox.saveResponder(
+        record.localId,
+        remoteId: match.id,
+        etaAt: match.etaAt,
+        responderStatus: match.responderStatus,
+        responderNote: match.responderNote ?? match.responderStatusLabel,
+      );
+      if (stored) {
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   static String? _clampNote(String? note) {

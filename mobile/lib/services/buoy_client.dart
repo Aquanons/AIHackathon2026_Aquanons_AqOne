@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../core/config.dart';
 import '../models/buoy_contact.dart';
 import '../models/sos_record.dart';
+import 'backend_client.dart' show RemoteSos;
 
 class BuoyUnreachable implements Exception {
   const BuoyUnreachable(this.reason);
@@ -91,6 +92,65 @@ class BuoyClient {
       throw const BuoyRejected(200, 'buoy did not accept the SOS');
     }
     return ack;
+  }
+
+  /// `GET /v1/sos/status?vessel_id=<id>` - what an offline handset (no
+  /// cellular, buoy in range) polls to learn whether a responder has
+  /// acknowledged and set an ETA.
+  ///
+  /// The firmware does not compute this itself: it polls
+  /// `GET /api/sos/vessel/{vessel_id}` on the backend on the buoy's behalf
+  /// and serves that response body back verbatim (see
+  /// docs/21_WEEK1_CONTRACT_FIXTURES.md), so the shape is identical to
+  /// [RemoteSos] via [BackendClient.vesselSos] and reuses the same
+  /// [RemoteSos.fromJson] rather than a second, possibly-drifting parser.
+  ///
+  /// The firmware caches this reply in a fixed 320-byte buffer and can
+  /// truncate it mid-JSON - a malformed body here is an expected failure
+  /// mode, not a hypothetical one, hence [BuoyInvalidResponse] rather than a
+  /// crash.
+  Future<List<RemoteSos>> sosStatus(String vesselId) async {
+    final uri = Uri.parse(
+      '$_baseUrl/v1/sos/status?vessel_id=${Uri.encodeComponent(vesselId)}',
+    );
+    http.Response response;
+    try {
+      response = await _client.get(uri).timeout(AqOneConfig.buoyTimeout);
+    } catch (error) {
+      throw BuoyUnreachable(error.toString());
+    }
+
+    if (response.statusCode != 200) {
+      throw BuoyRejected(response.statusCode, 'sos status query failed');
+    }
+    return _decodeEvents(response.body);
+  }
+
+  List<RemoteSos> _decodeEvents(String body) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (error) {
+      throw BuoyInvalidResponse('not valid JSON: $error');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw const BuoyInvalidResponse('expected a JSON object');
+    }
+    final events = decoded['events'];
+    if (events is! List) {
+      // `{"events": []}` - no events at all - is the documented shape for
+      // "not tracking this vessel yet." Anything without a list-typed
+      // `events` key is a shape this client does not understand.
+      throw const BuoyInvalidResponse('missing or non-list "events"');
+    }
+    try {
+      return events
+          .whereType<Map<String, dynamic>>()
+          .map(RemoteSos.fromJson)
+          .toList(growable: false);
+    } catch (error) {
+      throw BuoyInvalidResponse('unexpected event shape: $error');
+    }
   }
 
   /// Parses a 200 response body. A malformed or truncated body is a real
