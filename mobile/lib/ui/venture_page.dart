@@ -1810,7 +1810,7 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
               ],
               const SizedBox(height: 18),
               Text(
-                'Rough weight (kg)',
+                'Tap a weight to log the catch',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
