@@ -190,7 +190,7 @@ class SosService {
         : buoyResult is BuoyUnreachable
             ? buoyResult.reason
             : buoyResult is BuoyInvalidResponse
-                ? 'buoy sent an unreadable response: ${buoyResult.reason}'
+                ? buoyResult.reason
                 : 'no buoy in range';
     final directReason = _backend.lastDirectError ?? 'internet path failed';
     final reason = 'buoy: $buoyReason · internet: $directReason';

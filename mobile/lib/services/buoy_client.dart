@@ -40,6 +40,35 @@ class BuoyInvalidResponse implements Exception {
   String toString() => 'BuoyInvalidResponse: $reason';
 }
 
+/// Turns a raw transport exception into something a fisher (or the
+/// "Last attempt" line on the SOS status card - see
+/// mobile/lib/ui/widgets/delivery_state_tile.dart) can actually read.
+///
+/// [BuoyUnreachable.reason] used to be `error.toString()` verbatim, which
+/// meant a `SocketException` or `TimeoutException`'s Dart-internal message
+/// text ended up on screen. This is the buoy-side counterpart to
+/// [BackendClient]'s `_describeNetworkError` - matched on message text
+/// rather than exception type for the same reason: `SocketException` /
+/// `HandshakeException` live in `dart:io` and this file must stay
+/// importable on the web build.
+String describeBuoyError(Object error) {
+  final text = error.toString();
+  if (text.contains('TimeoutException')) {
+    return 'no reply from the buoy in time';
+  }
+  if (text.contains('SocketException') ||
+      text.contains('Failed host lookup') ||
+      text.contains('ClientException') ||
+      text.contains('Connection refused') ||
+      text.contains('Network is unreachable')) {
+    return 'buoy not in range';
+  }
+  if (text.contains('HandshakeException') || text.contains('CERTIFICATE')) {
+    return "couldn't establish a secure connection to the buoy";
+  }
+  return 'could not reach the buoy';
+}
+
 class BuoyClient {
   BuoyClient({http.Client? client, String? baseUrl})
       : _client = client ?? http.Client(),
@@ -54,7 +83,7 @@ class BuoyClient {
     try {
       response = await _client.get(uri).timeout(AqOneConfig.buoyTimeout);
     } catch (error) {
-      throw BuoyUnreachable(error.toString());
+      throw BuoyUnreachable(describeBuoyError(error));
     }
 
     if (response.statusCode != 200) {
@@ -77,7 +106,7 @@ class BuoyClient {
           )
           .timeout(AqOneConfig.buoyTimeout);
     } catch (error) {
-      throw BuoyUnreachable(error.toString());
+      throw BuoyUnreachable(describeBuoyError(error));
     }
 
     if (response.statusCode == 503) {
@@ -117,7 +146,7 @@ class BuoyClient {
     try {
       response = await _client.get(uri).timeout(AqOneConfig.buoyTimeout);
     } catch (error) {
-      throw BuoyUnreachable(error.toString());
+      throw BuoyUnreachable(describeBuoyError(error));
     }
 
     if (response.statusCode != 200) {
@@ -130,26 +159,26 @@ class BuoyClient {
     final Object? decoded;
     try {
       decoded = jsonDecode(body);
-    } catch (error) {
-      throw BuoyInvalidResponse('not valid JSON: $error');
+    } catch (_) {
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
     if (decoded is! Map<String, dynamic>) {
-      throw const BuoyInvalidResponse('expected a JSON object');
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
     final events = decoded['events'];
     if (events is! List) {
       // `{"events": []}` - no events at all - is the documented shape for
       // "not tracking this vessel yet." Anything without a list-typed
       // `events` key is a shape this client does not understand.
-      throw const BuoyInvalidResponse('missing or non-list "events"');
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
     try {
       return events
           .whereType<Map<String, dynamic>>()
           .map(RemoteSos.fromJson)
           .toList(growable: false);
-    } catch (error) {
-      throw BuoyInvalidResponse('unexpected event shape: $error');
+    } catch (_) {
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
   }
 
@@ -160,16 +189,16 @@ class BuoyClient {
     final Object? decoded;
     try {
       decoded = jsonDecode(body);
-    } catch (error) {
-      throw BuoyInvalidResponse('not valid JSON: $error');
+    } catch (_) {
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
     if (decoded is! Map<String, dynamic>) {
-      throw const BuoyInvalidResponse('expected a JSON object');
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
     try {
       return fromJson(decoded);
-    } catch (error) {
-      throw BuoyInvalidResponse('unexpected shape: $error');
+    } catch (_) {
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
   }
 

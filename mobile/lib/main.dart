@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'core/tokens.dart';
@@ -17,7 +19,73 @@ import 'ui/onboarding_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const AqOneApp());
+
+  // A widget that throws mid-build/layout/paint would otherwise show
+  // Flutter's default red screen-of-death - the exact "RenderFlex
+  // overflowed by 99381 pixels", "_dependents.isEmpty" kind of text a
+  // fisherman at sea has no use for. FlutterError.onError still logs the
+  // real details (visible in `flutter run`'s console / any crash reporting
+  // added later); only what's drawn on screen changes.
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+  };
+  ErrorWidget.builder = (FlutterErrorDetails details) => const _CrashScreen();
+
+  // Errors thrown outside the widget pipeline - a failed Future or stream
+  // callback with nothing downstream to catch it - would otherwise crash
+  // the isolate outright rather than show anything. Caught here and logged
+  // instead of left to reach the user as a raw stack trace.
+  runZonedGuarded(
+    () => runApp(const AqOneApp()),
+    (error, stack) => debugPrint('AqOne: uncaught error — $error\n$stack'),
+  );
+}
+
+/// Fallback shown in place of a widget that failed to build.
+///
+/// Deliberately not themed off [AqPalette] - the ancestor that would have
+/// provided it may be exactly what failed to build - so this uses plain,
+/// hardcoded colors instead of relying on anything that could itself throw.
+class _CrashScreen extends StatelessWidget {
+  const _CrashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF8FAFC),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 40,
+                color: Color(0xFFDC2626),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Something went wrong',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                "This part of the screen couldn't load. Try going back, "
+                'or restart the app if it keeps happening.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AqOneApp extends StatefulWidget {

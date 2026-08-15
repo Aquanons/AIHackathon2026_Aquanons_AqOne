@@ -140,23 +140,31 @@ class BackendClient {
     }
   }
 
-  /// Turns a raw exception into something a person can act on. The hostname is
-  /// included deliberately: a wrong base URL is the failure most likely to
-  /// survive to a demo, and it is invisible unless the message names it.
-  /// Matched on message text rather than on `SocketException` /
-  /// `HandshakeException`, because those live in `dart:io` and importing it
-  /// here would break the web build.
+  /// Turns a raw exception into something a person can act on, instead of
+  /// Dart's own exception text (a `SocketException` or `TimeoutException`
+  /// message reads as gibberish to a fisher, and previously reached the SOS
+  /// status card's "Last attempt" line verbatim - see
+  /// mobile/lib/ui/widgets/delivery_state_tile.dart). Matched on message text
+  /// rather than on `SocketException` / `HandshakeException`, because those
+  /// live in `dart:io` and importing it here would break the web build.
+  ///
+  /// The unrecognised-error fallback deliberately does not include the raw
+  /// exception text either - an error type this method does not know about
+  /// yet is still not something a fisher at sea needs spelled out for them.
   String _describeNetworkError(Object error) {
     final text = error.toString();
+    if (text.contains('TimeoutException')) {
+      return 'the app is not getting a signal';
+    }
     if (text.contains('Failed host lookup') ||
         text.contains('SocketException') ||
         text.contains('ClientException')) {
-      return 'cannot reach $_baseUrl (check the backend URL and connectivity)';
+      return 'no internet connection';
     }
     if (text.contains('HandshakeException') || text.contains('CERTIFICATE')) {
-      return 'TLS handshake failed for $_baseUrl';
+      return "couldn't establish a secure connection";
     }
-    return text;
+    return 'could not reach the server';
   }
 
   /// Ask the backend what has happened to this vessel's SOS records.
@@ -296,11 +304,13 @@ class BackendClient {
     }
   }
 
+  /// A clean `{"detail": "..."}` body (FastAPI's own validation-error shape)
+  /// is readable as-is and used verbatim. Anything else - an HTML error
+  /// page, a stack trace, a body that doesn't parse - falls back to a plain
+  /// "Rejected (4xx)" rather than dumping raw server output onto the
+  /// fisher's phone.
   static String _catchErrorMessage(String body, int statusCode) {
     final trimmed = body.trim();
-    if (trimmed.isEmpty) {
-      return 'Rejected ($statusCode)';
-    }
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         final decoded = jsonDecode(trimmed);
@@ -313,10 +323,10 @@ class BackendClient {
           return decoded.trim();
         }
       } catch (_) {
-        // Fall through to the raw text.
+        // Fall through to the generic message below.
       }
     }
-    return trimmed.length <= 120 ? trimmed : trimmed.substring(0, 120);
+    return 'Rejected ($statusCode)';
   }
 
   void close() => _client.close();

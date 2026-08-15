@@ -110,7 +110,7 @@ class ChatService extends ChangeNotifier {
         onError: (Object e) {
           _connected = false;
           _connecting = false;
-          _lastError = e.toString();
+          _lastError = _describeChatError(e);
           _notify();
         },
         onDone: () {
@@ -133,7 +133,7 @@ class ChatService extends ChangeNotifier {
     } catch (e) {
       _connected = false;
       _connecting = false;
-      _lastError = e.toString();
+      _lastError = _describeChatError(e);
       _notify();
     }
   }
@@ -343,6 +343,27 @@ class ChatService extends ChangeNotifier {
     try {
       _channel?.sink.add(data);
     } catch (_) {}
+  }
+
+  /// Turns a raw WebSocket/HTTP exception into text a fisher standing near
+  /// the buoy can read. [lastError] is not shown anywhere in the UI yet, but
+  /// it is public API on a service other screens may reasonably read from
+  /// later, so it should never carry Dart's own exception text.
+  static String _describeChatError(Object error) {
+    final text = error.toString();
+    if (text.contains('TimeoutException')) {
+      return 'no reply from the chat hub';
+    }
+    if (text.contains('SocketException') ||
+        text.contains('Connection refused') ||
+        text.contains('Failed host lookup')) {
+      return 'not connected to the Aquan WiFi hub';
+    }
+    if (text.contains('WebSocketChannelException') ||
+        text.contains('WebSocketException')) {
+      return 'chat connection dropped';
+    }
+    return 'could not connect to the chat hub';
   }
 
   /// Guards every `notifyListeners()` call in this class.
