@@ -55,6 +55,13 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // The weight field autofocuses, which pops the keyboard right as
+        // the dialog lays out. Without `scrollable`, AlertDialog gives
+        // `content` a fixed-size Column with no way to shrink when that
+        // sudden inset change lands mid-layout, which overflows. Wrapping
+        // content in a scroll view (what `scrollable: true` does) lets it
+        // adapt instead.
+        scrollable: true,
         title: const Text('Confirm actual weight'),
         content: Column(
           mainAxisSize: MainAxisSize.min,

@@ -90,7 +90,7 @@ class ChatService extends ChangeNotifier {
     if (_connecting || _disposed) return;
     _connecting = true;
     _lastError = null;
-    notifyListeners();
+    _notify();
 
     try {
       await _subscription?.cancel();
@@ -111,12 +111,12 @@ class ChatService extends ChangeNotifier {
           _connected = false;
           _connecting = false;
           _lastError = e.toString();
-          notifyListeners();
+          _notify();
         },
         onDone: () {
           _connected = false;
           _connecting = false;
-          notifyListeners();
+          _notify();
         },
         cancelOnError: true,
       );
@@ -126,7 +126,7 @@ class ChatService extends ChangeNotifier {
 
       _connected = true;
       _connecting = false;
-      notifyListeners();
+      _notify();
 
       await _backfillHistory();
       await _flushQueue();
@@ -134,7 +134,7 @@ class ChatService extends ChangeNotifier {
       _connected = false;
       _connecting = false;
       _lastError = e.toString();
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -166,7 +166,7 @@ class ChatService extends ChangeNotifier {
           ..addAll((json['list'] as List<dynamic>?)
                   ?.map((e) => e.toString()) ??
               []);
-        notifyListeners();
+        _notify();
 
       case 'msg':
         final name = json['from'] as String? ?? '?';
@@ -179,7 +179,7 @@ class ChatService extends ChangeNotifier {
           time: DateTime.now(),
         ));
         _trimMessages();
-        notifyListeners();
+        _notify();
 
       case 'history':
         final list = json['messages'] as List<dynamic>?;
@@ -197,7 +197,7 @@ class ChatService extends ChangeNotifier {
         }
         _trimMessages();
         _persistMessages();
-        notifyListeners();
+        _notify();
     }
   }
 
@@ -222,7 +222,7 @@ class ChatService extends ChangeNotifier {
     _messages.add(msg);
     _trimMessages();
     _persistMessages();
-    notifyListeners();
+    _notify();
 
     if (_connected) {
       _safeSend(jsonEncode({
@@ -261,7 +261,7 @@ class ChatService extends ChangeNotifier {
       }
       _trimMessages();
       _persistMessages();
-      notifyListeners();
+      _notify();
     } catch (_) {
       // Hub offline — not an error on mobile.
     }
@@ -319,7 +319,7 @@ class ChatService extends ChangeNotifier {
         ));
       }
       _trimMessages();
-      notifyListeners();
+      _notify();
     } catch (_) {}
   }
 
@@ -343,6 +343,20 @@ class ChatService extends ChangeNotifier {
     try {
       _channel?.sink.add(data);
     } catch (_) {}
+  }
+
+  /// Guards every `notifyListeners()` call in this class.
+  ///
+  /// Most call sites here run after an `await` (WebSocket connect, HTTP
+  /// backfill, SharedPreferences I/O) or inside a stream callback - both can
+  /// resume/fire after [dispose] has already run, e.g. when the fisherman
+  /// backs out of chat while a connection attempt is still in flight.
+  /// `ChangeNotifier.notifyListeners()` throws once disposed, so every call
+  /// goes through this check instead of calling it directly.
+  void _notify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   @override
