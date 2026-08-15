@@ -22,6 +22,7 @@ class VesselIdentity {
     this.licenseNumber = '',
     this.phone = '',
     this.trustTier = TrustTier.selfDeclared,
+    this.avatarPath,
   });
 
   final String vesselId;
@@ -31,6 +32,11 @@ class VesselIdentity {
   final String licenseNumber;
   final String phone;
   final TrustTier trustTier;
+
+  /// Local filesystem path to the skipper's chosen profile photo, if any.
+  /// Never sent anywhere - this is a device-only personalization, not part
+  /// of the registration payload.
+  final String? avatarPath;
 
   /// The minimum needed to raise an SOS. Deliberately just an id and a boat
   /// name: a half-finished profile must never stand between someone and the
@@ -61,6 +67,7 @@ class VesselIdentity {
     String? licenseNumber,
     String? phone,
     TrustTier? trustTier,
+    String? avatarPath,
   }) {
     return VesselIdentity(
       vesselId: vesselId,
@@ -70,6 +77,7 @@ class VesselIdentity {
       licenseNumber: licenseNumber ?? this.licenseNumber,
       phone: phone ?? this.phone,
       trustTier: trustTier ?? this.trustTier,
+      avatarPath: avatarPath ?? this.avatarPath,
     );
   }
 }
@@ -86,6 +94,8 @@ class IdentityStore {
   static const String _keyLicenseNumber = 'license_number';
   static const String _keyPhone = 'phone';
   static const String _keyTrustTier = 'trust_tier';
+  static const String _keyAvatarPath = 'avatar_path';
+  static const String _keyRememberMe = 'remember_me';
 
   Future<VesselIdentity?> read() async {
     final db = await _db.database;
@@ -101,6 +111,7 @@ class IdentityStore {
     if (vesselId == null || boat == null) {
       return null;
     }
+    final avatarPath = values[_keyAvatarPath];
     return VesselIdentity(
       vesselId: vesselId,
       boat: boat,
@@ -109,6 +120,75 @@ class IdentityStore {
       licenseNumber: values[_keyLicenseNumber] ?? '',
       phone: values[_keyPhone] ?? '',
       trustTier: TrustTier.fromWire(values[_keyTrustTier]),
+      avatarPath: (avatarPath == null || avatarPath.isEmpty)
+          ? null
+          : avatarPath,
+    );
+  }
+
+  /// Whether a returning skipper asked to be dropped straight into the app
+  /// on next launch, skipping the "Welcome back" confirmation screen.
+  /// Defaults to on: the confirmation screen is friction most returning
+  /// users will not want to repeat every time they open the app.
+  Future<bool> getRememberMe() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'identity',
+      where: 'key = ?',
+      whereArgs: <String>[_keyRememberMe],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return true;
+    }
+    return rows.first['value'] == '1';
+  }
+
+  Future<void> setRememberMe(bool value) async {
+    final db = await _db.database;
+    await db.insert(
+      'identity',
+      <String, Object?>{
+        'key': _keyRememberMe,
+        'value': value ? '1' : '0',
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Sets (or, with `null`, clears) the local profile photo path.
+  ///
+  /// Written directly rather than through [ensure]/`copyWith`, because
+  /// `copyWith`'s "null means keep the old value" convention can't express
+  /// "the user removed their photo".
+  Future<VesselIdentity> setAvatarPath(String? path) async {
+    final existing = await read();
+    if (existing == null) {
+      throw StateError('setAvatarPath called before an identity exists');
+    }
+    final db = await _db.database;
+    if (path == null || path.isEmpty) {
+      await db.delete(
+        'identity',
+        where: 'key = ?',
+        whereArgs: <String>[_keyAvatarPath],
+      );
+    } else {
+      await db.insert(
+        'identity',
+        <String, Object?>{'key': _keyAvatarPath, 'value': path},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    return VesselIdentity(
+      vesselId: existing.vesselId,
+      boat: existing.boat,
+      skipperName: existing.skipperName,
+      licenseType: existing.licenseType,
+      licenseNumber: existing.licenseNumber,
+      phone: existing.phone,
+      trustTier: existing.trustTier,
+      avatarPath: (path == null || path.isEmpty) ? null : path,
     );
   }
 
@@ -149,6 +229,9 @@ class IdentityStore {
       // Anything typed on this handset is self-declared, full stop. Only the
       // MDRRMO side can raise this, and only after meeting the vessel.
       trustTier: _preservedTier(existing),
+      // A profile photo is unrelated to the declared details being edited
+      // here, so it survives an edit untouched.
+      avatarPath: existing?.avatarPath,
     );
     await _write(identity);
     return identity;
@@ -197,6 +280,8 @@ class IdentityStore {
       _keyLicenseNumber: identity.licenseNumber,
       _keyPhone: identity.phone,
       _keyTrustTier: identity.trustTier.wire,
+      if (identity.avatarPath != null && identity.avatarPath!.isNotEmpty)
+        _keyAvatarPath: identity.avatarPath!,
     };
     final batch = db.batch();
     values.forEach((key, value) {

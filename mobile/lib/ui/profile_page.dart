@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/tokens.dart';
 import '../core/validators.dart';
@@ -50,6 +55,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   bool _editing = false;
   bool _saving = false;
+  bool _pickingAvatar = false;
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   late TextEditingController _name;
@@ -145,6 +151,66 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Future<void> _changeAvatar() async {
+    if (_pickingAvatar || kIsWeb) {
+      return;
+    }
+    final hasPhoto = widget.identity.avatarPath != null &&
+        widget.identity.avatarPath!.isNotEmpty;
+    final choice = await showModalBottomSheet<_AvatarAction>(
+      context: context,
+      builder: (ctx) => _AvatarActionSheet(hasPhoto: hasPhoto),
+    );
+    if (choice == null || !mounted) {
+      return;
+    }
+
+    setState(() => _pickingAvatar = true);
+    try {
+      if (choice == _AvatarAction.remove) {
+        final updated = await widget.identityStore.setAvatarPath(null);
+        if (!mounted) return;
+        widget.onIdentityUpdated(updated);
+        return;
+      }
+
+      final source = choice == _AvatarAction.camera
+          ? ImageSource.camera
+          : ImageSource.gallery;
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) {
+        return;
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final savedPath = '${dir.path}/profile_avatar.jpg';
+      // Copy out of the picker's temp file so the photo survives after the
+      // OS clears its cache/temp directory.
+      await File(picked.path).copy(savedPath);
+
+      final updated = await widget.identityStore.setAvatarPath(savedPath);
+      if (!mounted) return;
+      widget.onIdentityUpdated(updated);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update your profile photo.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _pickingAvatar = false);
+      }
+    }
+  }
+
   void _openInfo(String title, String body) {
     Navigator.push(
       context,
@@ -226,40 +292,75 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           children: <Widget>[
             Center(
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[Color(0xFF38BDF8), _brandPrimary],
-                  ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: _brandPrimary.withValues(alpha: 0.35),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'icons/emptyProfile.png',
-                    height: 88,
-                    width: 88,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      height: 88,
-                      width: 88,
-                      color: palette.surface,
-                      child: const Icon(
-                        Icons.person,
-                        size: 44,
-                        color: _brandPrimary,
+              child: GestureDetector(
+                onTap: _changeAvatar,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: <Widget>[
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[Color(0xFF38BDF8), _brandPrimary],
+                        ),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: _brandPrimary.withValues(alpha: 0.35),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: _hasCustomAvatar
+                            ? Image.file(
+                                File(identity.avatarPath!),
+                                height: 88,
+                                width: 88,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _avatarFallback(palette),
+                              )
+                            : Image.asset(
+                                'icons/emptyProfile.png',
+                                height: 88,
+                                width: 88,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _avatarFallback(palette),
+                              ),
                       ),
                     ),
-                  ),
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _brandPrimary,
+                          border: Border.all(color: palette.canvas, width: 2),
+                        ),
+                        child: _pickingAvatar
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -363,6 +464,24 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: AqSpace.xl),
           ],
         ),
+      ),
+    );
+  }
+
+  bool get _hasCustomAvatar {
+    final path = widget.identity.avatarPath;
+    return !kIsWeb && path != null && path.isNotEmpty && File(path).existsSync();
+  }
+
+  Widget _avatarFallback(AqPalette palette) {
+    return Container(
+      height: 88,
+      width: 88,
+      color: palette.surface,
+      child: const Icon(
+        Icons.person,
+        size: 44,
+        color: _brandPrimary,
       ),
     );
   }
@@ -781,6 +900,70 @@ class _SettingsTile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _AvatarAction { camera, gallery, remove }
+
+/// Bottom sheet offering camera / gallery / remove for the profile photo.
+class _AvatarActionSheet extends StatelessWidget {
+  const _AvatarActionSheet({required this.hasPhoto});
+
+  final bool hasPhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AqPalette.of(context);
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: palette.surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AqRadius.large),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: palette.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_camera_rounded, color: palette.primaryText),
+              title: Text(
+                'Take a photo',
+                style: TextStyle(color: palette.primaryText),
+              ),
+              onTap: () => Navigator.pop(context, _AvatarAction.camera),
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_library_rounded, color: palette.primaryText),
+              title: Text(
+                'Choose from gallery',
+                style: TextStyle(color: palette.primaryText),
+              ),
+              onTap: () => Navigator.pop(context, _AvatarAction.gallery),
+            ),
+            if (hasPhoto)
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: _dangerRed),
+                title: const Text(
+                  'Remove photo',
+                  style: TextStyle(color: _dangerRed),
+                ),
+                onTap: () => Navigator.pop(context, _AvatarAction.remove),
+              ),
+          ],
         ),
       ),
     );

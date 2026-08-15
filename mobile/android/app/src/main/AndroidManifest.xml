@@ -15,6 +15,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 
+    <!-- image_picker: taking a profile photo with the camera. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
+    <!-- SOS alarm: vibration when a distress call is raised. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
     <application
         android:label="aqone"
         android:name="${applicationName}"
