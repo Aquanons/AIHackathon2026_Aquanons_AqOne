@@ -185,15 +185,23 @@ class SosService {
     // buoy timeout - pointing every debugging effort at the mesh while the
     // actual fault was the internet path. Whatever is shown here is the only
     // diagnostic a field tester gets.
+    //
+    // BuoyUnreachable specifically gets a fixed, plain-language headline -
+    // "Not connected to the buoy" - rather than surfacing which flavor of
+    // transport exception caused it. This is what shows on the SOS log's
+    // "Last attempt" line (ui/widgets/delivery_state_tile.dart) on the home
+    // page, and it is also the single most common failure at sea: no buoy
+    // in range is expected, ordinary behaviour, not something worth
+    // describing like a bug.
     final buoyReason = buoyResult is BuoyRejected
         ? buoyResult.reason
         : buoyResult is BuoyUnreachable
-            ? buoyResult.reason
+            ? 'Not connected to the buoy'
             : buoyResult is BuoyInvalidResponse
                 ? buoyResult.reason
                 : 'no buoy in range';
     final directReason = _backend.lastDirectError ?? 'internet path failed';
-    final reason = 'buoy: $buoyReason · internet: $directReason';
+    final reason = '$buoyReason · $directReason';
     await _outbox.recordFailure(localId, reason);
     if (notify) {
       _changes.add(null);
