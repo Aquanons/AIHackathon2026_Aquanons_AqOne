@@ -78,7 +78,7 @@ class OutboxStore {
   Future<SosRecord?> advance(
     String localId,
     DeliveryState candidate, {
-    int? buoyId,
+    String? buoyId,
     int? srcId,
     int? seq,
     int? serverTs,

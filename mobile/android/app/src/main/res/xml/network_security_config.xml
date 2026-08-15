@@ -1,17 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The buoy serves plain HTTP on its SoftAP at 10.0.0.1 (docs/03_PHONE_BUOY_WIFI.md:
-  "plain HTTP (no TLS on the buoy; the hop is 1:1 and local)"). Android 9+ blocks
-  cleartext by default, which would fail every /v1/status and /v1/sos call in the
-  field.
+  The buoy serves plain HTTP on its SoftAP at 192.168.4.1 - the default
+  WiFi.softAP() address in firmware/buoy/AqOneBuoy/AqOneBuoy.ino, verified in
+  docs/21_WEEK1_CONTRACT_FIXTURES.md ("plain HTTP, no TLS on the buoy; the
+  hop is 1:1 and local"). Android 9+ blocks cleartext by default, which would
+  fail every /v1/status and /v1/sos call in the field.
 
-  Cleartext is permitted ONLY for the buoy's address, so TLS enforcement stays on
-  for the Railway backend and every other host. Enabling it globally with
+  Previously this listed 10.0.0.1, which is not the buoy's actual AP address
+  - so cleartext was permitted for a host the phone never talks to, and the
+  real buoy host was still blocked.
+
+  Cleartext is permitted ONLY for the buoy's address, so TLS enforcement stays
+  on for the Railway backend and every other host. Enabling it globally with
   android:usesCleartextTraffic="true" would have switched that protection off
   everywhere.
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">10.0.0.1</domain>
+        <domain includeSubdomains="false">192.168.4.1</domain>
     </domain-config>
 </network-security-config>

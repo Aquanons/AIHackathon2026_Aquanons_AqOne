@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         // Each step is wrapped in try/catch so a partially-applied migration
@@ -49,6 +49,16 @@ class AppDatabase {
           // person will check it.
           await _addResponderColumns(db);
         }
+        if (oldVersion < 6) {
+          // v6: buoy_id is the firmware's BUOY_ID string (e.g. "BUOY01"), not
+          // a numeric id - see docs/21_WEEK1_CONTRACT_FIXTURES.md. No column
+          // migration is needed: SQLite's INTEGER-affinity storage already
+          // accepts and round-trips TEXT values for a column that was never
+          // declared STRICT, and SosRecord.fromRow() reads whatever is there
+          // with toString(). This upgrade step exists only to document the
+          // version bump and the reasoning, so a future migration does not
+          // assume buoy_id is still numeric.
+        }
       },
       onCreate: (db, version) async {
         await db.execute('''
@@ -68,7 +78,9 @@ class AppDatabase {
             lat             REAL,
             lon             REAL,
             note            TEXT,
-            buoy_id         INTEGER,
+            -- The firmware's BUOY_ID string (e.g. "BUOY01"), not numeric -
+            -- see docs/21_WEEK1_CONTRACT_FIXTURES.md.
+            buoy_id         TEXT,
             src_id          INTEGER,
             seq             INTEGER,
             server_ts       INTEGER,

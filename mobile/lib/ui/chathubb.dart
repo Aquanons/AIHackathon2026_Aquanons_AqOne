@@ -7,6 +7,8 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/config.dart';
+
 // ---------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------
@@ -29,10 +31,14 @@ class ChatMessage {
 // Service — WebSocket chat client for the Heltec WiFi-relay hub
 //
 // The Heltec module runs as a WiFi access point (default SSID "Aquan") and
-// exposes a WebSocket server at ws://<ap_ip>/ws.  Connected clients are
-// shown on a "client wheel" in the UI.  An HTTP GET /history endpoint
-// provides backfill on connect.  Messages sent while offline are queued
-// in SharedPreferences and flushed when the connection is restored.
+// exposes a WebSocket server on its OWN port (`ws://<ap_ip>:81`, no path -
+// see AqOneConfig.buoyWsUrl and docs/21_WEEK1_CONTRACT_FIXTURES.md). It is a
+// separate WebSocketsServer instance from the HTTP server on port 80, so it
+// has no `/ws` route - a client that connects to port 80 will never reach
+// it. Connected clients are shown on a "client wheel" in the UI. An HTTP
+// GET /history endpoint provides backfill on connect. Messages sent while
+// offline are queued in SharedPreferences and flushed when the connection is
+// restored.
 // ---------------------------------------------------------------------------
 
 class ChatService extends ChangeNotifier {
@@ -67,7 +73,7 @@ class ChatService extends ChangeNotifier {
   String? get lastError => _lastError;
   int get pendingCount => _pendingQueue.length;
 
-  String get _wsUrl => 'ws://$host/ws';
+  String get _wsUrl => AqOneConfig.buoyWsUrl(host);
   String get _historyUrl => 'http://$host/history';
 
   /// Starts the connection loop and loads persisted messages / queue.

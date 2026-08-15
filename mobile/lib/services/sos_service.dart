@@ -156,7 +156,9 @@ class SosService {
         localId,
         DeliveryState.relayed,
         buoyId: buoyResult.buoyId,
-        srcId: buoyResult.srcId,
+        // The firmware's POST /v1/sos response has no src_id field (see
+        // docs/21_WEEK1_CONTRACT_FIXTURES.md) - it was never sent, so this is
+        // left unpopulated rather than fabricated.
         seq: buoyResult.seq,
         serverTs: buoyResult.serverTs,
       );
@@ -187,7 +189,9 @@ class SosService {
         ? buoyResult.reason
         : buoyResult is BuoyUnreachable
             ? buoyResult.reason
-            : 'no buoy in range';
+            : buoyResult is BuoyInvalidResponse
+                ? 'buoy sent an unreadable response: ${buoyResult.reason}'
+                : 'no buoy in range';
     final directReason = _backend.lastDirectError ?? 'internet path failed';
     final reason = 'buoy: $buoyReason · internet: $directReason';
     await _outbox.recordFailure(localId, reason);

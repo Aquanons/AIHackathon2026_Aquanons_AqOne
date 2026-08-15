@@ -47,7 +47,10 @@ class SosRecord {
   final double? lat;
   final double? lon;
   final String? note;
-  final int? buoyId;
+
+  /// The firmware's `BUOY_ID` string (e.g. `"BUOY01"`), not a numeric id -
+  /// see docs/21_WEEK1_CONTRACT_FIXTURES.md and BuoyAck.buoyId.
+  final String? buoyId;
   final int? srcId;
   final int? seq;
   final int? serverTs;
@@ -98,7 +101,7 @@ class SosRecord {
 
   SosRecord copyWith({
     DeliveryState? state,
-    int? buoyId,
+    String? buoyId,
     int? srcId,
     int? seq,
     int? serverTs,
@@ -175,7 +178,11 @@ class SosRecord {
         lat: (row['lat'] as num?)?.toDouble(),
         lon: (row['lon'] as num?)?.toDouble(),
         note: row['note'] as String?,
-        buoyId: (row['buoy_id'] as num?)?.toInt(),
+        // toString() rather than a hard cast: pre-Phase-1 rows may still
+        // carry an INTEGER-affinity value from before buoy_id became a
+        // string (see app_database.dart schema note), and this keeps old
+        // outbox rows readable instead of crashing on upgrade.
+        buoyId: (row['buoy_id'] as Object?)?.toString(),
         srcId: (row['src_id'] as num?)?.toInt(),
         seq: (row['seq'] as num?)?.toInt(),
         serverTs: (row['server_ts'] as num?)?.toInt(),

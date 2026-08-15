@@ -1,10 +1,24 @@
 class AqOneConfig {
   const AqOneConfig._();
 
+  /// Verified against the checked-in firmware
+  /// (`firmware/buoy/AqOneBuoy/AqOneBuoy.ino`: `WiFi.softAP(...)` with no
+  /// custom AP config, which defaults to `192.168.4.1`) — see
+  /// `docs/21_WEEK1_CONTRACT_FIXTURES.md`. Previously `10.0.0.1`, which does
+  /// not match the buoy's actual AP address and made every `/v1/status` and
+  /// `/v1/sos` call fail outright while a phone was joined to the buoy's
+  /// WiFi.
   static const String buoyBaseUrl = String.fromEnvironment(
     'BUOY_BASE_URL',
-    defaultValue: 'http://10.0.0.1',
+    defaultValue: 'http://192.168.4.1',
   );
+
+  /// The buoy's chat WebSocket, a separate server from the HTTP API above
+  /// (`WebSocketsServer ws(WS_PORT)` with `WS_PORT = 81` in the firmware; no
+  /// path routing, so there is no `/ws` suffix). Single source of truth for
+  /// `ChatService` so the buoy's HTTP host and its WS host cannot drift apart
+  /// again.
+  static String buoyWsUrl(String host) => 'ws://$host:81';
 
   /// The deployed Railway service. Override at build time with
   /// `--dart-define=BACKEND_BASE_URL=https://...` when pointing a build at a
