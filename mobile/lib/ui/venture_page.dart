@@ -503,7 +503,15 @@ class _VenturePageState extends State<VenturePage> {
               top: 12,
               left: 0,
               right: 0,
-              child: _buildWeatherCapsule(isDark),
+              child: Column(
+                children: <Widget>[
+                  _buildWeatherCapsule(isDark),
+                  if (_latestSos != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    _buildSosStatus(isDark, _latestSos!),
+                  ],
+                ],
+              ),
             ),
             Positioned(
               bottom: 24 + widget.bottomInset,
@@ -777,7 +785,6 @@ class _VenturePageState extends State<VenturePage> {
           isDark: isDark,
           onTap: _isSendingSos ? null : _handleSosTap,
         ),
-        if (_latestSos != null) _buildSosStatus(isDark, _latestSos!),
       ],
     );
   }
@@ -860,46 +867,73 @@ class _VenturePageState extends State<VenturePage> {
     final description = standDown
         ? 'Marked as a false alarm - the MDRRMO has been told to disregard.'
         : state.description;
+    final icon = standDown
+        ? Icons.undo_rounded
+        : switch (state) {
+            DeliveryState.saved => Icons.hourglass_top_rounded,
+            DeliveryState.relayed => Icons.sync_rounded,
+            DeliveryState.delivered => Icons.cloud_done_rounded,
+            DeliveryState.acknowledged => Icons.check_circle_rounded,
+          };
+
     return Container(
-      margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxWidth: 190),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        color: (isDark ? _surfaceDark : const Color(0xFFF4F8FA))
+            .withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: (isDark ? _accentDark : Colors.white).withValues(alpha: 0.6),
+          width: 1.5,
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Row(
         children: <Widget>[
-          Text(
-            title,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: color,
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'SOS: $title',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isDark ? Colors.white70 : const Color(0xFF475569),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            description,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 10,
-              height: 1.25,
-              color: isDark ? Colors.white70 : const Color(0xFF475569),
+          if (!record.hasFix) ...<Widget>[
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.gps_off_rounded,
+              size: 15,
+              color: Color(0xFFD97706),
             ),
-          ),
-          if (!record.hasFix)
-            const Padding(
-              padding: EdgeInsets.only(top: 3),
-              child: Text(
-                'No GPS fix recorded',
-                textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 9.5, color: Color(0xFFD97706)),
-              ),
-            ),
+          ],
         ],
       ),
     );
