@@ -149,11 +149,23 @@ class AqOneConfig {
   /// feeds); this is a write endpoint, same family as sos.py.
   static const String catchLogsPath = '/api/catch-logs';
 
-  /// Community-reported fishing spots ("fish hotspots"). Unlike
-  /// [catchLogsPath], the GET side is also unauthenticated here - every
-  /// fisherman with the app needs to see every reported spot, and it is
-  /// also the exact path the dispatcher dashboard's fetchHotspots() already
-  /// calls. See backend/app/api/spots.py.
+  /// DEPRECATED - manually reported fishing spots. Nothing calls this.
+  ///
+  /// Two claims in the comment this replaces were wrong or became wrong. The
+  /// dashboard's fetchHotspots() no longer exists (see web/js/dashboard.js:
+  /// the hotspot system was dropped in a merge), and the handset no longer
+  /// reads or writes spots at all.
+  ///
+  /// The feature was removed because it contradicted the system design: §6.2
+  /// requires hotspot locations to be spatially binned and protected against
+  /// exposing an individual's exact productive location, and §6.1 puts all
+  /// fisheries collection behind separate informed consent. A pin-drop that
+  /// published exact coordinates, attributed to a vessel, to every handset,
+  /// with no consent gate, did the opposite of both. See [publicHotspotsPath]
+  /// for what replaces it.
+  ///
+  /// The endpoint and the local outbox table are intentionally left in place
+  /// so anything a handset had already queued still uploads.
   static const String spotsPath = '/api/spots';
 
   /// Squall nowcast (AI #1). Public because the handset has no account - see

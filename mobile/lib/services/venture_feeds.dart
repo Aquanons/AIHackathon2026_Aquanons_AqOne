@@ -84,9 +84,12 @@ class VentureFeeds {
     return BuoyMarker.parseList(decoded);
   }
 
-  /// Every fishing spot reported by any fisherman with the app - including
-  /// this handset's own reports, once they've synced. See CommunitySpot's
-  /// doc comment for why this is a separate type from the local outbox.
+  /// DEPRECATED, and no longer called from anywhere.
+  ///
+  /// Manual spot reporting was removed from Venture - see [AqOneConfig.spotsPath]
+  /// for why. Kept only so the endpoint has a client-side reader if the
+  /// dashboard ever wants one; delete it with the endpoint.
+  @Deprecated('Manual fishing spots were removed; hotspots come from the model')
   Future<List<CommunitySpot>?> spots() async {
     final decoded = await _backend.getJson(AqOneConfig.spotsPath);
     if (decoded == null) {
