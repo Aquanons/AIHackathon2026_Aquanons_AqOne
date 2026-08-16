@@ -16,11 +16,17 @@ dependencies:
   # supportedLocales throws "No MaterialLocalizations found" at runtime.
   flutter_localizations:
     sdk: flutter
-  intl: any
+  # Pinned, not `any`. gen-l10n's generated code imports intl, so an
+  # unconstrained resolve can swap it under the localisations and break the
+  # build for one person and nobody else. flutter_localizations already
+  # narrows this hard - 0.20.2 is what it resolves to today.
+  intl: ^0.20.2
 
   http: ^1.2.2
   sqflite: ^2.3.3
-  sqflite_common_ffi_web: any
+  # Web-only sqflite backend. Pinned for the same reason as intl: `any` makes
+  # the build depend on when you last resolved.
+  sqflite_common_ffi_web: ^1.1.2
   path: ^1.9.0
 
   # Bumped from ^13.0.1 to match the version the Venture code is proven
