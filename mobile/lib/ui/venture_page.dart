@@ -26,6 +26,7 @@ import 'catch_history_page.dart';
 import 'chathubb.dart';
 import 'checklist_page.dart';
 import 'widgets/compass_dial.dart';
+import 'widgets/offline_map_banner.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
@@ -131,6 +132,11 @@ class _VenturePageState extends State<VenturePage> {
   /// Null draws nothing at all - see HotspotCell's doc comment for why there
   /// is no client-side substitute.
   HotspotSurface? _hotspots;
+
+  /// When each cached feed was last fetched. Drives the offline banner, and
+  /// is refreshed after every poll rather than on a timer of its own so it
+  /// can never disagree with what is on the map.
+  Map<String, DateTime> _snapshotAges = const <String, DateTime>{};
   Timer? _hotspotTimer;
   final Map<HazardKind, List<HazardAlert>> _hazards =
       <HazardKind, List<HazardAlert>>{};
@@ -176,9 +182,11 @@ class _VenturePageState extends State<VenturePage> {
         AqOneConfig.hotspotRefreshInterval,
         (_) => _loadHotspots(),
       );
+      _refreshSnapshotAges();
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
         _loadHazards();
+        _refreshSnapshotAges();
       });
     });
   }
@@ -258,6 +266,14 @@ class _VenturePageState extends State<VenturePage> {
       return;
     }
     setState(() => _hotspots = surface);
+  }
+
+  Future<void> _refreshSnapshotAges() async {
+    final Map<String, DateTime> ages = await widget.feeds.snapshotAges();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _snapshotAges = ages);
   }
 
   Future<void> _loadHazards() async {
@@ -560,6 +576,8 @@ class _VenturePageState extends State<VenturePage> {
               child: Column(
                 children: <Widget>[
                   _buildWeatherCapsule(isDark),
+                  const SizedBox(height: 8),
+                  OfflineMapBanner(ages: _snapshotAges, isDark: isDark),
                   if (_latestSos != null) ...<Widget>[
                     const SizedBox(height: 8),
                     _buildSosStatus(isDark, _latestSos!),
