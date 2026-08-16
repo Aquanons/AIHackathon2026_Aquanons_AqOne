@@ -1,11 +1,11 @@
+import 'package:aqone/core/l10n_fallback.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/models/buoy_contact.dart';
 import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/sos_record.dart';
 import 'package:aqone/ui/widgets/buoy_status_card.dart';
 import 'package:aqone/ui/widgets/delivery_state_tile.dart';
-import 'package:aqone/core/l10n_fallback.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 

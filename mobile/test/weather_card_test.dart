@@ -1,9 +1,9 @@
 import 'package:aqone/core/l10n_fallback.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/models/daily_outlook.dart';
 import 'package:aqone/models/weather_snapshot.dart';
 import 'package:aqone/ui/widgets/weather_card.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,7 +17,7 @@ void main() {
         ),
         // Day 3 is the stormy one, so the icon assertion is meaningful.
         weatherCode: i == 3 ? 95 : 0,
-        tempMax: 30 + i,
+        tempMax: 30.0 + i,
         tempMin: 24,
         gustKph: i == 3 ? 55 : 10,
         waveM: i == 3 ? 2.9 : 0.5,

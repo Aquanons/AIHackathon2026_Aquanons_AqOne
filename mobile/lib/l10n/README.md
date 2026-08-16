@@ -52,6 +52,19 @@ cd mobile
 flutter pub get      # runs gen-l10n automatically (generate: true)
 ```
 
-Generated output lands in `.dart_tool/flutter_gen/` and is imported as
-`package:flutter_gen/gen_l10n/app_localizations.dart`. Do not commit it;
-do not edit it.
+Generated output lands **in this folder** — `app_localizations.dart` plus one
+file per locale, alongside the `.arb` sources. Import it as:
+
+```dart
+import 'package:aqone/l10n/app_localizations.dart';
+```
+
+Do not edit those files; they are overwritten on every `pub get`. They are
+gitignored, so a fresh clone must run `flutter pub get` before it will
+analyze or build.
+
+**Not `package:flutter_gen/gen_l10n/...`.** That was the old synthetic
+package, which recent Flutter versions no longer create. Importing it gives
+you `Target of URI doesn't exist` on every file that touches a string, plus
+a cascade of `Undefined class 'AppLocalizations'` — about sixty errors from
+one wrong path. If you see that, the import is stale, not the generator.

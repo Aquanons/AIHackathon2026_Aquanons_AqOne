@@ -145,9 +145,10 @@ class CompassService {
     ez /= eLen;
 
     final double ax = _ax / aLen;
-    final double ay = _ay / aLen;
     final double az = _az / aLen;
 
+    // Only the y component of north = gravity x east is needed, and that
+    // component happens not to involve gravity's own y - hence no ay here.
     final double ny = az * ex - ax * ez;
 
     // Same as SensorManager.getOrientation: azimuth = atan2(east.y, north.y).

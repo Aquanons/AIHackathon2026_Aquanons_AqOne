@@ -1,4 +1,4 @@
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 
 /// The four delivery states. See `docs/06_DELIVERY_STATES.md` - these are the
 /// product language and the wire values are a contract with the backend.

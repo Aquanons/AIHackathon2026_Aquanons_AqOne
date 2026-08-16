@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 /// A compass rose that rotates against a fixed index mark, the way a real
 /// compass card does: the card turns, the ship's mark stays at the top.
