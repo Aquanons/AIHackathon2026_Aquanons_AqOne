@@ -100,9 +100,11 @@ session if you miss them:
   literals to `mobile/lib/`. Log messages, SQL, and wire values stay as
   literals — those are not UI.
 - **Never put display text on an enum.** Const enum fields cannot see a
-  `BuildContext`, so they can never be translated. `DeliveryState` and
-  `SeaStatus` keep only wire values, ordering and colours; their text lives in
-  a `…L10n` extension that takes an `AppLocalizations`. Copy that pattern.
+  `BuildContext`, so they can never be translated. `DeliveryState`,
+  `SeaStatus` and `RiskLevel` keep only wire values, ordering and colours;
+  their text lives in a `…L10n` extension that takes an `AppLocalizations`.
+  Copy that pattern. `WeatherCondition` still carries English labels and has
+  not been converted yet — it is the last one left.
 - **The Tagalog locale code is `fil`, not `tl`,** and Aklanon (`akl`) has no
   Flutter localizations at all — `mobile/lib/core/l10n_fallback.dart` handles
   the second problem and its delegates must stay last in the list.

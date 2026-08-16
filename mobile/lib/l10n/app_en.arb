@@ -1,6 +1,5 @@
 {
   "@@locale": "en",
-
   "languageSettingTitle": "Language",
   "@languageSettingTitle": {
     "description": "Section heading on the Profile page for the language selector."
@@ -13,7 +12,6 @@
   "@languagePickerPrompt": {
     "description": "Heading on the first onboarding screen, shown before the user has picked a language. Must be short enough to be guessable by a speaker of any of the three languages."
   },
-
   "navHome": "Home",
   "@navHome": {
     "description": "Bottom navigation label for the main SOS screen. Keep short - the bottom bar has four items and overflows easily."
@@ -30,7 +28,6 @@
   "@navProfile": {
     "description": "Bottom navigation label for the user's vessel details and settings."
   },
-
   "deliveryStateSavedTitle": "Saved",
   "@deliveryStateSavedTitle": {
     "description": "SAFETY CRITICAL. First of four delivery states. The SOS is on the phone only and has reached nobody. Must not sound reassuring - the user has to understand help is not yet coming."
@@ -63,7 +60,6 @@
   "@deliveryStateAcknowledgedDescription": {
     "description": "SAFETY CRITICAL. Explains the Acknowledged state."
   },
-
   "deliveryMetaPosition": "Position",
   "@deliveryMetaPosition": {
     "description": "Row label next to the GPS coordinates of an SOS."
@@ -88,7 +84,6 @@
   "@deliveryNoGpsFix": {
     "description": "Shown in place of coordinates when the phone had no GPS lock at the moment the SOS was sent. The SOS is still valid without it."
   },
-
   "seaStatusSafeHeadline": "Safe to Go Out",
   "@seaStatusSafeHeadline": {
     "description": "SAFETY CRITICAL. Official MDRRMO go/no-go call, green. This is a human decision and outranks the app's own weather guess."
@@ -121,7 +116,6 @@
   "@seaStatusUnknownSubtitle": {
     "description": "Default explanation under the Status Not Yet Set headline."
   },
-
   "crashTitle": "Something went wrong",
   "@crashTitle": {
     "description": "Heading on the fallback screen shown when part of the UI fails to build."
@@ -129,5 +123,89 @@
   "crashBody": "This part of the screen couldn't load. Try going back, or restart the app if it keeps happening.",
   "@crashBody": {
     "description": "Body of the crash fallback screen. Deliberately plain - it replaces a Flutter stack trace that a fisherman at sea has no use for."
+  },
+  "forecastStripTitle": "7-day outlook",
+  "@forecastStripTitle": {
+    "description": "Heading above the seven day chips on the Home weather card."
+  },
+  "forecastAsOf": "as of {time}",
+  "@forecastAsOf": {
+    "description": "Shown when the outlook came from the offline cache rather than a live fetch. {time} is a clock time like \"6:12 AM\". Placeholder must be kept.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "6:12 AM"
+      }
+    }
+  },
+  "forecastToday": "Today",
+  "@forecastToday": {
+    "description": "Label on the first chip of the outlook strip, in place of a weekday name."
+  },
+  "forecastDisclaimerNoSeaState": "Forecast guidance from wind and rain only — sea state not available. Not an official PAGASA or MDRRMO call.",
+  "@forecastDisclaimerNoSeaState": {
+    "description": "SAFETY CRITICAL. Footnote under the outlook strip when no wave data was available. Must keep both halves: that sea state is missing, and that this is not an official call."
+  },
+  "forecastDisclaimer": "Forecast guidance, not an official PAGASA or MDRRMO call. Always check the sea condition above.",
+  "@forecastDisclaimer": {
+    "description": "SAFETY CRITICAL. Footnote under the outlook strip. Must not be softened into sounding like an official advisory."
+  },
+  "riskLevelSafe": "Safe",
+  "@riskLevelSafe": {
+    "description": "SAFETY CRITICAL. Green day in the outlook strip. Means the forecast shows nothing adverse - NOT that it is safe to go out, which only the MDRRMO sea condition can say."
+  },
+  "riskLevelCaution": "Caution",
+  "@riskLevelCaution": {
+    "description": "SAFETY CRITICAL. Amber day in the outlook strip."
+  },
+  "riskLevelDanger": "Dangerous",
+  "@riskLevelDanger": {
+    "description": "SAFETY CRITICAL. Red day in the outlook strip. Needs a second reviewer - understating this is a real hazard."
+  },
+  "riskLevelUnknown": "No data",
+  "@riskLevelUnknown": {
+    "description": "Grey day in the outlook strip: not enough forecast data to judge. Must not read as \"fine\" or \"calm\"."
+  },
+  "compassNorth": "N",
+  "@compassNorth": {
+    "description": "Single letter for north on the Venture compass dial. Keep to one or two characters - it is drawn inside a 58px dial."
+  },
+  "compassEast": "E",
+  "@compassEast": {
+    "description": "Single letter for east on the Venture compass dial. Keep to one or two characters."
+  },
+  "compassSouth": "S",
+  "@compassSouth": {
+    "description": "Single letter for south on the Venture compass dial. Keep to one or two characters."
+  },
+  "compassWest": "W",
+  "@compassWest": {
+    "description": "Single letter for west on the Venture compass dial. Keep to one or two characters."
+  },
+  "compassUnavailable": "Compass unavailable on this device",
+  "@compassUnavailable": {
+    "description": "Tooltip when the handset has no magnetometer, so the dial is greyed out."
+  },
+  "compassNeedsCalibration": "Compass needs calibrating — move the phone in a figure 8",
+  "@compassNeedsCalibration": {
+    "description": "Tooltip when magnetic field strength is out of range, usually an uncalibrated sensor or a magnet nearby. The figure-8 motion is the standard fix and should stay in the translation."
+  },
+  "compassHeading": "Heading {degrees}°",
+  "@compassHeading": {
+    "description": "Tooltip showing the current compass heading. {degrees} is a whole number 0-359. Placeholder must be kept.",
+    "placeholders": {
+      "degrees": {
+        "type": "int",
+        "example": "142"
+      }
+    }
+  },
+  "hotspotLegendTitle": "Likely fishing areas",
+  "@hotspotLegendTitle": {
+    "description": "Title of the map legend for the modelled hotspot layer. Avoid wording that promises fish."
+  },
+  "hotspotLegendDisclaimer": "Estimate from catch logs. Not a promise of fish, and not a safe-to-go-out signal.",
+  "@hotspotLegendDisclaimer": {
+    "description": "SAFETY CRITICAL. Sits under the hotspot legend. Both denials must survive translation: no guaranteed catch, and this is not a safety call."
   }
 }

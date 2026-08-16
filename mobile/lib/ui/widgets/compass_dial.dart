@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 /// A compass rose that rotates against a fixed index mark, the way a real
 /// compass card does: the card turns, the ship's mark stays at the top.
@@ -32,11 +34,22 @@ class CompassDial extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.45)
         : const Color(0xFF64748B);
 
+    final AppLocalizations t = AppLocalizations.of(context);
+
     return SizedBox(
       width: size,
       height: size,
       child: CustomPaint(
         painter: _CompassPainter(
+          // Cardinal letters are translated: a fisher reading an Aklanon or
+          // Tagalog app should not hit four English initials on the one
+          // control that tells him which way he is pointing.
+          cardinals: <String>[
+            t.compassNorth,
+            t.compassEast,
+            t.compassSouth,
+            t.compassWest,
+          ],
           // The card turns opposite the phone: face east and north swings
           // round to the left.
           rotation: -(headingDegrees ?? 0) * math.pi / 180.0,
@@ -55,6 +68,7 @@ class CompassDial extends StatelessWidget {
 
 class _CompassPainter extends CustomPainter {
   _CompassPainter({
+    required this.cardinals,
     required this.rotation,
     required this.face,
     required this.ink,
@@ -63,6 +77,8 @@ class _CompassPainter extends CustomPainter {
     required this.live,
   });
 
+  /// North, east, south, west - in that order.
+  final List<String> cardinals;
   final double rotation;
   final Color face;
   final Color ink;
@@ -121,13 +137,12 @@ class _CompassPainter extends CustomPainter {
 
     // Cardinal letters ride the card, so N always sits over true magnetic
     // north no matter which way the phone is held.
-    const List<String> labels = <String>['N', 'E', 'S', 'W'];
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4 && i < cardinals.length; i++) {
       final double a = i * math.pi / 2;
       final double d = r - 15;
       _label(
         canvas,
-        labels[i],
+        cardinals[i],
         Offset(math.sin(a) * d, -math.cos(a) * d),
         i == 0 ? north : ink,
         i == 0 ? FontWeight.w900 : FontWeight.w700,
@@ -195,6 +210,7 @@ class _CompassPainter extends CustomPainter {
   @override
   bool shouldRepaint(_CompassPainter old) {
     return old.rotation != rotation ||
+        !listEquals(old.cardinals, cardinals) ||
         old.ink != ink ||
         old.north != north ||
         old.face != face ||

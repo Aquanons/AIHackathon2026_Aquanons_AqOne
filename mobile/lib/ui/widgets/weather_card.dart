@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import '../../core/config.dart';
 import '../../models/daily_outlook.dart';
@@ -211,6 +212,7 @@ class _ForecastStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations t = AppLocalizations.of(context);
     final List<DailyOutlook> shown =
         days.take(AqOneConfig.forecastDays).toList(growable: false);
 
@@ -225,7 +227,7 @@ class _ForecastStrip extends StatelessWidget {
         Row(
           children: <Widget>[
             Text(
-              '7-day outlook',
+              t.forecastStripTitle,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
@@ -235,7 +237,7 @@ class _ForecastStrip extends StatelessWidget {
             const Spacer(),
             if (age != null)
               Text(
-                'as of ${_clock(age!)}',
+                t.forecastAsOf(_clock(age!)),
                 style: TextStyle(
                   fontSize: 10.5,
                   color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
@@ -265,10 +267,8 @@ class _ForecastStrip extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           anyMissingSeaState
-              ? 'Forecast guidance from wind and rain only — sea state not '
-                  'available. Not an official PAGASA or MDRRMO call.'
-              : 'Forecast guidance, not an official PAGASA or MDRRMO call. '
-                  'Always check the sea condition above.',
+              ? t.forecastDisclaimerNoSeaState
+              : t.forecastDisclaimer,
           style: TextStyle(
             fontSize: 10.5,
             height: 1.35,
@@ -301,21 +301,22 @@ class _DayChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations t = AppLocalizations.of(context);
     final RiskLevel level = day.risk.level;
     final Color risk = level.color;
     final double alpha = isOutlook ? 0.55 : 1.0;
 
-    final String label = isFirst ? 'Today' : day.shortWeekday;
+    final String label = isFirst ? t.forecastToday : day.shortWeekday;
     final String high =
         day.tempMax == null ? '–' : '${day.tempMax!.round()}°';
     final String low = day.tempMin == null ? '' : '${day.tempMin!.round()}°';
 
     return Semantics(
-      label: '$label, ${day.condition.label}, ${level.label}.'
+      label: '$label, ${day.condition.label}, ${level.label(t)}.'
           '${day.risk.reason == null ? '' : ' ${day.risk.reason}.'}'
           '${isOutlook ? ' Longer-range outlook, lower confidence.' : ''}',
       child: Tooltip(
-        message: day.risk.reason ?? level.label,
+        message: day.risk.reason ?? level.label(t),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
           decoration: BoxDecoration(

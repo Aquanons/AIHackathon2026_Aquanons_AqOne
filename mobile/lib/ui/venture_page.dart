@@ -607,6 +607,7 @@ class _VenturePageState extends State<VenturePage> {
   /// reads as authority, and this one is a suitability estimate that has never
   /// promised anyone a fish.
   Widget _buildHotspotLegend(bool isDark, HotspotSurface surface) {
+    final AppLocalizations t = AppLocalizations.of(context);
     final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
     final String? age = surface.ageLabel;
     final int cells = surface.cells.length;
@@ -639,7 +640,7 @@ class _VenturePageState extends State<VenturePage> {
               ),
               const SizedBox(width: 6),
               Text(
-                'Likely fishing areas',
+                t.hotspotLegendTitle,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
@@ -656,8 +657,7 @@ class _VenturePageState extends State<VenturePage> {
             style: TextStyle(fontSize: 9.5, color: fg),
           ),
           Text(
-            'Estimate from catch logs. Not a promise of fish, '
-            'and not a safe-to-go-out signal.',
+            t.hotspotLegendDisclaimer,
             style: TextStyle(fontSize: 9.5, color: fg),
           ),
         ],
@@ -1095,21 +1095,25 @@ class _VenturePageState extends State<VenturePage> {
   /// the handset has no magnetometer, so the control still does something
   /// truthful on a laptop or emulator.
   Widget _buildCompass(bool isDark) {
+    final AppLocalizations t = AppLocalizations.of(context);
     final double? sensorHeading = _heading;
     final double? shown = sensorHeading ?? (_rotation == 0 ? null : -_rotation * 180.0 / math.pi);
 
     return Semantics(
       button: true,
+      // Screen-reader label reuses the tooltip strings rather than adding two
+      // more keys to translate: a blind user hearing "Heading 142°" is served
+      // as well as one reading it, and every extra safety string is another
+      // thing to get reviewed.
       label: sensorHeading == null
-          ? 'Compass. No sensor. Tap to face the map north.'
-          : 'Compass. Heading ${sensorHeading.round()} degrees. '
-              'Tap to face the map north.',
+          ? t.compassUnavailable
+          : t.compassHeading(sensorHeading.round()),
       child: Tooltip(
         message: sensorHeading == null
-            ? 'Compass unavailable on this device'
+            ? t.compassUnavailable
             : _compassNeedsCalibration
-                ? 'Compass needs calibrating - move the phone in a figure 8'
-                : 'Heading ${sensorHeading.round()}°',
+                ? t.compassNeedsCalibration
+                : t.compassHeading(sensorHeading.round()),
         child: GestureDetector(
           // Unchanged behaviour: tapping squares the map back up to north.
           onTap: () => _mapController.rotate(0),

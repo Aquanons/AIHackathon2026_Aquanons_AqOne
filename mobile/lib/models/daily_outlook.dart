@@ -1,22 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'weather_snapshot.dart';
 
 /// How dangerous a day looks for going out.
 ///
-/// Carries an icon and a label alongside the colour. The state must never be
-/// conveyed by colour alone: this is read on a phone in direct glare on open
-/// water, and colour vision deficiency affects roughly one man in twelve.
+/// Carries an icon alongside the colour. The state must never be conveyed by
+/// colour alone: this is read on a phone in direct glare on open water, and
+/// colour vision deficiency affects roughly one man in twelve.
+///
+/// Display text lives in [RiskLevelL10n], not on the enum - const enum fields
+/// cannot see a BuildContext. Same pattern as [SeaStatus]; see §4.1 of
+/// `docs/22_LOCALIZATION_PLAN.md`.
 enum RiskLevel {
-  safe('safe', 'Safe', Color(0xFF16A34A), Icons.check_circle_rounded),
-  caution('caution', 'Caution', Color(0xFFD97706), Icons.warning_amber_rounded),
-  danger('danger', 'Dangerous', Color(0xFFDC2626), Icons.dangerous_rounded),
-  unknown('unknown', 'No data', Color(0xFF6B7280), Icons.help_outline_rounded);
+  safe('safe', Color(0xFF16A34A), Icons.check_circle_rounded),
+  caution('caution', Color(0xFFD97706), Icons.warning_amber_rounded),
+  danger('danger', Color(0xFFDC2626), Icons.dangerous_rounded),
+  unknown('unknown', Color(0xFF6B7280), Icons.help_outline_rounded);
 
-  const RiskLevel(this.wire, this.label, this.color, this.icon);
+  const RiskLevel(this.wire, this.color, this.icon);
 
   final String wire;
-  final String label;
   final Color color;
   final IconData icon;
 
@@ -28,6 +32,18 @@ enum RiskLevel {
     }
     return RiskLevel.unknown;
   }
+}
+
+extension RiskLevelL10n on RiskLevel {
+  /// Label under each day chip. Safety critical: "Safe" here means the
+  /// forecast shows nothing adverse, never that the MDRRMO has cleared anyone
+  /// to sail. See the review rules in `lib/l10n/README.md`.
+  String label(AppLocalizations t) => switch (this) {
+        RiskLevel.safe => t.riskLevelSafe,
+        RiskLevel.caution => t.riskLevelCaution,
+        RiskLevel.danger => t.riskLevelDanger,
+        RiskLevel.unknown => t.riskLevelUnknown,
+      };
 }
 
 /// Where a risk verdict was worked out.

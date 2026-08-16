@@ -1,7 +1,10 @@
+import 'package:aqone/core/l10n_fallback.dart';
 import 'package:aqone/models/daily_outlook.dart';
 import 'package:aqone/models/weather_snapshot.dart';
 import 'package:aqone/ui/widgets/weather_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -28,8 +31,19 @@ void main() {
     });
   }
 
-  Widget wrap(Widget child) {
+  /// The card resolves its own strings now, so the harness has to supply the
+  /// delegates or every build throws on AppLocalizations.of.
+  Widget wrap(Widget child, {Locale locale = const Locale('en')}) {
     return MaterialApp(
+      locale: locale,
+      supportedLocales: kSupportedLocales,
+      localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        ...kFallbackDelegates,
+      ],
       home: Scaffold(body: SingleChildScrollView(child: child)),
     );
   }
@@ -115,6 +129,32 @@ void main() {
     expect(find.text('as of 6:12 AM'), findsOneWidget);
     // No live current-conditions reading, so the retry affordance still shows.
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('builds in Aklanon without throwing', (
+    WidgetTester tester,
+  ) async {
+    // akl has no CLDR data, so this is the locale that breaks first if the
+    // fallback delegates are ever dropped or reordered. The strip carries
+    // safety-relevant labels, so it must not be the thing that crashes.
+    await tester.pumpWidget(
+      wrap(
+        WeatherCard(
+          snapshot: const WeatherSnapshot(
+            temperature: 30,
+            windSpeed: 8,
+            weatherCode: 0,
+          ),
+          isLoading: false,
+          onRetry: () {},
+          forecast: sevenDays(),
+        ),
+        locale: const Locale('akl'),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.dangerous_rounded), findsOneWidget);
   });
 
   testWidgets('omits the strip entirely when there is no forecast', (
