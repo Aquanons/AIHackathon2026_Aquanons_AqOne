@@ -16,6 +16,7 @@ import '../models/hazard_alert.dart';
 import '../models/sos_record.dart';
 import '../models/weather_snapshot.dart';
 import '../services/catch_service.dart';
+import '../services/compass_service.dart';
 import '../services/fishing_spot_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_alarm.dart';
@@ -24,6 +25,7 @@ import '../services/venture_feeds.dart';
 import 'catch_history_page.dart';
 import 'chathubb.dart';
 import 'checklist_page.dart';
+import 'widgets/compass_dial.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
@@ -111,6 +113,16 @@ class _VenturePageState extends State<VenturePage> {
   Timer? _pollTimer;
 
   double _rotation = 0;
+
+  final CompassService _compass = CompassService();
+  StreamSubscription<CompassReading>? _compassSub;
+
+  /// Null until the magnetometer produces a sample. Stays null forever on
+  /// hardware without one (emulators, web), which is what makes the dial
+  /// render in its greyed north-up state instead of pretending.
+  double? _heading;
+  bool _compassNeedsCalibration = false;
+
   LatLng? _userLocation;
   bool _isLocating = false;
 
@@ -152,6 +164,15 @@ class _VenturePageState extends State<VenturePage> {
     // an immediate re-poll rather than waiting out the full interval, so its
     // marker's color/detail sheet reflects the synced state promptly.
     _spotsSub = widget.spots.changes.listen((_) => _loadSpots());
+    _compassSub = _compass.readings.listen((CompassReading reading) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _heading = reading.headingDegrees;
+        _compassNeedsCalibration = reading.needsCalibration;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _locate(initial: true);
       _loadBuoys();
@@ -175,6 +196,10 @@ class _VenturePageState extends State<VenturePage> {
     _sosSub?.cancel();
     _catchSub?.cancel();
     _spotsSub?.cancel();
+    // The magnetometer keeps the SoC awake while subscribed, so it must go
+    // down with the screen.
+    _compassSub?.cancel();
+    unawaited(_compass.dispose());
     _mapController.dispose();
     unawaited(_sosAlarm.dispose());
     super.dispose();
@@ -1081,26 +1106,32 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
+  /// Live magnetic compass. Falls back to showing the map's own rotation when
+  /// the handset has no magnetometer, so the control still does something
+  /// truthful on a laptop or emulator.
   Widget _buildCompass(bool isDark) {
-    return GestureDetector(
-      onTap: () => _mapController.rotate(0),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.9),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isDark ? _accentDark : _brandPrimary,
-            width: 1.5,
-          ),
-        ),
-        child: Transform.rotate(
-          angle: _rotation,
-          child: Icon(
-            Icons.navigation_rounded,
-            size: 20,
-            color: isDark ? _accentDark : _brandPrimary,
+    final double? sensorHeading = _heading;
+    final double? shown = sensorHeading ?? (_rotation == 0 ? null : -_rotation * 180.0 / math.pi);
+
+    return Semantics(
+      button: true,
+      label: sensorHeading == null
+          ? 'Compass. No sensor. Tap to face the map north.'
+          : 'Compass. Heading ${sensorHeading.round()} degrees. '
+              'Tap to face the map north.',
+      child: Tooltip(
+        message: sensorHeading == null
+            ? 'Compass unavailable on this device'
+            : _compassNeedsCalibration
+                ? 'Compass needs calibrating - move the phone in a figure 8'
+                : 'Heading ${sensorHeading.round()}°',
+        child: GestureDetector(
+          // Unchanged behaviour: tapping squares the map back up to north.
+          onTap: () => _mapController.rotate(0),
+          child: CompassDial(
+            headingDegrees: shown,
+            isDark: isDark,
+            needsCalibration: _compassNeedsCalibration,
           ),
         ),
       ),
