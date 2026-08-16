@@ -25,6 +25,15 @@ mobile/lib/l10n/untranslated.json
 mobile/lib/l10n/app_localizations.dart
 mobile/lib/l10n/app_localizations_*.dart
 
+# Android release signing. key.properties holds the keystore password in
+# plain text, and a leaked release key is permanent: Play ties app identity to
+# it, so whoever holds it can publish updates Android accepts as ours. The
+# keystore itself belongs outside the repo entirely - these patterns are the
+# second line of defence, not the first.
+mobile/android/key.properties
+*.jks
+*.keystore
+
 # Database dumps pulled off a device with `adb exec-out run-as ... cat`,
 # used for the Phase 5 encryption extraction test. These are copies of a real
 # handset's local storage - never commit one, even from a test profile.

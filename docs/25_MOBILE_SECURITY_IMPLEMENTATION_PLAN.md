@@ -101,7 +101,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 | 3. Device-identity decision gate | COMPLETE | 2026-08-16 Option A approved by the user/technical owner in chat. Phase log added below with the explicit decision, allowed follow-on work, and hard-stop carry-forward. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: approve or defer device identity design` |
 | 4. Authenticated normal-operation API path | COMPLETE | 2026-08-16 backend vessel-device authorization, contract updates, migration, tests, and mobile auth-aware service changes completed. Verified with bundled-Python `pytest` (`89 passed, 1 xfailed`) and `ruff check .` after dependency install, plus `flutter test` (passed) and `flutter analyze` (only the same two pre-existing `info` diagnostics in unrelated dirty files). Repo-wide `git diff --check` remains blocked by unrelated dirty mobile files; path-scoped diff check for this phase passed. Changed files are recorded in the Phase 4 log below. | `security: add scoped vessel device authorization` |
 | 5. Encrypted local credential and data storage | COMPLETE | 2026-08-17 verified by the owner: `flutter pub get`, `flutter analyze` and `flutter test` all pass, and the emulator extraction test confirmed `skipper_name`, `license_number` and `phone` are `enc:v1:` ciphertext in the pulled database while `boat` and `vessel_id` stay readable, with no `+63` match anywhere in the file. Full evidence, limits and carry-forwards in the Phase 5 log below. Changed files listed there. | `security(mobile): protect local vessel data` |
-| 6. Release hardening and end-to-end verification | NOT STARTED | — | `security: verify mobile release controls` |
+| 6. Release hardening and end-to-end verification | IN PROGRESS | 2026-08-17 signing config and application ID work started. The release build and the seven device scenarios cannot be run by the implementing agent, and backend `pytest`/`ruff` cannot run in its environment either (Python 3.10 vs the project's `numpy==2.4.6`, which needs 3.11+). Status stays IN PROGRESS until the owner records real results. | `security: verify mobile release controls` |
 | 7. Deferred RLS decision | NOT STARTED | — | `docs: record rls readiness decision` |
 
 ## Phase 0 — Baseline and scope lock
@@ -1073,6 +1073,123 @@ git diff --check
 No release is security-approved if the test record is absent, if an emergency
 path was tested only in debug, or if any public repository secret scan is not
 clean. Do not mark a manual test as automated.
+
+### Phase 6 log — 2026-08-17
+
+**Status: IN PROGRESS.** Configuration work is done. The release build and
+the seven device scenarios have not been run, and the plan does not permit
+calling this phase complete until they have.
+
+**Pre-existing changes at start of phase**
+
+`git status --short` was empty.
+
+**What was found**
+
+1. `signingConfig = signingConfigs.getByName("debug")` — the release build was
+   signed with Android's debug key. That key is public and identical on every
+   machine, so anyone could produce an APK that Android accepts as an update
+   to this one. Requirement 2 of this phase forbids it.
+2. `applicationId = "com.example.aqone"` — Flutter's placeholder. Google Play
+   rejects `com.example.*` outright.
+3. Already correct, and worth recording as evidence rather than assumption:
+   no `.jks`, `.keystore` or `key.properties` anywhere in the repository; and
+   `network_security_config.xml` permits cleartext **only** for the buoy at
+   192.168.4.1, leaving TLS enforced for every other host.
+
+**Changed files**
+
+- `mobile/android/app/build.gradle.kts` — release signing reads a gitignored
+  `key.properties`, falling back to debug signing when absent; `applicationId`
+  and `namespace` are now `ph.aqone.app`; R8 shrinking and obfuscation
+  enabled for release.
+- `mobile/android/app/src/main/kotlin/ph/aqone/app/MainActivity.kt` — moved
+  from `com/example/aqone/`, package declaration updated. **This move was
+  mandatory, not cosmetic:** the manifest declares `android:name=".MainActivity"`,
+  which resolves against the namespace, so changing the namespace without
+  moving the class would have crashed the app at launch with
+  ClassNotFoundException — and only in a built app, not in analysis or tests.
+- `mobile/android/app/proguard-rules.pro` (new) — keep rules for the two
+  plugins that resolve classes reflectively (`flutter_secure_storage`,
+  `sqflite`), line numbers kept for crash reports, source file names hidden.
+- `mobile/android/key.properties.example` (new) — how to generate and place
+  the keystore, with the reasons a release key must never enter the repo.
+- `.gitignore` — `mobile/android/key.properties`, `*.jks`, `*.keystore`.
+
+**Application ID change — consequences**
+
+`ph.aqone.app` was chosen because the app already sends it as its OSM tile
+User-Agent, so the two now agree. The id determines the app's private data
+directory, so this change orphans the local database on any handset that
+already has the app installed: identity, queued SOS, catch logs, cached map
+snapshots. Only development installs exist today, which is exactly why the
+change was made now rather than after a pilot. Uninstall and reinstall on
+any test handset. Note that `adb ... run-as com.example.aqone` in the Phase 5
+log no longer works; use `ph.aqone.app`.
+
+**R8 is newly enabled — treat the first release build as a real test**
+
+Shrinking and obfuscation were off (Flutter's template default). They are on
+now, because an unobfuscated release ships readable class and method names,
+which is a labelled map of the SOS and credential paths. The risk is that R8
+strips something a plugin reaches reflectively; the two known cases have keep
+rules. If the release build fails or misbehaves, add a narrow keep rule for
+the specific class and record it — do not add a blanket keep or
+`-dontobfuscate`, which would disable the protection entirely.
+
+**Dependency review (requirement 1)**
+
+No dependency was changed in this phase. The two changes made during Phase 5
+are recorded there: `sensors_plus` 6.x → 7.1.0 (Built-in Kotlin, required by
+the toolchain) and `flutter_secure_storage` held at `^10.3.1` (11.0.0 needs
+Android SDK 37, which this toolchain cannot resolve). `flutter pub outdated`
+otherwise shows only patch-level drift plus `flutter_lints` 4 → 6, which is a
+lint-rule change deliberately deferred until after the demo.
+
+**Release scenario test record — TO BE FILLED BY THE OWNER**
+
+Build first, and confirm which key signed it:
+
+```powershell
+cd mobile; flutter build apk --release
+cd mobile/android; ./gradlew :app:signingReport
+```
+
+Then run each scenario on a device or emulator against that release artifact
+and record the real result. An empty row is an untested control, not a
+passing one.
+
+| # | Scenario | Result | Evidence / notes |
+|---|---|---|---|
+| 1 | Airplane-mode SOS queues locally | | |
+| 2 | Buoy handoff works over the permitted local HTTP path | | |
+| 3 | Cloud requests use HTTPS | | |
+| 4 | A rejected external HTTP URL sends no payload | | |
+| 5 | Sensitive values absent from release diagnostics | | |
+| 6 | A revoked or missing credential cannot reach another vessel | | |
+| 7 | Loss of backend access still shows an honest delivery state | | |
+
+**Verification still owed (owner must run)**
+
+```powershell
+cd mobile; flutter analyze
+cd mobile; flutter test
+cd mobile; flutter build apk --release
+cd backend; pytest
+cd backend; ruff check .
+git diff --check
+```
+
+`pytest` and `ruff` could not be run by the implementing agent: its Python is
+3.10 and the project pins `numpy==2.4.6`, which requires 3.11 or newer.
+Nothing in this phase touched backend code, but the plan asks for the full
+suite and the result must be recorded, not assumed.
+
+**Carry-forward**
+
+Scenario 6 cannot be tested end-to-end today, because no enrollment UI exists
+and nothing in the app creates a credential — the same gap carried forward
+from Phase 5. Record it as untestable rather than passing.
 
 ## Phase 7 — Deferred row-level security decision
 
