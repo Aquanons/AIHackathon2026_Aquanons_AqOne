@@ -354,10 +354,17 @@ leeway models do.
   themselves are unreviewed by anyone who fishes these waters.
 - **There is no hotspot model.** The contract is written
   (`docs/05_PUBLIC_API.md`) and the app renders the layer the moment the
-  endpoint answers, but nothing is scored today and the map shows no hotspot
-  layer at all. If asked what happened to the fish-hotspot feature, the
-  answer is that we removed the manual version on purpose — see below — and
-  the modelled replacement is Phase 3.
+  endpoint answers, but nothing is scored today. If asked what happened to
+  the fish-hotspot feature, the answer is that we removed the manual version
+  on purpose — see below — and the modelled replacement is Phase 3.
+  **The purple cells on the Venture map are invented.** They are shipped so
+  the layer can be shown and explained; they are labelled EXAMPLE in the
+  legend, drawn in a different colour from the real layer, carry no timestamp
+  or reporter counts, and say "NOT real fishing data. Nobody reported these."
+  Real cells replace them entirely the moment the endpoint answers. Say this
+  before anyone asks — a demo that quietly passes invented data off as model
+  output is the thing that would undermine every other honest disclosure in
+  this document.
 - The Venture compass reads **magnetic** north from the handset magnetometer.
   It is uncorrected for declination (under a degree locally, well inside
   sensor noise) and will read badly near an engine or a magnetic phone mount;

@@ -45,6 +45,11 @@ const Color _success = Color(0xFF16A34A);
 /// on a map a fisher reads before leaving would be taken as one.
 const Color _hotspotColor = Color(0xFF14B8A6);
 
+/// Fill for the illustrative cells the app ships before the model exists.
+/// A different hue from the real layer on purpose: the legend says EXAMPLE,
+/// but the colour says it too, for the fisherman who never reads legends.
+const Color _demoHotspotColor = Color(0xFF8B5CF6);
+
 /// How long a fisher has to slide-to-cancel before the SOS actually sends.
 /// Short enough to still read as "immediate" - the button does not gate the
 /// alert behind typing a note - but long enough that a pocket tap can be
@@ -691,6 +696,8 @@ class _VenturePageState extends State<VenturePage> {
   Widget _buildHotspotLegend(bool isDark, HotspotSurface surface) {
     final AppLocalizations t = AppLocalizations.of(context);
     final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
+    final bool demo = surface.isDemo;
+    final Color accent = demo ? _demoHotspotColor : _hotspotColor;
     final String? age = surface.ageLabel;
     final int cells = surface.cells.length;
     final int observations = surface.cells.fold<int>(
@@ -703,7 +710,10 @@ class _VenturePageState extends State<VenturePage> {
       decoration: BoxDecoration(
         color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _hotspotColor.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: accent.withValues(alpha: demo ? 0.7 : 0.35),
+          width: demo ? 1.5 : 1,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -716,7 +726,7 @@ class _VenturePageState extends State<VenturePage> {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: _hotspotColor.withValues(alpha: 0.38),
+                  color: accent.withValues(alpha: 0.38),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -729,19 +739,59 @@ class _VenturePageState extends State<VenturePage> {
                   color: isDark ? Colors.white : const Color(0xFF0F172A),
                 ),
               ),
+              if (demo) ...<Widget>[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'EXAMPLE',
+                    style: TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 3),
-          Text(
-            '$cells areas · $observations catch reports'
-            '${age == null ? '' : ' · $age'}'
-            '${surface.minReporters == null ? '' : ' · min ${surface.minReporters} reporters'}',
-            style: TextStyle(fontSize: 9.5, color: fg),
-          ),
-          Text(
-            t.hotspotLegendDisclaimer,
-            style: TextStyle(fontSize: 9.5, color: fg),
-          ),
+          if (demo) ...<Widget>[
+            // No counts, no age, no model version. Every one of those makes
+            // invented data read as measured, and the numbers on these cells
+            // are inventions too.
+            Text(
+              'Sample areas, to show how this map works.',
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                color: fg,
+              ),
+            ),
+            Text(
+              'NOT real fishing data. Nobody reported these.',
+              style: TextStyle(fontSize: 9.5, height: 1.3, color: fg),
+            ),
+          ] else ...<Widget>[
+            Text(
+              '$cells areas · $observations catch reports'
+              '${age == null ? '' : ' · $age'}'
+              '${surface.minReporters == null ? '' : ' · min ${surface.minReporters} reporters'}',
+              style: TextStyle(fontSize: 9.5, color: fg),
+            ),
+            Text(
+              t.hotspotLegendDisclaimer,
+              style: TextStyle(fontSize: 9.5, color: fg),
+            ),
+          ],
         ],
       ),
     );
@@ -778,8 +828,11 @@ class _VenturePageState extends State<VenturePage> {
             // Opacity carries the score. Deliberately no red-to-green scale:
             // this is suitability, and a green "go here" tier would read as a
             // safety judgement the model has not made.
-            color: _hotspotColor.withValues(alpha: 0.10 + 0.28 * cell.score),
-            borderColor: _hotspotColor.withValues(alpha: 0.35),
+            color: (hotspots.isDemo ? _demoHotspotColor : _hotspotColor)
+                .withValues(alpha: 0.10 + 0.28 * cell.score),
+            borderColor:
+                (hotspots.isDemo ? _demoHotspotColor : _hotspotColor)
+                    .withValues(alpha: 0.35),
             borderStrokeWidth: 1,
           ),
       for (final buoy in _buoys)

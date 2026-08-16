@@ -100,6 +100,7 @@ class HotspotSurface {
     this.generatedAt,
     this.modelVersion,
     this.minReporters,
+    this.isDemo = false,
   });
 
   final List<HotspotCell> cells;
@@ -114,6 +115,12 @@ class HotspotSurface {
   /// §6.3's minimum-reporter rule exists so one prolific fisher cannot become
   /// "the model", and showing it lets a fisher judge the surface for himself.
   final int? minReporters;
+
+  /// True for the illustrative cells the app ships to show what the layer
+  /// will look like. Never set from the wire - a backend cannot mark its own
+  /// output as an example, and a fisherman burning fuel on invented
+  /// coordinates is the exact outcome this flag exists to prevent.
+  final bool isDemo;
 
   /// Rough staleness label for the legend.
   String? get ageLabel {

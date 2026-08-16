@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
+import '../data/demo_hotspots.dart';
 import '../data/map_snapshot_store.dart';
 import '../data/welcome_advisory.dart';
 import '../models/advisory.dart';
@@ -141,10 +142,14 @@ class VentureFeeds {
       MapSnapshotStore.feedHotspots,
       () => _backend.getJson(AqOneConfig.publicHotspotsPath),
     );
+    // Illustrative cells only while the endpoint does not exist. Real output
+    // replaces them wholesale the moment it answers - the demo surface is
+    // never merged with real cells, because a mixed layer could not be
+    // honestly labelled.
     if (decoded == null) {
-      return null;
+      return DemoHotspots.surface;
     }
-    return HotspotCell.parse(decoded);
+    return HotspotCell.parse(decoded) ?? DemoHotspots.surface;
   }
 
   /// DEPRECATED, and no longer called from anywhere.
