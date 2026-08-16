@@ -572,21 +572,36 @@ class _VenturePageState extends State<VenturePage> {
               right: 16,
               child: _buildActionRail(isDark),
             ),
+            // Opposite corner from the action rail. The compass is a readout,
+            // not a control, and stacking it with the buttons made a crowded
+            // column crowded by one more thing. Lifted clear of the OSM
+            // attribution that runs along the bottom edge.
+            //
+            // Shares this corner with the hotspot legend, so both live in one
+            // column: two independently positioned widgets anchored to the
+            // same corner would sit on top of each other the day the hotspot
+            // endpoint starts answering.
+            Positioned(
+              bottom: 26 + widget.bottomInset,
+              left: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (_hotspots != null) ...<Widget>[
+                    _buildHotspotLegend(isDark, _hotspots!),
+                    const SizedBox(height: 10),
+                  ],
+                  _buildCompass(isDark),
+                ],
+              ),
+            ),
             if (_isLocating)
               Positioned(
                 top: 90,
                 left: 0,
                 right: 0,
                 child: Center(child: _buildLocatingPill(isDark)),
-              ),
-            // Only present while the layer is. §3.4 requires data age and
-            // coverage to be visible wherever a model output is shown, and
-            // §6.2 forbids implying a guaranteed catch.
-            if (_hotspots != null)
-              Positioned(
-                left: 8,
-                bottom: 26 + widget.bottomInset,
-                child: _buildHotspotLegend(isDark, _hotspots!),
               ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
@@ -913,14 +928,6 @@ class _VenturePageState extends State<VenturePage> {
             ),
           ),
         const SizedBox(height: 14),
-        // The compass is a readout, not an action, so it sits apart from the
-        // buttons at the bottom of the rail rather than heading the stack.
-        //
-        // It is not placed below SOS, tempting as the corner is: SOS has to
-        // stay the lowest control on the screen, because that is the one a
-        // thumb finds without looking.
-        _buildCompass(isDark),
-        const SizedBox(height: 10),
         _ActionPill(
           icon: Icons.warning_rounded,
           label: 'SOS',

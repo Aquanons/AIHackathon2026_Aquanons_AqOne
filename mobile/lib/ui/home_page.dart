@@ -342,13 +342,18 @@ class _HomePageState extends State<HomePage> {
                     child: InkWell(
                       onTap: widget.onOpenProfile,
                       customBorder: const CircleBorder(),
+                      // The photo is inset inside the ring rather than
+                      // clipped flush to it. Filling the whole circle painted
+                      // the image straight over the 1px border, so the avatar
+                      // read as a photo with a hard edge and no frame at all.
                       child: Container(
                         width: 48,
                         height: 48,
+                        padding: const EdgeInsets.all(2.5),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: palette.surface,
-                          border: Border.all(color: palette.border),
+                          border: Border.all(color: palette.border, width: 1.5),
                           boxShadow: <BoxShadow>[
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.06),
@@ -357,8 +362,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ],
                         ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _buildAvatar(palette),
+                        child: ClipOval(child: _buildAvatar(palette)),
                       ),
                     ),
                   ),
@@ -461,19 +465,24 @@ class _HomePageState extends State<HomePage> {
     final hasCustomAvatar =
         !kIsWeb && path != null && path.isNotEmpty && File(path).existsSync();
 
+    // 43, not 48: the ring is 48 across with 2.5 of padding on each side.
+    // Sizing the image to the outer circle would push it back under the
+    // border, which is the bug this replaces.
+    const double inner = 43;
+
     if (hasCustomAvatar) {
       return Image.file(
         File(path),
-        width: 48,
-        height: 48,
+        width: inner,
+        height: inner,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => _avatarFallback(palette),
       );
     }
     return Image.asset(
       'icons/emptyProfile.png',
-      width: 48,
-      height: 48,
+      width: inner,
+      height: inner,
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => _avatarFallback(palette),
     );
