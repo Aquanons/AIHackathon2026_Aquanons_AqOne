@@ -97,7 +97,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 |---|---|---|---|
 | 0. Baseline and scope lock | COMPLETE | 2026-08-16 baseline recorded below. Secret scan found no live secret; only placeholders in `backend/.env.example` and `docs/guides/07_SECURITY.md`. Local data inventory, route reconciliation, host/protocol list, dependency inventory, and real Flutter verification results are now recorded. `flutter test` passed; `flutter analyze` ran successfully enough to report two pre-existing `info` diagnostics in unrelated dirty files. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: record mobile security baseline` |
 | 1. Transport and endpoint guardrails | COMPLETE | 2026-08-16 transport guardrails implemented in `docs/03_PHONE_BUOY_WIFI.md`, `mobile/lib/core/config.dart`, `mobile/lib/core/endpoint_guard.dart`, `mobile/lib/main.dart`, `mobile/lib/services/backend_client.dart`, `mobile/lib/services/buoy_client.dart`, `mobile/lib/services/forecast_provider.dart`, `mobile/lib/services/tile_cache.dart`, `mobile/lib/ui/chathubb.dart`, and `mobile/test/endpoint_guard_test.dart`. `flutter test` passed. `flutter analyze` reported only two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): constrain app network destinations` |
-| 2. Sensitive-data handling and safe diagnostics | NOT STARTED | — | `security(mobile): reduce local data and redact diagnostics` |
+| 2. Sensitive-data handling and safe diagnostics | COMPLETE | 2026-08-16 safe diagnostics and local-data hardening completed in `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`, `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/lib/core/app_diagnostics.dart`, `mobile/lib/core/locale_controller.dart`, `mobile/lib/main.dart`, `mobile/lib/ui/chathubb.dart`, `mobile/test/app_diagnostics_test.dart`, and `mobile/test/chat_service_retention_test.dart`. `flutter test` passed. `flutter analyze` reported only the same two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): reduce local data and redact diagnostics` |
 | 3. Device-identity decision gate | NOT STARTED | — | `docs: approve or defer device identity design` |
 | 4. Authenticated normal-operation API path | NOT STARTED | — | `security: add scoped vessel device authorization` |
 | 5. Encrypted local credential and data storage | NOT STARTED | — | `security(mobile): protect local vessel data` |
@@ -386,7 +386,7 @@ guard by allowing all HTTP traffic.
 - `flutter test`
   - Passed on 2026-08-16 after the Phase 1 changes.
 - `git diff --check`
-  - Pending final run before commit for this phase.
+  - Passed before commit `c38a9f7`.
 
 **Remaining risk**
 
@@ -435,6 +435,89 @@ git diff --check
 Do not delete queued SOS rows merely because an HTTP request returned 2xx. Keep
 the delivery-state and reconciliation contract intact. Do not claim local data
 is encrypted unless a device extraction test demonstrates it.
+
+### Phase 2 log — 2026-08-16
+
+**Changed files**
+
+- `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`
+- `mobile/android/app/src/main/AndroidManifest.xml`
+- `mobile/lib/core/app_diagnostics.dart`
+- `mobile/lib/core/locale_controller.dart`
+- `mobile/lib/main.dart`
+- `mobile/lib/ui/chathubb.dart`
+- `mobile/test/app_diagnostics_test.dart`
+- `mobile/test/chat_service_retention_test.dart`
+
+**Implementation summary**
+
+- Added `AppDiagnostics` so release-visible logging now emits only category and
+  optional status code, while debug builds still retain local troubleshooting
+  detail.
+- Replaced raw `debugPrint` error logging in `main.dart` and
+  `locale_controller.dart` with the redacted diagnostics helper.
+- Disabled Android app-data backup with `android:allowBackup="false"` so cloud
+  backup/device-transfer does not silently copy the SOS outbox, identity,
+  cached chat, or avatar data.
+- Added a bounded retention rule for cached local chat history: keep only the
+  newest 50 messages from the last 24 hours. Pending unsent chat queue entries
+  are still retained until they flush, because dropping them would silently
+  discard user-written data.
+
+**Retention policy recorded from the current code after Phase 2**
+
+| Local store | Retention after Phase 2 | Reason |
+|---|---|---|
+| SQLite `outbox` | No automatic expiry in this phase | Emergency-critical; dropping rows can break SOS retry, delivery-state reconciliation, acknowledgement display, and responder ETA history |
+| SQLite `identity` | No automatic expiry in this phase | Needed to preserve vessel continuity; Android backup now disabled so it does not leave the device through backup |
+| SQLite `catch_outbox` | No automatic expiry in this phase | Livelihood-sensitive; no verified deletion path yet that cannot disrupt sync state |
+| SQLite `fishing_spot_outbox` | No automatic expiry in this phase | Legacy sensitive location data; protected from backup, but not auto-deleted without a verified queue-drain plan |
+| SQLite `map_snapshot` | Existing code keeps general feeds up to 7 days; hazard-related feeds up to 6 hours | Advisory offline usability without pretending stale hazards are live |
+| SharedPreferences forecast cache | Existing 12-hour expiry | Old forecasts are worse than no forecast |
+| SharedPreferences cached chat history | New 24-hour / 50-message cap | Non-essential personal/operational data minimized without affecting SOS |
+| SharedPreferences pending chat queue | Retained until flush or app-data clear | User-authored unsent messages should not disappear silently |
+| SharedPreferences locale override | Retained until user changes/removes it | Preference, low sensitivity |
+| Filesystem avatar image | Retained until user replaces/removes it | Personal data, now excluded from Android backup |
+| Filesystem tile cache | Existing 7-day floor and 80 MB cap | Non-sensitive offline convenience cache |
+
+**Backup decision**
+
+- Android backup is now disabled.
+- Trade-off: a phone replacement or device-transfer flow will not restore local
+  identity, queued SOS/catch/spot data, cached chat, or avatar images from
+  cloud backup.
+- Reason: those stores contain personal, location, or operationally sensitive
+  data, and Phase 5 encryption is not in place yet.
+- iOS: no iOS target was present in this checkout, so no iOS backup change was
+  made in this phase.
+
+**Commands run and outcomes**
+
+- `flutter analyze`
+  - Completed on 2026-08-16 via unsandboxed run.
+  - Reported only the same two pre-existing `info` diagnostics in unrelated
+    dirty files:
+    - `mobile/lib/data/demo_hotspots.dart:28:41`
+    - `mobile/lib/services/squall_alarm.dart:60:19`
+- `flutter test`
+  - Passed on 2026-08-16 after the Phase 2 changes.
+- `git diff --check`
+  - Passed before commit for this phase.
+
+**Remaining risk**
+
+- Android backup is now safer, but local SQLite data is still plaintext at
+  rest until a later phase adds protected local credential/data storage.
+- The chat pending queue still lives in SharedPreferences by design; this phase
+  minimized cached chat history and prevented backup, but did not redesign that
+  store.
+- `mobile/lib/services/venture_feeds.dart` remains dirty and untouched.
+
+**Next hard stop**
+
+Do not start Phase 3 implementation until the Phase 2 commit is created, then
+present Option A vs. Option B to the user/technical owner and wait for an
+explicit selection.
 
 ## Phase 3 — Device-identity decision gate
 

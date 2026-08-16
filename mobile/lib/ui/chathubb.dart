@@ -52,6 +52,7 @@ class ChatService extends ChangeNotifier {
 
   static const int maxMessageLength = 50;
   static const int _maxMessages = 50;
+  static const Duration _messageRetention = Duration(hours: 24);
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
@@ -202,9 +203,25 @@ class ChatService extends ChangeNotifier {
   }
 
   void _trimMessages() {
-    while (_messages.length > _maxMessages) {
-      _messages.removeAt(0);
+    final retained = retainRecentMessages(_messages);
+    _messages
+      ..clear()
+      ..addAll(retained);
+  }
+
+  static List<ChatMessage> retainRecentMessages(
+    Iterable<ChatMessage> messages, {
+    DateTime? now,
+  }) {
+    final DateTime cutoff =
+        (now ?? DateTime.now()).subtract(_messageRetention);
+    final List<ChatMessage> retained = messages
+        .where((ChatMessage message) => !message.time.isBefore(cutoff))
+        .toList(growable: true);
+    if (retained.length > _maxMessages) {
+      retained.removeRange(0, retained.length - _maxMessages);
     }
+    return retained;
   }
 
   // ----- Outgoing messages ------------------------------------------------

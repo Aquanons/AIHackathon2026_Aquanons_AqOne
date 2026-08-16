@@ -4,6 +4,7 @@ import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/app_diagnostics.dart';
 import 'core/config.dart';
 import 'core/l10n_fallback.dart';
 import 'core/locale_controller.dart';
@@ -46,7 +47,11 @@ void main() {
   // instead of left to reach the user as a raw stack trace.
   runZonedGuarded(
     () => runApp(const AqOneApp()),
-    (error, stack) => debugPrint('AqOne: uncaught error — $error\n$stack'),
+    (error, stack) => AppDiagnostics.log(
+      'uncaught',
+      error,
+      stackTrace: stack,
+    ),
   );
 }
 
@@ -233,7 +238,7 @@ class _AqOneAppState extends State<AqOneApp> {
       // DB open / query failed (corrupt file, wrong path, platform channel
       // issue).  Rather than spinning forever, let the user through to
       // onboarding where they can re-register.
-      debugPrint('AqOne: _restore failed — $e');
+      AppDiagnostics.log('restore', e);
       if (!mounted) return;
       setState(() {
         _identity = null;
@@ -304,7 +309,7 @@ class _AqOneAppState extends State<AqOneApp> {
     try {
       identity = await _identityStore.read();
     } catch (e) {
-      debugPrint('AqOne: _enterApp read failed — $e');
+      AppDiagnostics.log('enter-app', e);
     }
     if (!mounted) {
       return;

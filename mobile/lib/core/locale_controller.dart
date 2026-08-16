@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_diagnostics.dart';
 import 'l10n_fallback.dart';
 
 /// Holds the app's active locale and remembers an explicit choice.
@@ -56,7 +57,7 @@ class LocaleController extends ChangeNotifier {
       );
       return LocaleController._(known ? candidate : null);
     } catch (e) {
-      debugPrint('AqOne: locale load failed — $e');
+      AppDiagnostics.log('locale-load', e);
       return LocaleController._(null);
     }
   }
@@ -78,7 +79,7 @@ class LocaleController extends ChangeNotifier {
     } catch (e) {
       // The in-memory switch already happened, so the user sees the language
       // change; it just will not survive a restart.
-      debugPrint('AqOne: locale save failed — $e');
+      AppDiagnostics.log('locale-save', e);
     }
   }
 
