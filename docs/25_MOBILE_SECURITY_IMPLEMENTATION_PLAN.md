@@ -95,7 +95,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 
 | Phase | Status | Evidence / changed files / verification | Commit subject |
 |---|---|---|---|
-| 0. Baseline and scope lock | NOT STARTED | — | `docs: record mobile security baseline` |
+| 0. Baseline and scope lock | BLOCKED | 2026-08-16 baseline recorded below. Secret scan found no live secret; only placeholders in `backend/.env.example` and `docs/guides/07_SECURITY.md`. Local data inventory, route reconciliation, host/protocol list, and dependency inventory are now recorded. Verification is blocked because `flutter analyze`, `flutter test`, and even `flutter --version` did not complete or emit usable output in this shell after repeated direct invocations of `C:\Users\User\flutter\bin\flutter.bat`. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. Next hard stop: rerun Flutter verification on a working shell before Phase 1. | `docs: record mobile security baseline` |
 | 1. Transport and endpoint guardrails | NOT STARTED | — | `security(mobile): constrain app network destinations` |
 | 2. Sensitive-data handling and safe diagnostics | NOT STARTED | — | `security(mobile): reduce local data and redact diagnostics` |
 | 3. Device-identity decision gate | NOT STARTED | — | `docs: approve or defer device identity design` |
@@ -141,6 +141,163 @@ Do not proceed to Phase 1 until the host/protocol list and sensitive-data
 inventory are recorded in this document, and no live secret is found. If a
 secret is found, stop feature work, revoke/rotate it first, then document the
 response without writing the secret into Git.
+
+### Phase 0 log — 2026-08-16
+
+**Pre-existing dirty paths recorded before work**
+
+`A  AqOne_Integrated_System_Design.md`
+
+`MM docs/16_QA_DISCLOSURES.md`
+
+`D  mobile/lib/data/demo_hotspots.dart`
+
+`MM mobile/lib/models/hotspot_cell.dart`
+
+`MM mobile/lib/services/squall_alarm.dart`
+
+`MM mobile/lib/services/venture_feeds.dart`
+
+`MM mobile/lib/ui/app_shell.dart`
+
+`MM mobile/lib/ui/home_page.dart`
+
+`D  mobile/lib/ui/squall_alert_page.dart`
+
+`MM mobile/lib/ui/venture_page.dart`
+
+`MM mobile/pubspec.yaml`
+
+`D  mobile/test/demo_hotspots_test.dart`
+
+`D  mobile/test/squall_alert_test.dart`
+
+`?? mobile/lib/data/demo_hotspots.dart`
+
+`?? mobile/lib/ui/squall_alert_page.dart`
+
+`?? mobile/test/demo_hotspots_test.dart`
+
+`?? mobile/test/squall_alert_test.dart`
+
+These files were treated as other contributors' work and were not edited in
+this phase.
+
+**Route reconciliation**
+
+- `docs/03_PHONE_BUOY_WIFI.md` still documents buoy IP `10.0.0.1`, but the
+  checked-in Flutter config and Android network security file both use
+  `192.168.4.1`, and comments in `mobile/lib/core/config.dart` say this was
+  verified against firmware. This contract doc is stale and must be corrected
+  before transport changes.
+- Mobile → buoy HTTP:
+  - `POST /v1/sos`
+  - `GET /v1/status`
+  - `GET /v1/sos/status?vessel_id=<id>`
+- Mobile → buoy local chat:
+  - `ws://<buoy-host>:81`
+  - `GET /history`
+- Mobile → backend handset routes in code today:
+  - `POST /api/sos`
+  - `GET /api/sos/vessel/{vessel_id}`
+  - `POST /api/sos/{event_id}/reply`
+  - `POST /api/catch-logs`
+  - `POST /api/catch-logs/{catch_log_id}/confirm-weight`
+  - `GET /api/public/buoys`
+  - `GET /api/public/alerts/waves`
+  - `GET /api/public/alerts/capsizing`
+  - `GET /api/sea-condition`
+  - `GET /api/public/sea-condition`
+  - `GET /api/advisories?status=Published`
+  - `GET /api/public/advisories`
+  - `GET /api/public/squall`
+  - `GET /api/public/forecast`
+  - `GET /api/public/hotspots`
+  - legacy `POST /api/spots` / `GET /api/spots` still exist
+- Backend auth reality today:
+  - SOS ingest, SOS vessel status, SOS reply, catch ingest, catch confirm, spot
+    ingest/read, and the `api/public/*` safety feeds are all unauthenticated by
+    design.
+  - Protected dashboard/reporting routes live on separate routers.
+- iOS target check: `mobile/ios/Runner/Info.plist` was not present in this
+  checkout, so there is no iOS ATS file to inspect in this phase.
+
+**Local data inventory and classification**
+
+| Local store | Exact fields / data | Classification | Current retention / deletion owner |
+|---|---|---|---|
+| SQLite `identity` | `vessel_id`, `boat`, `skipper_name`, `license_type`, `license_number`, `phone`, `trust_tier`, `avatar_path`, `remember_me` | `vessel_id` and `boat` are emergency-critical; `skipper_name`, `license_number`, `phone`, and `avatar_path` are personal data; `trust_tier` is non-sensitive corroboration metadata | Fisherman on the device for edits/deletion; mobile owner must define defaults in Phase 2 |
+| SQLite `outbox` | `local_id`, `vessel_id`, `boat`, `client_ts`, `state`, `trust_tier`, optional `lat`/`lon`, `note`, `buoy_id`, `src_id`, `seq`, `server_ts`, retry counters, `last_error`, relay/delivery/ack timestamps, `acked_by`, `remote_id`, `eta_at`, `responder_status`, `responder_note`, `fisher_reply` | Emergency-critical; `lat`/`lon` are sensitive location; `note` may contain personal data; responder fields are incident data | Fisherman cannot safely lose queued SOS; mobile owner must keep until delivery-state contract says otherwise |
+| SQLite `catch_outbox` | `local_id`, `vessel_id`, `species_name`, `estimated_quantity_kg`, `quantity_kg`, `quantity_confirmed_at`, `quantity_synced_at`, `catch_date`, `client_ts`, optional `lat`/`lon`, `method`, `notes`, retry/status fields | Not emergency-critical; `lat`/`lon` are sensitive location; notes may contain personal data; catch history is livelihood-sensitive | Fisherman and product owner jointly; Phase 2 must set an explicit retention window |
+| SQLite `fishing_spot_outbox` | `local_id`, `vessel_id`, `posted_by`, `latitude`, `longitude`, `species_name`, `notes`, retry/status fields | Sensitive location and livelihood-sensitive; not emergency-critical | Product owner and mobile owner; should be minimized because feature is legacy |
+| SQLite `map_snapshot` | Raw JSON payload plus `fetched_at` for buoys, wave alerts, capsizing alerts, sea condition, advisories, hotspots | Buoys are non-sensitive/public; alerts/advisories are non-sensitive/public; hotspot payload is potentially livelihood-sensitive depending on backend output | Mobile owner; advisory cache may expire aggressively without harming SOS |
+| SQLite `checklist_items` | Local packing-list titles, order, checkmarks | Non-sensitive | Fisherman on the device |
+| SharedPreferences `forecast_days_v1`, `forecast_fetched_at_v1` | Cached daily weather outlook | Non-sensitive to low sensitivity | Mobile owner |
+| SharedPreferences `chat_pending_queue`, `chat_cached_messages` | Outgoing unsent local chat text and cached chat history, including display names and message text | Personal data; possibly operationally sensitive | Fisherman on the device; mobile owner must define retention/backup in Phase 2 |
+| SharedPreferences locale override | Language code only | Non-sensitive | Fisherman on the device |
+| Filesystem avatar image | Local profile photo chosen by skipper; path stored in SQLite | Personal data | Fisherman on the device |
+| Filesystem tile cache | Previously viewed OpenStreetMap tiles | Non-sensitive map cache | Mobile owner; already capped and purgeable |
+
+**Data sent to each host / protocol**
+
+| Host / protocol | Data sent | Notes |
+|---|---|---|
+| `http://192.168.4.1` | SOS payload: `v`, `vessel_id`, `boat`, optional `lat`/`lon`, optional `note`, `client_ts`; status lookup path/query with `vessel_id` | Only intended cleartext exception |
+| `ws://192.168.4.1:81` | Chat `hello` name and chat messages | Local buoy chat; `GET http://192.168.4.1/history` fetches cached history |
+| `https://incredible-liberation-production-aad7.up.railway.app` | Direct SOS payload plus `local_id` and `source`; vessel SOS lookup; fisher reply; catch logs and confirm-weight; public safety feed reads | Cloud traffic should remain HTTPS only |
+| `https://api.open-meteo.com/v1/forecast` | Query-string latitude/longitude and daily/current weather parameters | Third-party weather provider sees coarse trip area |
+| `https://marine-api.open-meteo.com/v1/marine` | Query-string marine sample latitude/longitude and forecast params | Third-party marine provider sees fixed offshore sample point |
+| `https://tile.openstreetmap.org` | Map tile requests and `User-Agent` | No profile or SOS payload, but reveals viewed map tiles |
+
+**Dependency inventory**
+
+- Direct mobile dependencies from `mobile/pubspec.yaml`: `http`, `sqflite`,
+  `sqflite_common_ffi_web`, `path`, `geolocator`, `flutter_map`, `latlong2`,
+  `url_launcher`, `web_socket_channel`, `shared_preferences`,
+  `network_info_plus`, `image_picker`, `path_provider`, `sensors_plus`,
+  `vibration`, `audioplayers`, `intl`, `flutter_localizations`.
+- `mobile/pubspec.lock` is present and resolves hosted packages from
+  `https://pub.dev`.
+- No secure-storage package is present yet.
+
+**Commands run and outcomes**
+
+- `git status --short`
+  - Succeeded; recorded pre-existing dirty paths above.
+- `git grep -nEi "(password|secret|api[_-]?key|token)\s*[:=]\s*['\"][^'\"]{6,}"`
+  - No matches in tracked files.
+- `git grep -nE "postgres(ql)?://[^ ]+:[^ ]+@"`
+  - Matched placeholder/example strings only:
+    - `backend/.env.example`
+    - `docs/guides/07_SECURITY.md`
+- `flutter analyze`
+  - `BLOCKED`: command did not complete or emit usable output in this shell.
+- `flutter test`
+  - `BLOCKED`: command did not complete or emit usable output in this shell.
+- `flutter --version`
+  - `BLOCKED`: direct invocation of `C:\Users\User\flutter\bin\flutter.bat`
+    also failed to complete or emit usable output here.
+- `Get-Content mobile/ios/Runner/Info.plist`
+  - Failed because the file does not exist in this checkout.
+
+**Remaining risk**
+
+- Flutter verification is unresolved, so this baseline is documented but not
+  fully verified under the plan's required commands.
+- The buoy IP contract is inconsistent between the numbered doc and the code.
+- Sensitive local data remains plaintext in SQLite / SharedPreferences today.
+- `mobile/lib/services/venture_feeds.dart` is already dirty in the worktree,
+  which is likely to block Phase 1 endpoint-guard work unless the owner
+  confirms we may edit it.
+
+**Next hard stop**
+
+Do not start Phase 1 until:
+
+1. `flutter analyze` and `flutter test` complete on a working Flutter shell,
+   and
+2. the exact Phase 1 target files are checked for ownership conflicts, with
+   special attention to `mobile/lib/services/venture_feeds.dart`.
 
 ## Phase 1 — Transport and endpoint guardrails
 
