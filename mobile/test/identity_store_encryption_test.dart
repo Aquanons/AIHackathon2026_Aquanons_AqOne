@@ -56,8 +56,14 @@ void main() {
     expect(raw['skipper_name'], startsWith('enc:v1:'));
     expect(raw['license_number'], startsWith('enc:v1:'));
     expect(raw['phone'], startsWith('enc:v1:'));
+    // Search for the NORMALISED number. Searching for what was typed would
+    // pass even with encryption switched off, because the store rewrites
+    // 09171234567 to +639171234567 before saving - a false pass in the one
+    // test that is supposed to prove data is unreadable on disk.
     expect(raw.values.join(), isNot(contains('Juan')));
-    expect(raw.values.join(), isNot(contains('09171234567')));
+    expect(raw.values.join(), isNot(contains('+639171234567')));
+    expect(raw.values.join(), isNot(contains('9171234567')));
+    expect(raw.values.join(), isNot(contains('FISHR-99887')));
 
     // Emergency-critical: must stay readable even with no keystore, because
     // these identify the vessel to responders.
@@ -82,7 +88,11 @@ void main() {
     final identity = await store.read();
     expect(identity!.skipperName, 'Juan dela Cruz');
     expect(identity.licenseNumber, 'FISHR-99887');
-    expect(identity.phone, '09171234567');
+    // ensure() runs Validators.normalizePhone, so 09XXXXXXXXX is stored as
+    // E.164 before it is ever encrypted. Asserting the normalised form is the
+    // point: it proves the value survived encrypt -> disk -> decrypt intact,
+    // rather than proving what was typed.
+    expect(identity.phone, '+639171234567');
     expect(identity.boat, 'BG-123');
   });
 
@@ -103,7 +113,7 @@ void main() {
     final identity = await upgraded.read();
 
     expect(identity!.skipperName, 'Maria Santos');
-    expect(identity.phone, '09990001111');
+    expect(identity.phone, '+639990001111');
   });
 
   test('a lost key costs the name, never the vessel identity', () async {

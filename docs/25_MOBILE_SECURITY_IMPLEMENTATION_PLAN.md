@@ -891,6 +891,23 @@ pass: a missing `const` in `demo_hotspots.dart` and a needlessly nullable
 local in `squall_alarm.dart` (`Vibration.hasVibrator()` returns a non-nullable
 `bool` in the resolved version).
 
+**Correction after the owner's first test run**
+
+`flutter test` reported 127 passing, 2 failing, both in
+`identity_store_encryption_test.dart` and both my test's fault rather than
+the implementation's: `IdentityStore.ensure()` runs
+`Validators.normalizePhone`, so `09171234567` is stored as `+639171234567`
+and the assertions compared against what was typed. The decrypted value was
+correct throughout — the failure output showed a correctly decrypted,
+correctly normalised number.
+
+Fixing that exposed a worse problem in the same file. The on-disk assertion
+searched the raw rows for `09171234567`, which the store never writes in that
+form, so it would have passed **even with encryption disabled** — a false
+pass in the one test whose whole job is proving the data is unreadable. It
+now searches for the normalised number, a substring of it, and the licence
+number.
+
 **Residual risk**
 
 - `flutter_secure_storage` is a platform plugin. `flutter pub get` and
