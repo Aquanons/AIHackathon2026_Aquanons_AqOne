@@ -100,7 +100,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 | 2. Sensitive-data handling and safe diagnostics | COMPLETE | 2026-08-16 safe diagnostics and local-data hardening completed in `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`, `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/lib/core/app_diagnostics.dart`, `mobile/lib/core/locale_controller.dart`, `mobile/lib/main.dart`, `mobile/lib/ui/chathubb.dart`, `mobile/test/app_diagnostics_test.dart`, and `mobile/test/chat_service_retention_test.dart`. `flutter test` passed. `flutter analyze` reported only the same two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): reduce local data and redact diagnostics` |
 | 3. Device-identity decision gate | COMPLETE | 2026-08-16 Option A approved by the user/technical owner in chat. Phase log added below with the explicit decision, allowed follow-on work, and hard-stop carry-forward. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: approve or defer device identity design` |
 | 4. Authenticated normal-operation API path | COMPLETE | 2026-08-16 backend vessel-device authorization, contract updates, migration, tests, and mobile auth-aware service changes completed. Verified with bundled-Python `pytest` (`89 passed, 1 xfailed`) and `ruff check .` after dependency install, plus `flutter test` (passed) and `flutter analyze` (only the same two pre-existing `info` diagnostics in unrelated dirty files). Repo-wide `git diff --check` remains blocked by unrelated dirty mobile files; path-scoped diff check for this phase passed. Changed files are recorded in the Phase 4 log below. | `security: add scoped vessel device authorization` |
-| 5. Encrypted local credential and data storage | IN PROGRESS | 2026-08-16 implementation started. Verification commands cannot be run by the implementing agent (no Flutter SDK in its environment); status stays IN PROGRESS until the owner runs them and the evidence is recorded here. | `security(mobile): protect local vessel data` |
+| 5. Encrypted local credential and data storage | COMPLETE | 2026-08-17 verified by the owner: `flutter pub get`, `flutter analyze` and `flutter test` all pass, and the emulator extraction test confirmed `skipper_name`, `license_number` and `phone` are `enc:v1:` ciphertext in the pulled database while `boat` and `vessel_id` stay readable, with no `+63` match anywhere in the file. Full evidence, limits and carry-forwards in the Phase 5 log below. Changed files listed there. | `security(mobile): protect local vessel data` |
 | 6. Release hardening and end-to-end verification | NOT STARTED | — | `security: verify mobile release controls` |
 | 7. Deferred RLS decision | NOT STARTED | — | `docs: record rls readiness decision` |
 
@@ -998,20 +998,19 @@ added is not proof" was pointing at. Three things are established:
 
 **Verification still owed (owner must run)**
 
-`flutter pub get` passed. `flutter analyze` passed after the corrections
-above. `flutter test` last ran at 127 passed / 2 failed; both failures were
-test-side assertions fixed in commit `bc28400` and have **not been re-run
-since**. `git diff --check` passed path-scoped for each commit in this phase.
+**All verification is now complete.**
 
-Remaining, and it is two commands:
+- `flutter pub get` — passed.
+- `flutter analyze` — passed, no issues.
+- `flutter test` — all tests passed, re-run by the owner on 2026-08-17 after
+  the test-side fixes in `bc28400`.
+- `git diff --check` — passed, path-scoped, for every commit in this phase.
+- Device extraction test — passed; see the section above for the exact
+  commands, output and limits.
 
-```powershell
-cd mobile; flutter analyze
-cd mobile; flutter test
-```
-
-Record the real output here, then set this phase COMPLETE. Do not set it
-COMPLETE on the strength of the extraction test alone.
+Phase 5 is COMPLETE. The limits recorded above still stand and are not
+weakened by that status: emulator only, debug build only, no protection
+against a rooted running device, and the carry-forwards below remain open.
 
 **Carry-forward — do not lose these**
 
