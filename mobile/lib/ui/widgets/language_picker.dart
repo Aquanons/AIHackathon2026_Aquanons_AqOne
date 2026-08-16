@@ -108,6 +108,17 @@ class LanguageSettingTile extends StatelessWidget {
                   color: palette.primaryText,
                 ),
               ),
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AqSpace.base,
+                ),
+                child: Text(
+                  AppLocalizations.of(sheetContext).languageSettingSubtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: palette.dimText),
+                ),
+              ),
               const SizedBox(height: AqSpace.sm),
               ...kSupportedLocales.map(
                 (Locale locale) => ListTile(
@@ -138,30 +149,63 @@ class LanguageSettingTile extends StatelessWidget {
     final palette = AqPalette.of(context);
     final t = AppLocalizations.of(context);
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(Icons.translate_rounded, color: palette.active),
-      title: Text(
-        t.languageSettingTitle,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: palette.primaryText,
+    // Deliberately mirrors _SettingsTile in profile_page.dart: same card
+    // surface, radius, bottom gap, padding, icon size and text weights. This
+    // sat in the Settings list as a bare ListTile with no surface behind it,
+    // so it read as a gap between the cards above and below it.
+    //
+    // The subtitle moved into the picker sheet rather than being dropped -
+    // it explains the choice, and it is a string someone has to translate
+    // three times.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AqSpace.xs),
+      child: Material(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(AqRadius.standard),
+        child: InkWell(
+          onTap: () => _open(context),
+          borderRadius: BorderRadius.circular(AqRadius.standard),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.translate_rounded,
+                  size: 20,
+                  color: palette.secondaryText,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    t.languageSettingTitle,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: palette.primaryText,
+                    ),
+                  ),
+                ),
+                // The active language, so the row answers "what is it set to"
+                // without being opened.
+                Text(
+                  languageNameFor(controller.effectiveLocale(context)),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: palette.secondaryText,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: palette.dimText,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      subtitle: Text(
-        t.languageSettingSubtitle,
-        style: TextStyle(fontSize: 12, color: palette.dimText),
-      ),
-      trailing: Text(
-        languageNameFor(controller.effectiveLocale(context)),
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: palette.secondaryText,
-        ),
-      ),
-      onTap: () => _open(context),
     );
   }
 }
