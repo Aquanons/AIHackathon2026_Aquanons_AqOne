@@ -17,14 +17,14 @@ needs the internet.
 
 | Parameter | Value |
 |---|---|
-| SSID | `AqOne-<buoy id>` (e.g. `AqOne-BUOY01`) |
-| Password | printed on the buoy hull; also shown via a captive portal page |
+| SSID | `Aquan` |
+| Password | none — the buoy AP is open by design for emergency use |
 | Phone role | WiFi **station** (phone keeps its SIM in airplane mode) |
-| Buoy IP | `10.0.0.1` |
-| Phone DHCP | `10.0.0.2` – `10.0.0.62` |
+| Buoy IP | `192.168.4.1` |
+| Phone DHCP | assigned by the buoy SoftAP |
 | HTTP | plain HTTP (no TLS on the buoy; the hop is 1:1 and local) |
 
-The buoy SHOULD serve a captive portal at `http://10.0.0.1/` with:
+The buoy SHOULD serve a captive portal at `http://192.168.4.1/` with:
 - the buoy name and battery level,
 - a button that deep-links into the Flutter app,
 - the one-line status ("buoy online, mesh reachable / mesh unreachable").

@@ -1,3 +1,5 @@
+import 'endpoint_guard.dart';
+
 class AqOneConfig {
   const AqOneConfig._();
 
@@ -227,4 +229,14 @@ class AqOneConfig {
   static const int maxPhoneLength = 20;
   static const int minLicenseLength = 5;
   static const int maxLicenseLength = 24;
+
+  static void validateEndpoints() {
+    EndpointGuard.validateStaticConfig(
+      buoyBaseUrl: buoyBaseUrl,
+      backendBaseUrl: backendBaseUrl,
+      openMeteoBase: openMeteoBase,
+      openMeteoMarineBase: openMeteoMarineBase,
+      osmTileUrl: osmTileUrl,
+    );
+  }
 }

@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/config.dart';
+import '../core/endpoint_guard.dart';
 
 /// On-disk cache for basemap tiles the user has actually looked at.
 ///
@@ -164,9 +165,13 @@ class TileCache {
 
   Future<Uint8List?> fetch(String url) async {
     try {
+      final Uri uri = EndpointGuard.requireHttpsAbsolute(
+        url,
+        label: 'tile URL',
+      );
       final http.Response response = await _client
           .get(
-            Uri.parse(url),
+            uri,
             // §3.4: a distinct, stable User-Agent naming the app, with a
             // contact. Library defaults are blocked without notice.
             headers: <String, String>{'User-Agent': AqOneConfig.tileUserAgent},
@@ -198,8 +203,10 @@ class CachedNetworkTileProvider extends TileProvider {
     TileCoordinates coordinates,
     TileLayer options,
   ) {
+    final String url = getTileUrl(coordinates, options);
+    EndpointGuard.requireHttpsAbsolute(url, label: 'tile URL');
     return _CachedTileImage(
-      url: getTileUrl(coordinates, options),
+      url: url,
       cache: cache,
       onFetched: _maybeSweep,
     );

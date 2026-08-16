@@ -95,8 +95,8 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 
 | Phase | Status | Evidence / changed files / verification | Commit subject |
 |---|---|---|---|
-| 0. Baseline and scope lock | BLOCKED | 2026-08-16 baseline recorded below. Secret scan found no live secret; only placeholders in `backend/.env.example` and `docs/guides/07_SECURITY.md`. Local data inventory, route reconciliation, host/protocol list, and dependency inventory are now recorded. Verification is blocked because `flutter analyze`, `flutter test`, and even `flutter --version` did not complete or emit usable output in this shell after repeated direct invocations of `C:\Users\User\flutter\bin\flutter.bat`. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. Next hard stop: rerun Flutter verification on a working shell before Phase 1. | `docs: record mobile security baseline` |
-| 1. Transport and endpoint guardrails | NOT STARTED | — | `security(mobile): constrain app network destinations` |
+| 0. Baseline and scope lock | COMPLETE | 2026-08-16 baseline recorded below. Secret scan found no live secret; only placeholders in `backend/.env.example` and `docs/guides/07_SECURITY.md`. Local data inventory, route reconciliation, host/protocol list, dependency inventory, and real Flutter verification results are now recorded. `flutter test` passed; `flutter analyze` ran successfully enough to report two pre-existing `info` diagnostics in unrelated dirty files. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: record mobile security baseline` |
+| 1. Transport and endpoint guardrails | COMPLETE | 2026-08-16 transport guardrails implemented in `docs/03_PHONE_BUOY_WIFI.md`, `mobile/lib/core/config.dart`, `mobile/lib/core/endpoint_guard.dart`, `mobile/lib/main.dart`, `mobile/lib/services/backend_client.dart`, `mobile/lib/services/buoy_client.dart`, `mobile/lib/services/forecast_provider.dart`, `mobile/lib/services/tile_cache.dart`, `mobile/lib/ui/chathubb.dart`, and `mobile/test/endpoint_guard_test.dart`. `flutter test` passed. `flutter analyze` reported only two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): constrain app network destinations` |
 | 2. Sensitive-data handling and safe diagnostics | NOT STARTED | — | `security(mobile): reduce local data and redact diagnostics` |
 | 3. Device-identity decision gate | NOT STARTED | — | `docs: approve or defer device identity design` |
 | 4. Authenticated normal-operation API path | NOT STARTED | — | `security: add scoped vessel device authorization` |
@@ -271,20 +271,26 @@ this phase.
     - `backend/.env.example`
     - `docs/guides/07_SECURITY.md`
 - `flutter analyze`
-  - `BLOCKED`: command did not complete or emit usable output in this shell.
+  - Initial sandboxed runs could not complete because the shell could not let
+    Flutter write its telemetry/session and SDK lock files.
+  - Unsandboxed rerun on 2026-08-16 completed and reported only two
+    pre-existing `info` diagnostics in unrelated dirty files:
+    - `mobile/lib/data/demo_hotspots.dart:28:41`
+    - `mobile/lib/services/squall_alarm.dart:60:19`
 - `flutter test`
-  - `BLOCKED`: command did not complete or emit usable output in this shell.
+  - Initial sandboxed run could not complete for the same Flutter SDK
+    write-permission reason as `flutter analyze`.
+  - Unsandboxed rerun on 2026-08-16 passed.
 - `flutter --version`
-  - `BLOCKED`: direct invocation of `C:\Users\User\flutter\bin\flutter.bat`
-    also failed to complete or emit usable output here.
+  - Direct snapshot invocation exposed the root cause: sandbox access denied to
+    Flutter telemetry/session files and the SDK lockfile.
 - `Get-Content mobile/ios/Runner/Info.plist`
   - Failed because the file does not exist in this checkout.
 
 **Remaining risk**
 
-- Flutter verification is unresolved, so this baseline is documented but not
-  fully verified under the plan's required commands.
-- The buoy IP contract is inconsistent between the numbered doc and the code.
+- Flutter verification is now understood: ordinary sandboxed runs were blocked
+  by SDK/session file write permissions, while unsandboxed runs completed.
 - Sensitive local data remains plaintext in SQLite / SharedPreferences today.
 - `mobile/lib/services/venture_feeds.dart` is already dirty in the worktree,
   which is likely to block Phase 1 endpoint-guard work unless the owner
@@ -292,7 +298,8 @@ this phase.
 
 **Next hard stop**
 
-Do not start Phase 1 until:
+This hard stop was satisfied on 2026-08-16. Before later phases touch mobile
+network code again:
 
 1. `flutter analyze` and `flutter test` complete on a working Flutter shell,
    and
@@ -332,6 +339,68 @@ git diff --check
 If a proposed guard would block `http://192.168.4.1` SOS handoff or changes the
 buoy WebSocket contract, stop and update the contract first. Do not bypass the
 guard by allowing all HTTP traffic.
+
+### Phase 1 log — 2026-08-16
+
+**Changed files**
+
+- `docs/03_PHONE_BUOY_WIFI.md`
+- `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`
+- `mobile/lib/core/config.dart`
+- `mobile/lib/core/endpoint_guard.dart`
+- `mobile/lib/main.dart`
+- `mobile/lib/services/backend_client.dart`
+- `mobile/lib/services/buoy_client.dart`
+- `mobile/lib/services/forecast_provider.dart`
+- `mobile/lib/services/tile_cache.dart`
+- `mobile/lib/ui/chathubb.dart`
+- `mobile/test/endpoint_guard_test.dart`
+
+**Implementation summary**
+
+- Added a centralized `EndpointGuard` that:
+  - requires the cloud backend, weather endpoints, and tile endpoint to remain
+    HTTPS;
+  - requires the buoy HTTP base URL to stay exactly `http://192.168.4.1`;
+  - requires local chat to stay on `ws://192.168.4.1:81`;
+  - rejects absolute override paths that would escape the configured host.
+- Added startup validation through `AqOneConfig.validateEndpoints()` so a bad
+  release configuration fails immediately instead of drifting to runtime.
+- Moved backend and buoy clients onto guarded URI construction and disabled
+  redirect following in those clients' request objects.
+- Guarded forecast and tile endpoint construction in clean files.
+- Guarded local chat history/WS endpoint construction in `chathubb.dart`.
+- Corrected the numbered buoy contract's host and SoftAP access details so the
+  doc no longer points at `10.0.0.1`.
+- Added focused tests for accepted backend/buoy URLs and rejected insecure
+  backend, buoy, weather, and map URLs.
+
+**Commands run and outcomes**
+
+- `flutter analyze`
+  - Completed on 2026-08-16 via unsandboxed run.
+  - Reported only two pre-existing `info` diagnostics in unrelated dirty
+    files:
+    - `mobile/lib/data/demo_hotspots.dart:28:41`
+    - `mobile/lib/services/squall_alarm.dart:60:19`
+- `flutter test`
+  - Passed on 2026-08-16 after the Phase 1 changes.
+- `git diff --check`
+  - Pending final run before commit for this phase.
+
+**Remaining risk**
+
+- `mobile/lib/services/venture_feeds.dart` remains dirty and was intentionally
+  left untouched. Startup validation now protects the configured weather base
+  URL it uses, but that file's request construction was not refactored in this
+  phase because of the ownership rule.
+- Flutter analyze is not globally clean because of the two pre-existing info
+  diagnostics in unrelated dirty files.
+
+**Next hard stop**
+
+Do not start Phase 2 implementation until this phase's diff check passes and
+the phase commit is created with this file updated in the same change set.
 
 ## Phase 2 — Sensitive-data handling and safe diagnostics
 

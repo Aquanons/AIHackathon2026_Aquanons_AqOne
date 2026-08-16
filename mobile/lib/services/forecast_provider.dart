@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
+import '../core/endpoint_guard.dart';
 import '../models/daily_outlook.dart';
 import 'backend_client.dart';
 import 'safety_score.dart';
@@ -76,12 +77,18 @@ class OpenMeteoForecastProvider implements ForecastProvider {
     int days,
   ) async {
     try {
-      final Uri uri = Uri.parse(
-        '${AqOneConfig.openMeteoBase}'
-        '?latitude=$lat&longitude=$lon'
-        '&daily=weather_code,temperature_2m_max,temperature_2m_min,'
-        'wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum'
-        '&forecast_days=$days&timezone=auto',
+      final Uri uri = EndpointGuard.requireHttpsAbsolute(
+        AqOneConfig.openMeteoBase,
+        label: 'AqOneConfig.openMeteoBase',
+      ).replace(
+        queryParameters: <String, String>{
+          'latitude': '$lat',
+          'longitude': '$lon',
+          'daily':
+              'weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum',
+          'forecast_days': '$days',
+          'timezone': 'auto',
+        },
       );
       final http.Response response =
           await _client.get(uri).timeout(AqOneConfig.backendTimeout);
@@ -99,11 +106,17 @@ class OpenMeteoForecastProvider implements ForecastProvider {
   /// a point on Panay returns nothing at all.
   Future<Map<DateTime, double>> _waves(int days) async {
     try {
-      final Uri uri = Uri.parse(
-        '${AqOneConfig.openMeteoMarineBase}'
-        '?latitude=${AqOneConfig.marineSampleLat}'
-        '&longitude=${AqOneConfig.marineSampleLon}'
-        '&hourly=wave_height&forecast_days=$days&timezone=auto',
+      final Uri uri = EndpointGuard.requireHttpsAbsolute(
+        AqOneConfig.openMeteoMarineBase,
+        label: 'AqOneConfig.openMeteoMarineBase',
+      ).replace(
+        queryParameters: <String, String>{
+          'latitude': '${AqOneConfig.marineSampleLat}',
+          'longitude': '${AqOneConfig.marineSampleLon}',
+          'hourly': 'wave_height',
+          'forecast_days': '$days',
+          'timezone': 'auto',
+        },
       );
       final http.Response response =
           await _client.get(uri).timeout(AqOneConfig.backendTimeout);

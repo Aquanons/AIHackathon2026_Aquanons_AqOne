@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
+import '../core/endpoint_guard.dart';
 import '../models/buoy_contact.dart';
 import '../models/sos_record.dart';
 import 'backend_client.dart' show RemoteSos;
@@ -72,16 +73,18 @@ String describeBuoyError(Object error) {
 class BuoyClient {
   BuoyClient({http.Client? client, String? baseUrl})
       : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? AqOneConfig.buoyBaseUrl;
+        _baseUrl = baseUrl ?? AqOneConfig.buoyBaseUrl {
+    EndpointGuard.requireBuoyBase(_baseUrl, label: 'BuoyClient baseUrl');
+  }
 
   final http.Client _client;
   final String _baseUrl;
 
   Future<BuoyStatus> status() async {
-    final uri = Uri.parse('$_baseUrl/v1/status');
+    final uri = EndpointGuard.buoy(_baseUrl, '/v1/status');
     http.Response response;
     try {
-      response = await _client.get(uri).timeout(AqOneConfig.buoyTimeout);
+      response = await _send(_request('GET', uri)).timeout(AqOneConfig.buoyTimeout);
     } catch (error) {
       throw BuoyUnreachable(describeBuoyError(error));
     }
@@ -93,17 +96,19 @@ class BuoyClient {
   }
 
   Future<BuoyAck> handoff(SosRecord record) async {
-    final uri = Uri.parse('$_baseUrl/v1/sos');
+    final uri = EndpointGuard.buoy(_baseUrl, '/v1/sos');
     http.Response response;
     try {
-      response = await _client
-          .post(
-            uri,
-            headers: const <String, String>{
-              'Content-Type': 'application/json; charset=utf-8',
-            },
-            body: jsonEncode(record.toBuoyPayload()),
-          )
+      response = await _send(
+        _request(
+          'POST',
+          uri,
+          headers: const <String, String>{
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(record.toBuoyPayload()),
+        ),
+      )
           .timeout(AqOneConfig.buoyTimeout);
     } catch (error) {
       throw BuoyUnreachable(describeBuoyError(error));
@@ -139,12 +144,13 @@ class BuoyClient {
   /// mode, not a hypothetical one, hence [BuoyInvalidResponse] rather than a
   /// crash.
   Future<List<RemoteSos>> sosStatus(String vesselId) async {
-    final uri = Uri.parse(
-      '$_baseUrl/v1/sos/status?vessel_id=${Uri.encodeComponent(vesselId)}',
+    final uri = EndpointGuard.buoy(
+      _baseUrl,
+      '/v1/sos/status?vessel_id=${Uri.encodeComponent(vesselId)}',
     );
     http.Response response;
     try {
-      response = await _client.get(uri).timeout(AqOneConfig.buoyTimeout);
+      response = await _send(_request('GET', uri)).timeout(AqOneConfig.buoyTimeout);
     } catch (error) {
       throw BuoyUnreachable(describeBuoyError(error));
     }
@@ -200,6 +206,29 @@ class BuoyClient {
     } catch (_) {
       throw const BuoyInvalidResponse('buoy sent an unreadable reply');
     }
+  }
+
+  http.Request _request(
+    String method,
+    Uri uri, {
+    Map<String, String>? headers,
+    String? body,
+  }) {
+    final request = http.Request(method, uri)
+      ..followRedirects = false
+      ..maxRedirects = 0;
+    if (headers != null) {
+      request.headers.addAll(headers);
+    }
+    if (body != null) {
+      request.body = body;
+    }
+    return request;
+  }
+
+  Future<http.Response> _send(http.Request request) async {
+    final streamed = await _client.send(request);
+    return http.Response.fromStream(streamed);
   }
 
   void close() => _client.close();

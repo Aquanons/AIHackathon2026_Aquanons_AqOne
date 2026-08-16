@@ -4,6 +4,7 @@ import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/config.dart';
 import 'core/l10n_fallback.dart';
 import 'core/locale_controller.dart';
 import 'core/tokens.dart';
@@ -26,6 +27,7 @@ import 'ui/onboarding_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AqOneConfig.validateEndpoints();
 
   // A widget that throws mid-build/layout/paint would otherwise show
   // Flutter's default red screen-of-death - the exact "RenderFlex

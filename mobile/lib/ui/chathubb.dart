@@ -7,7 +7,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import '../core/config.dart';
+import '../core/endpoint_guard.dart';
 
 // ---------------------------------------------------------------------------
 // Model
@@ -73,8 +73,8 @@ class ChatService extends ChangeNotifier {
   String? get lastError => _lastError;
   int get pendingCount => _pendingQueue.length;
 
-  String get _wsUrl => AqOneConfig.buoyWsUrl(host);
-  String get _historyUrl => 'http://$host/history';
+  Uri get _wsUri => EndpointGuard.buoyWs(host);
+  Uri get _historyUri => EndpointGuard.buoyHistory(host);
 
   /// Starts the connection loop and loads persisted messages / queue.
   Future<void> start() async {
@@ -96,7 +96,7 @@ class ChatService extends ChangeNotifier {
       await _subscription?.cancel();
       _subscription = null;
 
-      final channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
+      final channel = WebSocketChannel.connect(_wsUri);
       _channel = channel;
 
       // Awaiting [ready] surfaces connection errors inside our try/catch
@@ -241,7 +241,7 @@ class ChatService extends ChangeNotifier {
   Future<void> _backfillHistory() async {
     try {
       final res = await http
-          .get(Uri.parse(_historyUrl))
+          .get(_historyUri)
           .timeout(const Duration(seconds: 4));
       if (res.statusCode != 200) return;
       final dynamic json = jsonDecode(res.body);
@@ -438,7 +438,7 @@ class _ChathubbState extends State<Chathubb> {
     if (!onAq) {
       try {
         final res = await http
-            .get(Uri.parse('http://192.168.4.1/history'))
+            .get(EndpointGuard.buoyHistory(_service.host))
             .timeout(const Duration(seconds: 2));
         onAq = res.statusCode == 200;
       } catch (_) {}

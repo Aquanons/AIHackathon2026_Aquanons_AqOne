@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
+import '../core/endpoint_guard.dart';
 import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
 
@@ -71,16 +72,20 @@ class RemoteSos {
 class BackendClient {
   BackendClient({http.Client? client, String? baseUrl})
       : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? AqOneConfig.backendBaseUrl;
+        _baseUrl = baseUrl ?? AqOneConfig.backendBaseUrl {
+    EndpointGuard.requireHttpsAbsolute(
+      _baseUrl,
+      label: 'BackendClient baseUrl',
+    );
+  }
 
   final http.Client _client;
   final String _baseUrl;
-
   Future<bool> isReachable() async {
     try {
-      final response = await _client
-          .get(Uri.parse('$_baseUrl/healthz'))
-          .timeout(AqOneConfig.backendTimeout);
+      final response = await _send(
+        _request('GET', EndpointGuard.backend(_baseUrl, '/healthz')),
+      ).timeout(AqOneConfig.backendTimeout);
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -113,12 +118,14 @@ class BackendClient {
       ..['source'] = 'direct';
 
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/api/sos'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode(payload),
-          )
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(_baseUrl, '/api/sos'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        ),
+      )
           .timeout(AqOneConfig.backendTimeout);
 
       // 200 covers both "created" and "already known": the emergency is
@@ -172,10 +179,12 @@ class BackendClient {
   /// The path was previously /api/v1/vessels/{id}/sos, which no router ever
   /// served - every poll 404'd, so no acknowledgement ever reached a fisherman.
   Future<List<RemoteSos>> vesselSos(String vesselId) async {
-    final uri = Uri.parse(
-      '$_baseUrl/api/sos/vessel/${Uri.encodeComponent(vesselId)}',
+    final uri = EndpointGuard.backend(
+      _baseUrl,
+      '/api/sos/vessel/${Uri.encodeComponent(vesselId)}',
     );
-    final response = await _client.get(uri).timeout(AqOneConfig.backendTimeout);
+    final response =
+        await _send(_request('GET', uri)).timeout(AqOneConfig.backendTimeout);
     if (response.statusCode != 200) {
       return const <RemoteSos>[];
     }
@@ -199,12 +208,14 @@ class BackendClient {
   /// alive and read the ETA - which the acknowledgement alone cannot confirm.
   Future<bool> replyToSos(int eventId, int reply) async {
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/api/sos/$eventId/reply'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode(<String, Object?>{'reply': reply}),
-          )
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(_baseUrl, '/api/sos/$eventId/reply'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode(<String, Object?>{'reply': reply}),
+        ),
+      )
           .timeout(AqOneConfig.backendTimeout);
       return response.statusCode == 200;
     } catch (_) {
@@ -220,9 +231,9 @@ class BackendClient {
   /// a failed poll simply leaves the previous data on screen.
   Future<Object?> getJson(String path) async {
     try {
-      final response = await _client
-          .get(Uri.parse('$_baseUrl$path'))
-          .timeout(AqOneConfig.backendTimeout);
+      final response = await _send(
+        _request('GET', EndpointGuard.backend(_baseUrl, path)),
+      ).timeout(AqOneConfig.backendTimeout);
       if (response.statusCode != 200) {
         return null;
       }
@@ -239,14 +250,16 @@ class BackendClient {
   /// unacceptable and retrying forever would just burn battery.
   Future<CatchUploadResult> postCatchLog(Map<String, Object?> payload) async {
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl${AqOneConfig.catchLogsPath}'),
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(payload),
-          )
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(_baseUrl, AqOneConfig.catchLogsPath),
+          headers: const <String, String>{
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(payload),
+        ),
+      )
           .timeout(AqOneConfig.backendTimeout);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -287,16 +300,19 @@ class BackendClient {
     Map<String, Object?> payload,
   ) async {
     try {
-      final response = await _client
-          .post(
-            Uri.parse(
-              '$_baseUrl${AqOneConfig.catchLogsPath}/$catchLogId/confirm-weight',
-            ),
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(payload),
-          )
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(
+            _baseUrl,
+            '${AqOneConfig.catchLogsPath}/$catchLogId/confirm-weight',
+          ),
+          headers: const <String, String>{
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(payload),
+        ),
+      )
           .timeout(AqOneConfig.backendTimeout);
       return response.statusCode == 200;
     } catch (_) {
@@ -313,14 +329,16 @@ class BackendClient {
   /// retry/reject distinction and idempotency-on-local_id behaviour.
   Future<SpotUploadResult> postFishingSpot(Map<String, Object?> payload) async {
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl${AqOneConfig.spotsPath}'),
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(payload),
-          )
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(_baseUrl, AqOneConfig.spotsPath),
+          headers: const <String, String>{
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(payload),
+        ),
+      )
           .timeout(AqOneConfig.backendTimeout);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -367,6 +385,29 @@ class BackendClient {
       }
     }
     return 'Rejected ($statusCode)';
+  }
+
+  http.Request _request(
+    String method,
+    Uri uri, {
+    Map<String, String>? headers,
+    String? body,
+  }) {
+    final request = http.Request(method, uri)
+      ..followRedirects = false
+      ..maxRedirects = 0;
+    if (headers != null) {
+      request.headers.addAll(headers);
+    }
+    if (body != null) {
+      request.body = body;
+    }
+    return request;
+  }
+
+  Future<http.Response> _send(http.Request request) async {
+    final streamed = await _client.send(request);
+    return http.Response.fromStream(streamed);
   }
 
   void close() => _client.close();
