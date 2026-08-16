@@ -1996,7 +1996,7 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
                           ? '${kg.toInt()} kg'
                           : '$kg kg'),
                       backgroundColor: accent.withValues(alpha: 0.12),
-                      labelStyle: TextStyle(
+                      labelStyle: const TextStyle(
                         color: accent,
                         fontWeight: FontWeight.w700,
                       ),
