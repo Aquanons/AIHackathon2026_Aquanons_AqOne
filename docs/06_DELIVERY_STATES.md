@@ -54,6 +54,19 @@ message-return path over the mesh) is scope we are not building
 - `delivered` → "Received by the MDRRMO dashboard."
 - `acknowledged` → "Responder acknowledged this SOS."
 
+The English above is the source of truth. In the mobile app these sentences
+live in `mobile/lib/l10n/app_en.arb` under the `deliveryState*` keys and are
+resolved through the `DeliveryStateL10n` extension, not as fields on the
+`DeliveryState` enum — a const enum field can never be translated. Editing
+the wording here means editing the ARB template too; `mobile/test/
+delivery_state_test.dart` asserts the two agree.
+
+Translations (Tagalog `fil`, Aklanon `akl`) must preserve the honesty rules
+above. In particular `relayed` must not read as though anyone has received
+the SOS. See `docs/22_LOCALIZATION_PLAN.md`.
+
+The dashboard and backend remain English-only.
+
 ## API mapping
 
 - Dashboard/backend surface `delivery_state` on every SOS row

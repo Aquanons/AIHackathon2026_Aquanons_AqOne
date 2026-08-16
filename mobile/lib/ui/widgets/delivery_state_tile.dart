@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import '../../core/tokens.dart';
 import '../../models/delivery_state.dart';
@@ -25,10 +26,14 @@ class DeliveryStateTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
+    final t = AppLocalizations.of(context);
     final accent = _accent();
+
+    // Coordinates are numbers, not copy - they are formatted, never
+    // translated. Only the "no fix" case has words in it.
     final position = record.hasFix
         ? '${record.lat!.toStringAsFixed(5)}, ${record.lon!.toStringAsFixed(5)}'
-        : 'No GPS fix recorded';
+        : t.deliveryNoGpsFix;
 
     return Container(
       margin: const EdgeInsets.only(bottom: AqSpace.md),
@@ -53,7 +58,7 @@ class DeliveryStateTile extends StatelessWidget {
               ),
               const SizedBox(width: AqSpace.sm),
               Text(
-                record.state.title,
+                record.state.title(t),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -73,7 +78,7 @@ class DeliveryStateTile extends StatelessWidget {
           ),
           const SizedBox(height: AqSpace.sm),
           Text(
-            record.state.description,
+            record.state.description(t),
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
@@ -81,20 +86,26 @@ class DeliveryStateTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AqSpace.md),
-          _MetaLine(label: 'Position', value: position, monospace: true),
+          _MetaLine(
+            label: t.deliveryMetaPosition,
+            value: position,
+            monospace: true,
+          ),
           if (record.seq != null)
             _MetaLine(
-              label: 'Buoy',
+              label: t.deliveryMetaBuoy,
+              // Identifiers, not prose. Left untranslated on purpose: this is
+              // what a responder reads back over the radio.
               value: 'buoy ${record.buoyId} · seq ${record.seq}',
               monospace: true,
             ),
           if (record.note != null)
-            _MetaLine(label: 'Note', value: record.note!),
+            _MetaLine(label: t.deliveryMetaNote, value: record.note!),
           if (record.ackedBy != null)
-            _MetaLine(label: 'Responder', value: record.ackedBy!),
+            _MetaLine(label: t.deliveryMetaResponder, value: record.ackedBy!),
           if (record.state == DeliveryState.saved && record.lastError != null)
             _MetaLine(
-              label: 'Last attempt',
+              label: t.deliveryMetaLastAttempt,
               value: record.lastError!,
               tone: AqColors.warning,
             ),
@@ -132,7 +143,9 @@ class _MetaLine extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
-            width: 84,
+            // 84 in the English-only version. Tagalog and Aklanon labels run
+            // longer ("Huling subok", "Huling pagtinguha") and wrapped.
+            width: 96,
             child: Text(
               label,
               style: TextStyle(

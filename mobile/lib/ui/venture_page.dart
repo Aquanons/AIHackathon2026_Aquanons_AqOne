@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -10,14 +11,12 @@ import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
 import '../models/buoy_marker.dart';
 import '../models/catch_record.dart';
-import '../models/community_spot.dart';
 import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
 import '../models/sos_record.dart';
 import '../models/weather_snapshot.dart';
 import '../services/catch_service.dart';
 import '../services/compass_service.dart';
-import '../services/fishing_spot_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_alarm.dart';
 import '../services/sos_service.dart';
@@ -34,14 +33,6 @@ const Color _surfaceDark = Color(0xFF1E293B);
 const Color _canvasDark = Color(0xFF0F172A);
 const Color _danger = Color(0xFFDC2626);
 const Color _success = Color(0xFF16A34A);
-
-/// Color for a community-reported fishing spot on the map. Deliberately not
-/// drawn from the dashboard's prediction color scale (gray/blue/green/
-/// yellow/orange/red) - every spot this app creates has no automated
-/// classification (see FishingSpot's doc comment), and using that scale's
-/// gray "negligible activity" tier as a default would visually read as a
-/// judgement on a fisherman's real report.
-const Color _spotColor = Color(0xFF14B8A6);
 
 /// How long a fisher has to slide-to-cancel before the SOS actually sends.
 /// Short enough to still read as "immediate" - the button does not gate the
@@ -79,7 +70,6 @@ class VenturePage extends StatefulWidget {
     required this.sos,
     required this.catches,
     required this.checklist,
-    required this.spots,
     required this.feeds,
     required this.location,
     this.bottomInset = 0,
@@ -89,7 +79,6 @@ class VenturePage extends StatefulWidget {
   final SosService sos;
   final CatchService catches;
   final ChecklistStore checklist;
-  final FishingSpotService spots;
   final VentureFeeds feeds;
   final LocationService location;
 
@@ -108,7 +97,6 @@ class _VenturePageState extends State<VenturePage> {
   final RequestGuard _buoyGuard = RequestGuard();
   final RequestGuard _waveGuard = RequestGuard();
   final RequestGuard _capsizeGuard = RequestGuard();
-  final RequestGuard _spotsGuard = RequestGuard();
   StreamSubscription<void>? _sosSub;
   Timer? _pollTimer;
 
@@ -144,10 +132,6 @@ class _VenturePageState extends State<VenturePage> {
   bool _repeatingCatch = false;
   StreamSubscription<void>? _catchSub;
 
-  List<CommunitySpot> _communitySpots = const <CommunitySpot>[];
-  bool _spotsVisible = true;
-  bool _isReportingSpot = false;
-  StreamSubscription<void>? _spotsSub;
 
   /// True while a hazard dialog is on screen, so a second alert arriving from
   /// the same poll cannot stack a dialog on top of the first.
@@ -159,11 +143,6 @@ class _VenturePageState extends State<VenturePage> {
     super.initState();
     _sosSub = widget.sos.changes.listen((_) => _refreshSosStatus());
     _catchSub = widget.catches.changes.listen((_) => _refreshCatchCount());
-    // Spots this handset reported sync in the background the same way
-    // catches do; a change (e.g. one finally reaching the server) is worth
-    // an immediate re-poll rather than waiting out the full interval, so its
-    // marker's color/detail sheet reflects the synced state promptly.
-    _spotsSub = widget.spots.changes.listen((_) => _loadSpots());
     _compassSub = _compass.readings.listen((CompassReading reading) {
       if (!mounted) {
         return;
@@ -177,13 +156,11 @@ class _VenturePageState extends State<VenturePage> {
       _locate(initial: true);
       _loadBuoys();
       _loadHazards();
-      _loadSpots();
       _refreshSosStatus();
       _refreshCatchCount();
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
         _loadHazards();
-        _loadSpots();
       });
     });
   }
@@ -195,7 +172,6 @@ class _VenturePageState extends State<VenturePage> {
     _pollTimer?.cancel();
     _sosSub?.cancel();
     _catchSub?.cancel();
-    _spotsSub?.cancel();
     // The magnetometer keeps the SoC awake while subscribed, so it must go
     // down with the screen.
     _compassSub?.cancel();
@@ -248,15 +224,6 @@ class _VenturePageState extends State<VenturePage> {
       return;
     }
     setState(() => _buoys = buoys);
-  }
-
-  Future<void> _loadSpots() async {
-    final version = _spotsGuard.begin();
-    final spots = await widget.feeds.spots();
-    if (!mounted || !_spotsGuard.isCurrent(version) || spots == null) {
-      return;
-    }
-    setState(() => _communitySpots = spots);
   }
 
   Future<void> _loadHazards() async {
@@ -605,36 +572,6 @@ class _VenturePageState extends State<VenturePage> {
             color: buoy.isActive ? _success : const Color(0xFF9CA3AF),
           ),
         ),
-      if (_spotsVisible)
-        for (final spot in _communitySpots)
-          Marker(
-            point: LatLng(spot.latitude, spot.longitude),
-            width: 32,
-            height: 32,
-            alignment: Alignment.center,
-            child: GestureDetector(
-              onTap: () => _showSpotDetail(spot),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _spotColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.set_meal_rounded,
-                  size: 16,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
       if (_userLocation != null) _buildUserMarker(_userLocation!),
     ];
 
@@ -648,19 +585,6 @@ class _VenturePageState extends State<VenturePage> {
           borderColor: _brandPrimary.withValues(alpha: 0.25),
           borderStrokeWidth: 1.5,
         ),
-      if (_spotsVisible)
-        for (final spot in _communitySpots)
-          CircleMarker(
-            point: LatLng(spot.latitude, spot.longitude),
-            // Fixed nominal radius, same reasoning as the dashboard's default
-            // for real (non-demo) spots: this is "roughly here", not a
-            // measured or modeled boundary.
-            radius: 1500,
-            useRadiusInMeter: true,
-            color: _spotColor.withValues(alpha: 0.12),
-            borderColor: _spotColor.withValues(alpha: 0.4),
-            borderStrokeWidth: 1.5,
-          ),
     ];
 
     return FlutterMap(
@@ -814,22 +738,6 @@ class _VenturePageState extends State<VenturePage> {
           onTap: _openChecklist,
         ),
         const SizedBox(height: 10),
-        _RoundButton(
-          icon: Icons.set_meal_rounded,
-          tooltip: _spotsVisible ? 'Hide fish spots' : 'Show fish spots',
-          isActive: _spotsVisible,
-          isDark: isDark,
-          onTap: () => setState(() => _spotsVisible = !_spotsVisible),
-        ),
-        const SizedBox(height: 10),
-        _RoundButton(
-          icon: Icons.add_location_alt_rounded,
-          tooltip: 'Report a fishing spot',
-          isActive: false,
-          isDark: isDark,
-          onTap: _reportSpot,
-        ),
-        const SizedBox(height: 10),
         // Chat sits immediately above SOS rather than in its own corner, so
         // every action on this screen is reachable from one thumb position.
         _RoundButton(
@@ -965,60 +873,6 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
-  // --- Fish spots -------------------------------------------------------
-
-  /// Captures a position and opens the report sheet. The position is
-  /// resolved here, before the sheet even opens, rather than inside it - a
-  /// fisherman reporting a spot wants to mark where they are right now, not
-  /// fill in a form and hope a fix arrives by the time they submit.
-  Future<void> _reportSpot() async {
-    if (_isReportingSpot) {
-      return;
-    }
-    setState(() => _isReportingSpot = true);
-    try {
-      final fix = await widget.location.currentFix();
-      final lat = fix?.lat ?? _userLocation?.latitude;
-      final lon = fix?.lon ?? _userLocation?.longitude;
-      if (lat == null || lon == null) {
-        if (mounted) {
-          _snack('Could not get a GPS fix. Move to open sky and try again.');
-        }
-        return;
-      }
-      if (!mounted) {
-        return;
-      }
-      final saved = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => _ReportSpotSheet(
-          spots: widget.spots,
-          latitude: lat,
-          longitude: lon,
-        ),
-      );
-      if (saved == true && mounted) {
-        _snack('Spot reported. Other boats will see it once it uploads.');
-        unawaited(_loadSpots());
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isReportingSpot = false);
-      }
-    }
-  }
-
-  void _showSpotDetail(CommunitySpot spot) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _SpotDetailSheet(spot: spot),
-    );
-  }
-
   Widget _buildSosStatus(bool isDark, SosRecord record) {
     final state = record.state;
     final standDown = record.isStoodDown;
@@ -1030,10 +884,11 @@ class _VenturePageState extends State<VenturePage> {
             DeliveryState.delivered => const Color(0xFF0284C7),
             DeliveryState.acknowledged => _success,
           };
-    final title = standDown ? 'Stood down' : state.title;
+    final t = AppLocalizations.of(context);
+    final title = standDown ? 'Stood down' : state.title(t);
     final description = standDown
         ? 'Marked as a false alarm - the MDRRMO has been told to disregard.'
-        : state.description;
+        : state.description(t);
     final icon = standDown
         ? Icons.undo_rounded
         : switch (state) {
@@ -2102,330 +1957,3 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
     );
   }
 }
-
-/// Reports a fishing spot at a position already captured before this sheet
-/// opened (see [_VenturePageState._reportSpot]). Species/notes are optional
-/// - a bare pin with just a position and who dropped it is still a useful
-/// report, unlike a catch log where a weight is the entire point.
-class _ReportSpotSheet extends StatefulWidget {
-  const _ReportSpotSheet({
-    required this.spots,
-    required this.latitude,
-    required this.longitude,
-  });
-
-  final FishingSpotService spots;
-  final double latitude;
-  final double longitude;
-
-  @override
-  State<_ReportSpotSheet> createState() => _ReportSpotSheetState();
-}
-
-class _ReportSpotSheetState extends State<_ReportSpotSheet> {
-  static const List<String> _species = <String>[
-    'Bangus',
-    'Galunggong',
-    'Tulingan',
-    'Hasa-hasa',
-    'Bisugo',
-  ];
-
-  final TextEditingController _notes = TextEditingController();
-  String? _selectedSpecies;
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _notes.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_saving) {
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      await widget.spots.reportSpot(
-        latitude: widget.latitude,
-        longitude: widget.longitude,
-        speciesName: _selectedSpecies,
-        notes: _notes.text,
-      );
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save this spot.')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? _canvasDark : Colors.white;
-    final fg = isDark ? Colors.white : const Color(0xFF0F172A);
-    final dim = isDark ? Colors.white60 : const Color(0xFF64748B);
-    final fieldFill = isDark ? _surfaceDark : Colors.white;
-    final inset = MediaQuery.of(context).viewInsets.bottom;
-
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(
-        color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
-      ),
-    );
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: inset),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: dim.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  Icon(Icons.set_meal_rounded, size: 22, color: _spotColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Report a fishing spot',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: fg,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Marks your current position for other boats to see. No '
-                'automated classification - just a pin and what you caught.',
-                style: TextStyle(fontSize: 12, color: dim, height: 1.3),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'What did you catch here? (optional)',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final name in _species)
-                    ChoiceChip(
-                      label: Text(name),
-                      selected: _selectedSpecies == name,
-                      onSelected: _saving
-                          ? null
-                          : (selected) => setState(
-                                () => _selectedSpecies = selected ? name : null,
-                              ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _notes,
-                maxLines: 2,
-                maxLength: AqOneConfig.maxSpotNoteLength,
-                enabled: !_saving,
-                style: TextStyle(color: fg),
-                decoration: InputDecoration(
-                  labelText: 'Notes (optional)',
-                  labelStyle: TextStyle(color: dim),
-                  border: border,
-                  enabledBorder: border,
-                  filled: true,
-                  fillColor: fieldFill,
-                ),
-              ),
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: _saving ? null : _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _spotColor,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: _saving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Drop pin here'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Detail view for a tapped community spot. Mirrors the reference
-/// dashboard's popup content for a real (non-demo) spot: an honest "no
-/// automated classification" line rather than a fabricated percentage - see
-/// [FishingSpot]'s doc comment.
-class _SpotDetailSheet extends StatelessWidget {
-  const _SpotDetailSheet({required this.spot});
-
-  final CommunitySpot spot;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? _canvasDark : Colors.white;
-    final fg = isDark ? Colors.white : const Color(0xFF0F172A);
-    final dim = isDark ? Colors.white60 : const Color(0xFF64748B);
-
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: dim.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: <Widget>[
-                Icon(Icons.set_meal_rounded, size: 22, color: _spotColor),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    spot.speciesName ?? 'Fishing spot',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: fg,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Community-reported fishing spot',
-              style: TextStyle(fontSize: 12, color: _spotColor, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'No automated classification - just a fisherman marking where '
-              'they caught something.',
-              style: TextStyle(fontSize: 12, color: dim, height: 1.35),
-            ),
-            const SizedBox(height: 16),
-            if (spot.postedBy != null) ...<Widget>[
-              _SpotDetailRow(label: 'Reported by', value: spot.postedBy!, fg: fg, dim: dim),
-              const SizedBox(height: 8),
-            ],
-            if (spot.notes != null) ...<Widget>[
-              _SpotDetailRow(label: 'Notes', value: spot.notes!, fg: fg, dim: dim),
-              const SizedBox(height: 8),
-            ],
-            _SpotDetailRow(
-              label: 'Position',
-              value: '${spot.latitude.toStringAsFixed(5)}, '
-                  '${spot.longitude.toStringAsFixed(5)}',
-              fg: fg,
-              dim: dim,
-              monospace: true,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SpotDetailRow extends StatelessWidget {
-  const _SpotDetailRow({
-    required this.label,
-    required this.value,
-    required this.fg,
-    required this.dim,
-    this.monospace = false,
-  });
-
-  final String label;
-  final String value;
-  final Color fg;
-  final Color dim;
-  final bool monospace;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          width: 92,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: dim),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              fontFamily: monospace ? 'monospace' : null,
-              color: fg,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-

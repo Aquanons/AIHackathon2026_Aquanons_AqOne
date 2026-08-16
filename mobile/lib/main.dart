@@ -1,7 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/l10n_fallback.dart';
+import 'core/locale_controller.dart';
 import 'core/tokens.dart';
 import 'data/app_database.dart';
 import 'data/catch_store.dart';
@@ -53,6 +57,14 @@ class _CrashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Looked up the nullable way rather than through AppLocalizations.of,
+    // which asserts when no Localizations ancestor is in scope. This widget
+    // replaces one that just failed to build, and the thing that failed may
+    // sit above the Localizations scope - so the translation is best-effort
+    // and English is the guaranteed floor.
+    final AppLocalizations? t =
+        Localizations.of<AppLocalizations>(context, AppLocalizations);
+
     return Material(
       color: const Color(0xFFF8FAFC),
       child: Center(
@@ -67,20 +79,24 @@ class _CrashScreen extends StatelessWidget {
                 color: Color(0xFFDC2626),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Something went wrong',
-                style: TextStyle(
+              Text(
+                t?.crashTitle ?? 'Something went wrong',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF1F2937),
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                "This part of the screen couldn't load. Try going back, "
-                'or restart the app if it keeps happening.',
+              Text(
+                t?.crashBody ??
+                    "This part of the screen couldn't load. Try going back, "
+                        'or restart the app if it keeps happening.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF64748B),
+                ),
               ),
             ],
           ),
@@ -112,6 +128,11 @@ class _AqOneAppState extends State<AqOneApp> {
   bool _loading = true;
   bool _entered = false;
 
+  /// Null until the stored language choice has been read. Held rather than
+  /// awaited before runApp so a slow preferences read cannot delay first
+  /// paint; the loading spinner below covers the gap.
+  LocaleController? _locale;
+
   @override
   void initState() {
     super.initState();
@@ -133,6 +154,12 @@ class _AqOneAppState extends State<AqOneApp> {
       location: _location,
     );
     _checklist = ChecklistStore(_db);
+    // Manual fishing-spot reporting was removed from Venture: hotspots are
+    // meant to come from a model over consented catch logs, not from
+    // fishers publishing exact productive coordinates to each other. The
+    // service is still constructed and started so anything a handset had
+    // already queued before the feature went away still uploads instead of
+    // being silently discarded. Nothing writes new spots.
     _spots = FishingSpotService(
       store: FishingSpotStore(_db),
       identity: _identityStore,
@@ -142,8 +169,15 @@ class _AqOneAppState extends State<AqOneApp> {
     _restore();
   }
 
+  void _onLocaleChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
+    _locale?.removeListener(_onLocaleChanged);
     _service.dispose();
     _catches.dispose();
     _spots.dispose();
@@ -153,6 +187,15 @@ class _AqOneAppState extends State<AqOneApp> {
   }
 
   Future<void> _restore() async {
+    // Language first: everything after this point may need to render text,
+    // and switching locale mid-restore would flash English at the user.
+    final controller = await LocaleController.load();
+    if (!mounted) {
+      return;
+    }
+    controller.addListener(_onLocaleChanged);
+    setState(() => _locale = controller);
+
     try {
       final identity = await _identityStore.read();
       if (!mounted) {
@@ -195,6 +238,22 @@ class _AqOneAppState extends State<AqOneApp> {
     return MaterialApp(
       title: 'AqOne',
       debugShowCheckedModeBanner: false,
+
+      // Null while preferences are still loading, and null again whenever the
+      // user is following their device language - in both cases Flutter
+      // resolves against supportedLocales itself, which is what we want.
+      locale: _locale?.locale,
+      supportedLocales: kSupportedLocales,
+      localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        // Must stay last: these claim every locale, so anything above them
+        // still gets its real localizations and only `akl` falls through.
+        ...kFallbackDelegates,
+      ],
+
       theme: buildAqTheme(Brightness.light),
       darkTheme: buildAqTheme(Brightness.dark),
       // Held here so the theme switch on the profile page can change it.
@@ -265,6 +324,7 @@ class _AqOneAppState extends State<AqOneApp> {
         identity: _identityStore,
         initialIdentity: identity,
         onReady: _enterApp,
+        localeController: _locale,
       );
     }
 
@@ -273,12 +333,12 @@ class _AqOneAppState extends State<AqOneApp> {
       sos: _service,
       catches: _catches,
       checklist: _checklist,
-      spots: _spots,
       feeds: _feeds,
       location: _location,
       identityStore: _identityStore,
       themeMode: _themeMode,
       onThemeModeChanged: _setThemeMode,
+      localeController: _locale,
       onLogout: _logout,
       onIdentityUpdated: (updated) => setState(() => _identity = updated),
     );

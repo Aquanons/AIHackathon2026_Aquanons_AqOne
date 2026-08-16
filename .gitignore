@@ -13,6 +13,11 @@ venv/
 
 # Flutter / mobile
 mobile/.dart_tool/
+
+# Written by `flutter gen-l10n` on every build: the list of ARB keys each
+# locale is still missing. Useful locally, meaningless in review.
+mobile/lib/l10n/untranslated.json
+
 mobile/build/
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies

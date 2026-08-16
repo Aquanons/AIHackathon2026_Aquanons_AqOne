@@ -3,11 +3,27 @@ import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/sos_record.dart';
 import 'package:aqone/ui/widgets/buoy_status_card.dart';
 import 'package:aqone/ui/widgets/delivery_state_tile.dart';
+import 'package:aqone/core/l10n_fallback.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _host(Widget child) {
+/// Widgets under test now read their copy from AppLocalizations, so the host
+/// has to carry the delegates. Defaults to English: these tests assert the
+/// documented English sentences. Cross-locale coverage lives in
+/// test/localization_test.dart.
+Widget _host(Widget child, {Locale locale = const Locale('en')}) {
   return MaterialApp(
+    locale: locale,
+    supportedLocales: kSupportedLocales,
+    localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      ...kFallbackDelegates,
+    ],
     home: Scaffold(body: SingleChildScrollView(child: child)),
   );
 }
@@ -101,13 +117,15 @@ void main() {
   group('DeliveryStateTile', () {
     testWidgets('renders the documented sentence for every state',
         (tester) async {
+      final t = await AppLocalizations.delegate.load(const Locale('en'));
+
       for (final state in DeliveryState.values) {
         await tester.pumpWidget(
           _host(DeliveryStateTile(record: _record(state: state))),
         );
 
-        expect(find.text(state.title), findsOneWidget);
-        expect(find.text(state.description), findsOneWidget);
+        expect(find.text(state.title(t)), findsOneWidget);
+        expect(find.text(state.description(t)), findsOneWidget);
       }
     });
 

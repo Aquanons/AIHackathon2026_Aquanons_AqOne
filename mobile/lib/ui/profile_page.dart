@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../core/locale_controller.dart';
 import '../core/tokens.dart';
 import '../core/validators.dart';
 import '../data/identity_store.dart';
 import '../models/license_type.dart';
 import '../models/trust_tier.dart';
 import 'info_page.dart';
+import 'widgets/language_picker.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _authText = Color(0xFF2C4960);
@@ -28,6 +30,7 @@ class ProfilePage extends StatefulWidget {
     required this.identity,
     required this.themeMode,
     this.onThemeModeChanged,
+    this.localeController,
     required this.onLogout,
     required this.onIdentityUpdated,
     this.onOpenHome,
@@ -38,6 +41,12 @@ class ProfilePage extends StatefulWidget {
   final VesselIdentity identity;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
+
+  /// Nullable so widget tests and previews can build a ProfilePage without
+  /// standing up shared_preferences. The language row is simply hidden when
+  /// it is absent.
+  final LocaleController? localeController;
+
   final VoidCallback onLogout;
   final ValueChanged<VesselIdentity> onIdentityUpdated;
   final VoidCallback? onOpenHome;
@@ -428,6 +437,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 dark ? ThemeMode.dark : ThemeMode.light,
               ),
             ),
+            if (widget.localeController != null)
+              LanguageSettingTile(controller: widget.localeController!),
             _SettingsTile(
               icon: Icons.info_outline_rounded,
               label: 'About AqOne',

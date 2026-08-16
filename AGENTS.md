@@ -61,6 +61,7 @@ change, update the doc first and tell the affected owners.
 | Gateway → backend HTTPS | `docs/04_INGEST_API.md` | gateway (Arnold), backend (Lenard) |
 | Public REST + SSE | `docs/05_PUBLIC_API.md` | backend (Lenard), dashboard (Jade) |
 | Delivery states | `docs/06_DELIVERY_STATES.md` | all — the four states are the product language |
+| Mobile UI strings | `docs/22_LOCALIZATION_PLAN.md` | mobile (Jade/Doreen Kay) |
 
 ## Repository layout
 
@@ -73,6 +74,7 @@ gateway/     LoRa gateway node code (Arnold)
 firmware/
   buoy/      ESP32-S3 + SX1262 firmware, PlatformIO (Daniel)
 mobile/      Flutter app (Jade, Doreen Kay)
+  lib/l10n/  ARB translation files, en/fil/akl. Read its README first.
 docs/        numbered specs; 00 is the brief, 08 is the status table
 ```
 
@@ -85,6 +87,28 @@ docs/        numbered specs; 00 is the brief, 08 is the status table
 - [ ] Repo public, no secrets, README with setup instructions
 - [ ] Screencast recorded
 - [ ] `docs/08_DEMO_AND_STATUS.md` status table reflects reality
+
+## Mobile UI strings are localized (en / fil / akl)
+
+The handset app ships English, Tagalog and Aklanon. Full plan and phase order
+in `docs/22_LOCALIZATION_PLAN.md`. Three rules that will cost you a debugging
+session if you miss them:
+
+- **New user-facing text goes in `mobile/lib/l10n/app_en.arb`** with an
+  `@key` description, then is read via
+  `AppLocalizations.of(context).yourKey`. Do not add bare `Text('...')`
+  literals to `mobile/lib/`. Log messages, SQL, and wire values stay as
+  literals — those are not UI.
+- **Never put display text on an enum.** Const enum fields cannot see a
+  `BuildContext`, so they can never be translated. `DeliveryState` and
+  `SeaStatus` keep only wire values, ordering and colours; their text lives in
+  a `…L10n` extension that takes an `AppLocalizations`. Copy that pattern.
+- **The Tagalog locale code is `fil`, not `tl`,** and Aklanon (`akl`) has no
+  Flutter localizations at all — `mobile/lib/core/l10n_fallback.dart` handles
+  the second problem and its delegates must stay last in the list.
+
+Translations in `app_fil.arb` and `app_akl.arb` are unreviewed drafts. Do not
+treat them as correct; see `mobile/lib/l10n/README.md`.
 
 ## Conventions
 

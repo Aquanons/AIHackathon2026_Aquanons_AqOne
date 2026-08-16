@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../core/locale_controller.dart';
 import '../core/tokens.dart';
 import '../core/validators.dart';
 import '../data/identity_store.dart';
 import '../models/license_type.dart';
 import '../models/trust_tier.dart';
 import 'info_page.dart';
+import 'widgets/language_picker.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeepLight = Color(0xFF0958A6);
@@ -40,11 +42,17 @@ class OnboardingPage extends StatefulWidget {
     required this.identity,
     required this.onReady,
     this.initialIdentity,
+    this.localeController,
   });
 
   final IdentityStore identity;
   final VoidCallback onReady;
   final VesselIdentity? initialIdentity;
+
+  /// Shown as a segmented picker above the form. This is the first screen a
+  /// new user ever sees, so it is the only place the language choice is
+  /// offered before any other text has to be understood.
+  final LocaleController? localeController;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
@@ -217,6 +225,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           isDark: isDark,
                           brandDeep: brandDeep,
                         ),
+                        if (widget.localeController != null) ...<Widget>[
+                          const SizedBox(height: 16),
+                          Center(
+                            child: LanguageSegmentedPicker(
+                              controller: widget.localeController!,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         Text(
                           _isReturning ? 'Welcome back' : 'Register your boat',

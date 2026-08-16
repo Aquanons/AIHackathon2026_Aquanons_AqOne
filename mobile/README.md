@@ -54,12 +54,49 @@ Overridable at build time:
 | `BUOY_BASE_URL` | `http://10.0.0.1` |
 | `BACKEND_BASE_URL` | `https://incredible-liberation-production-aad7.up.railway.app` |
 
+## Languages
+
+The app ships English, Tagalog and Aklanon. Translations live in
+`lib/l10n/*.arb`; `flutter pub get` regenerates the `AppLocalizations` class
+from them (driven by `l10n.yaml`, `generate: true` in `pubspec.yaml`). There
+is no separate codegen command to remember.
+
+The language follows the device by default and can be overridden in
+onboarding or on the Profile page; the choice is persisted in
+`shared_preferences` by `lib/core/locale_controller.dart`.
+
+Adding a string:
+
+1. Add the key and an `@key` description to `lib/l10n/app_en.arb`.
+2. Add the same key to `app_fil.arb` and `app_akl.arb`, or leave it out — a
+   missing key falls back to English and is listed in the generated
+   `lib/l10n/untranslated.json`.
+3. Read it with `AppLocalizations.of(context).yourKey`.
+
+Two constraints worth knowing before you touch this:
+
+- The Tagalog locale code is **`fil`, not `tl`** — `flutter_localizations`
+  only ships Material localizations for `fil`, and an unsupported locale in
+  `supportedLocales` throws at runtime.
+- Aklanon (`akl`) has no Flutter localizations at all. The fallback delegates
+  in `lib/core/l10n_fallback.dart` cover it and **must stay last** in
+  `localizationsDelegates`.
+
+Full plan, phase order and the string inventory:
+`docs/22_LOCALIZATION_PLAN.md`. Translation review rules:
+`lib/l10n/README.md`. **The Tagalog and Aklanon files are unreviewed
+drafts.**
+
 ## Verify
 
 ```bash
 flutter analyze
 flutter test
 ```
+
+`test/localization_test.dart` covers locale resolution and — the one that
+matters — that Aklanon renders Material widgets without throwing. Run it
+before any demo.
 
 ## Android configuration
 

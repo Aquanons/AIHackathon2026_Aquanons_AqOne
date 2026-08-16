@@ -1,0 +1,133 @@
+{
+  "@@locale": "en",
+
+  "languageSettingTitle": "Language",
+  "@languageSettingTitle": {
+    "description": "Section heading on the Profile page for the language selector."
+  },
+  "languageSettingSubtitle": "Choose the language for the whole app",
+  "@languageSettingSubtitle": {
+    "description": "Helper text under the Language setting on the Profile page."
+  },
+  "languagePickerPrompt": "Choose your language",
+  "@languagePickerPrompt": {
+    "description": "Heading on the first onboarding screen, shown before the user has picked a language. Must be short enough to be guessable by a speaker of any of the three languages."
+  },
+
+  "navHome": "Home",
+  "@navHome": {
+    "description": "Bottom navigation label for the main SOS screen. Keep short - the bottom bar has four items and overflows easily."
+  },
+  "navVenture": "Venture mode",
+  "@navVenture": {
+    "description": "Bottom navigation label for the trip screen with weather, compass and map."
+  },
+  "navAdvisories": "Advisories",
+  "@navAdvisories": {
+    "description": "Bottom navigation label for official MDRRMO notices."
+  },
+  "navProfile": "Profile",
+  "@navProfile": {
+    "description": "Bottom navigation label for the user's vessel details and settings."
+  },
+
+  "deliveryStateSavedTitle": "Saved",
+  "@deliveryStateSavedTitle": {
+    "description": "SAFETY CRITICAL. First of four delivery states. The SOS is on the phone only and has reached nobody. Must not sound reassuring - the user has to understand help is not yet coming."
+  },
+  "deliveryStateSavedDescription": "Not sent — no buoy nearby. Will send automatically.",
+  "@deliveryStateSavedDescription": {
+    "description": "SAFETY CRITICAL. Explains the Saved state. Two facts: it has not been sent, and the phone will keep trying without the user doing anything."
+  },
+  "deliveryStateRelayedTitle": "Relayed",
+  "@deliveryStateRelayedTitle": {
+    "description": "SAFETY CRITICAL. Second of four delivery states. A buoy accepted the SOS and is passing it over the LoRa radio mesh. Nobody has received it yet."
+  },
+  "deliveryStateRelayedDescription": "Handed to the buoy. Waiting for the mesh.",
+  "@deliveryStateRelayedDescription": {
+    "description": "SAFETY CRITICAL. Explains the Relayed state. 'Mesh' means the chain of radio buoys - use whatever a fisherman would actually call it, not a literal translation."
+  },
+  "deliveryStateDeliveredTitle": "Delivered",
+  "@deliveryStateDeliveredTitle": {
+    "description": "SAFETY CRITICAL. Third of four delivery states. The MDRRMO dashboard received the SOS, but no human has confirmed seeing it."
+  },
+  "deliveryStateDeliveredDescription": "Received by the MDRRMO dashboard.",
+  "@deliveryStateDeliveredDescription": {
+    "description": "SAFETY CRITICAL. Explains the Delivered state. Keep 'MDRRMO' untranslated - it is the official agency acronym."
+  },
+  "deliveryStateAcknowledgedTitle": "Acknowledged",
+  "@deliveryStateAcknowledgedTitle": {
+    "description": "SAFETY CRITICAL. Fourth and final delivery state. A human responder has seen the SOS and is acting on it. This is the only state that means help is coming."
+  },
+  "deliveryStateAcknowledgedDescription": "Responder acknowledged this SOS.",
+  "@deliveryStateAcknowledgedDescription": {
+    "description": "SAFETY CRITICAL. Explains the Acknowledged state."
+  },
+
+  "deliveryMetaPosition": "Position",
+  "@deliveryMetaPosition": {
+    "description": "Row label next to the GPS coordinates of an SOS."
+  },
+  "deliveryMetaBuoy": "Buoy",
+  "@deliveryMetaBuoy": {
+    "description": "Row label next to the id of the buoy that carried the SOS."
+  },
+  "deliveryMetaNote": "Note",
+  "@deliveryMetaNote": {
+    "description": "Row label next to the free-text message the user typed with their SOS."
+  },
+  "deliveryMetaResponder": "Responder",
+  "@deliveryMetaResponder": {
+    "description": "Row label next to the name of the MDRRMO responder who acknowledged the SOS."
+  },
+  "deliveryMetaLastAttempt": "Last attempt",
+  "@deliveryMetaLastAttempt": {
+    "description": "Row label next to the reason the most recent send attempt failed."
+  },
+  "deliveryNoGpsFix": "No GPS fix recorded",
+  "@deliveryNoGpsFix": {
+    "description": "Shown in place of coordinates when the phone had no GPS lock at the moment the SOS was sent. The SOS is still valid without it."
+  },
+
+  "seaStatusSafeHeadline": "Safe to Go Out",
+  "@seaStatusSafeHeadline": {
+    "description": "SAFETY CRITICAL. Official MDRRMO go/no-go call, green. This is a human decision and outranks the app's own weather guess."
+  },
+  "seaStatusSafeSubtitle": "Sea conditions are favorable.",
+  "@seaStatusSafeSubtitle": {
+    "description": "SAFETY CRITICAL. Default explanation under the Safe headline, used when the MDRRMO gave no reason of their own."
+  },
+  "seaStatusCautionHeadline": "Caution - Check Advisories",
+  "@seaStatusCautionHeadline": {
+    "description": "SAFETY CRITICAL. Official MDRRMO call, amber. Not a ban, but the user must read the advisories before deciding."
+  },
+  "seaStatusCautionSubtitle": "Exercise caution before heading out.",
+  "@seaStatusCautionSubtitle": {
+    "description": "SAFETY CRITICAL. Default explanation under the Caution headline."
+  },
+  "seaStatusNotAdvisedHeadline": "Not Advised to Go Out",
+  "@seaStatusNotAdvisedHeadline": {
+    "description": "SAFETY CRITICAL. Official MDRRMO call, red. The strongest warning in the app. Needs a second native-speaker reviewer - understating this in translation is a real hazard."
+  },
+  "seaStatusNotAdvisedSubtitle": "Stay ashore - conditions are dangerous.",
+  "@seaStatusNotAdvisedSubtitle": {
+    "description": "SAFETY CRITICAL. Default explanation under the Not Advised headline. Imperative mood - this is an instruction, not a suggestion."
+  },
+  "seaStatusUnknownHeadline": "Status Not Yet Set",
+  "@seaStatusUnknownHeadline": {
+    "description": "Shown when the MDRRMO has not published a call, or the phone could not fetch one. Must not read as 'safe'."
+  },
+  "seaStatusUnknownSubtitle": "Check advisories before heading out.",
+  "@seaStatusUnknownSubtitle": {
+    "description": "Default explanation under the Status Not Yet Set headline."
+  },
+
+  "crashTitle": "Something went wrong",
+  "@crashTitle": {
+    "description": "Heading on the fallback screen shown when part of the UI fails to build."
+  },
+  "crashBody": "This part of the screen couldn't load. Try going back, or restart the app if it keeps happening.",
+  "@crashBody": {
+    "description": "Body of the crash fallback screen. Deliberately plain - it replaces a Flutter stack trace that a fisherman at sea has no use for."
+  }
+}

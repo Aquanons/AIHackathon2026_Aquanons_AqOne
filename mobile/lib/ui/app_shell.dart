@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
+import '../core/locale_controller.dart';
 import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
 import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
 import '../services/catch_service.dart';
-import '../services/fishing_spot_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
@@ -37,12 +38,12 @@ class AppShell extends StatefulWidget {
     required this.sos,
     required this.catches,
     required this.checklist,
-    required this.spots,
     required this.feeds,
     required this.location,
     required this.identityStore,
     required this.themeMode,
     required this.onThemeModeChanged,
+    this.localeController,
     required this.onLogout,
     required this.onIdentityUpdated,
   });
@@ -51,7 +52,6 @@ class AppShell extends StatefulWidget {
   final SosService sos;
   final CatchService catches;
   final ChecklistStore checklist;
-  final FishingSpotService spots;
   final VentureFeeds feeds;
   final LocationService location;
 
@@ -60,6 +60,12 @@ class AppShell extends StatefulWidget {
   final IdentityStore identityStore;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
+
+  // Passed straight through to Profile, which owns the language row. Held at
+  // the app root for the same reason as themeMode: changing it has to rebuild
+  // MaterialApp, not just this subtree.
+  final LocaleController? localeController;
+
   final VoidCallback onLogout;
   final ValueChanged<VesselIdentity> onIdentityUpdated;
 
@@ -173,7 +179,6 @@ class _AppShellState extends State<AppShell> {
       sos: widget.sos,
       catches: widget.catches,
       checklist: widget.checklist,
-      spots: widget.spots,
       feeds: widget.feeds,
       location: widget.location,
       bottomInset: bottomInset,
@@ -222,6 +227,7 @@ class _AppShellState extends State<AppShell> {
           identity: widget.identity,
           themeMode: widget.themeMode,
           onThemeModeChanged: widget.onThemeModeChanged,
+          localeController: widget.localeController,
           onLogout: widget.onLogout,
           onIdentityUpdated: widget.onIdentityUpdated,
           onOpenHome: () => _select(0),
@@ -296,28 +302,28 @@ class _Sidebar extends StatelessWidget {
             const SizedBox(height: 28),
             _SidebarItem(
               icon: Icons.home_rounded,
-              label: 'Home',
+              label: AppLocalizations.of(context).navHome,
               isActive: index == 0,
               isDark: isDark,
               onTap: () => onSelect(0),
             ),
             _SidebarItem(
               icon: Icons.explore_rounded,
-              label: 'Venture mode',
+              label: AppLocalizations.of(context).navVenture,
               isActive: index == 1,
               isDark: isDark,
               onTap: () => onSelect(1),
             ),
             _SidebarItem(
               icon: Icons.campaign_rounded,
-              label: 'Advisories',
+              label: AppLocalizations.of(context).navAdvisories,
               isActive: index == 2,
               isDark: isDark,
               onTap: () => onSelect(2),
             ),
             _SidebarItem(
               icon: Icons.person_rounded,
-              label: 'Profile',
+              label: AppLocalizations.of(context).navProfile,
               isActive: index == 3,
               isDark: isDark,
               onTap: () => onSelect(3),
@@ -445,7 +451,7 @@ class _MobileDock extends StatelessWidget {
                   child: Center(
                     child: _DockItem(
                       icon: Icons.home_rounded,
-                      label: 'Home',
+                      label: AppLocalizations.of(context).navHome,
                       isActive: index == 0,
                       isDark: isDark,
                       onTap: () => onSelect(0),
@@ -458,7 +464,7 @@ class _MobileDock extends StatelessWidget {
                   child: Center(
                     child: _DockItem(
                       icon: Icons.campaign_rounded,
-                      label: 'Advisories',
+                      label: AppLocalizations.of(context).navAdvisories,
                       isActive: index == 2,
                       isDark: isDark,
                       onTap: () => onSelect(2),
@@ -472,7 +478,7 @@ class _MobileDock extends StatelessWidget {
             bottom: fullBarHeight - overhang,
             child: Semantics(
               button: true,
-              label: 'Venture mode',
+              label: AppLocalizations.of(context).navVenture,
               child: GestureDetector(
                 onTap: () => onSelect(1),
                 child: Container(
