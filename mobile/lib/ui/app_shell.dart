@@ -3,18 +3,22 @@ import 'dart:async';
 import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
+import '../core/config.dart';
 import '../core/locale_controller.dart';
 import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
 import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
+import '../models/squall_watch.dart';
 import '../services/catch_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
+import '../services/squall_alarm.dart';
 import '../services/venture_feeds.dart';
 import 'advisories_page.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
+import 'squall_alert_page.dart';
 import 'venture_page.dart';
 import 'widgets/responder_eta_dialog.dart';
 
@@ -103,16 +107,96 @@ class _AppShellState extends State<AppShell> {
   /// synchronously, before the first `await`.
   bool _checkingAcknowledgement = false;
 
+  // ---- Squall nowcast -------------------------------------------------------
+  //
+  // Polled here rather than on Home, for the same reason as the
+  // acknowledgement watcher above: at sea the fisher is looking at the map,
+  // not at Home, and a RETURN NOW that only fires on one tab is a warning
+  // that does not reach the person it is for.
+
+  SquallWatch _squall = SquallWatch.unavailable;
+  Timer? _squallTimer;
+  final SquallAlarm _squallAlarm = SquallAlarm();
+
+  /// True while the full-screen alert is up, so a poll landing every minute
+  /// cannot stack a second copy on top of it.
+  bool _squallAlertOpen = false;
+
   @override
   void initState() {
     super.initState();
     _sosChanges = widget.sos.changes.listen((_) => _checkForAcknowledgement());
     _checkForAcknowledgement();
+    _loadSquall();
+    _squallTimer = Timer.periodic(
+      AqOneConfig.squallPollInterval,
+      (_) => _loadSquall(),
+    );
+  }
+
+  /// Polls the nowcast and drives both the alarm and the full-screen alert.
+  ///
+  /// A failed request yields SquallLevel.unknown, never clear - the app must
+  /// not imply calm weather because it could not reach the model. An already
+  /// ringing alarm is left alone on a failed poll for the same reason: losing
+  /// signal is not evidence the squall has passed.
+  Future<void> _loadSquall() async {
+    final SquallWatch squall = await widget.feeds.squall();
+    if (!mounted) {
+      return;
+    }
+
+    if (squall.returnNow) {
+      _squallAlarm.start(squall.identity);
+    } else if (squall.level != SquallLevel.unknown) {
+      // Only a definite non-alarm reading from the backend clears it.
+      _squallAlarm.clear();
+    }
+
+    setState(() {
+      if (squall.level != SquallLevel.unknown || !_squall.shouldDisplay) {
+        _squall = squall;
+      }
+    });
+
+    // Take the whole screen only for RETURN NOW, and only while the fisher
+    // has not already acknowledged this particular squall.
+    if (squall.returnNow &&
+        !_squallAlarm.isAcknowledged(squall.identity) &&
+        !_squallAlertOpen) {
+      _showSquallAlert(squall);
+    }
+  }
+
+  Future<void> _showSquallAlert(SquallWatch squall) async {
+    _squallAlertOpen = true;
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (BuildContext ctx) => SquallAlertPage(
+          watch: squall,
+          onAcknowledge: () {
+            _acknowledgeSquall();
+            Navigator.of(ctx).pop();
+          },
+        ),
+      ),
+    );
+    _squallAlertOpen = false;
+  }
+
+  void _acknowledgeSquall() {
+    _squallAlarm.acknowledge();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
     _sosChanges?.cancel();
+    _squallTimer?.cancel();
+    _squallAlarm.dispose();
     super.dispose();
   }
 
@@ -175,6 +259,12 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildVenture(double bottomInset) {
     return VenturePage(
+      // Venture is the screen a fisher is actually looking at offshore, so the
+      // watch-level banner belongs here too. RETURN NOW takes the whole
+      // screen from the shell regardless of the tab.
+      squall: _squall,
+      squallAcknowledged: _squallAlarm.isAcknowledged(_squall.identity),
+      onAcknowledgeSquall: _acknowledgeSquall,
       identity: widget.identity,
       sos: widget.sos,
       catches: widget.catches,
@@ -218,6 +308,9 @@ class _AppShellState extends State<AppShell> {
           bottomInset: inset,
           onOpenAdvisories: () => _select(2),
           onOpenProfile: () => _select(3),
+          squall: _squall,
+          squallAcknowledged: _squallAlarm.isAcknowledged(_squall.identity),
+          onAcknowledgeSquall: _acknowledgeSquall,
         ),
         // Only built once the user has actually opened Venture.
         _ventureOpened ? _buildVenture(inset) : const SizedBox.shrink(),

@@ -17,7 +17,6 @@ import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
-import '../services/squall_alarm.dart';
 import '../services/venture_feeds.dart';
 import 'widgets/advisory_card.dart';
 import 'widgets/buoy_status_card.dart';
@@ -36,6 +35,9 @@ class HomePage extends StatefulWidget {
     this.bottomInset = 0,
     this.onOpenAdvisories,
     this.onOpenProfile,
+    this.squall = SquallWatch.unavailable,
+    this.squallAcknowledged = false,
+    this.onAcknowledgeSquall,
   });
 
   final SosService service;
@@ -51,6 +53,12 @@ class HomePage extends StatefulWidget {
   /// than leaving a control that navigates nowhere.
   final VoidCallback? onOpenAdvisories;
   final VoidCallback? onOpenProfile;
+
+  /// Polled by AppShell, not here. A squall must reach the fisher wherever he
+  /// is looking, and two pollers would mean two alarms for one squall.
+  final SquallWatch squall;
+  final bool squallAcknowledged;
+  final VoidCallback? onAcknowledgeSquall;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -83,11 +91,6 @@ class _HomePageState extends State<HomePage> {
   /// can be stamped with when it was actually fetched.
   DateTime? _forecastFetchedAt;
 
-  // Squall nowcast (AI #1) and its alarm.
-  SquallWatch _squall = SquallWatch.unavailable;
-  Timer? _squallTimer;
-  final SquallAlarm _alarm = SquallAlarm();
-
   @override
   void initState() {
     super.initState();
@@ -102,7 +105,6 @@ class _HomePageState extends State<HomePage> {
     // no signal at all; the live fetch overwrites it when it lands.
     _restoreCachedForecast();
     _loadForecast();
-    _loadSquall();
     _buoyTimer = Timer.periodic(
       AqOneConfig.buoyPollInterval,
       (_) => _pollBuoy(),
@@ -110,10 +112,6 @@ class _HomePageState extends State<HomePage> {
     _seaTimer = Timer.periodic(
       AqOneConfig.seaConditionInterval,
       (_) => _loadSea(),
-    );
-    _squallTimer = Timer.periodic(
-      AqOneConfig.squallPollInterval,
-      (_) => _loadSquall(),
     );
     _forecastTimer = Timer.periodic(
       AqOneConfig.forecastRefreshInterval,
@@ -125,44 +123,9 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _buoyTimer?.cancel();
     _seaTimer?.cancel();
-    _squallTimer?.cancel();
     _forecastTimer?.cancel();
-    _alarm.dispose();
     _changes?.cancel();
     super.dispose();
-  }
-
-  /// Poll the squall nowcast and drive the alarm from it.
-  ///
-  /// A failed request yields `SquallLevel.unknown`, never `clear` - the app
-  /// must not imply calm weather just because it could not reach the model.
-  /// An already-ringing alarm is left alone on a failed poll for the same
-  /// reason: losing signal is not evidence the squall has passed.
-  Future<void> _loadSquall() async {
-    final squall = await widget.feeds.squall();
-    if (!mounted) {
-      return;
-    }
-
-    if (squall.returnNow) {
-      _alarm.start(squall.identity);
-    } else if (squall.level != SquallLevel.unknown) {
-      // Only a definite non-alarm reading from the backend clears it.
-      _alarm.clear();
-    }
-
-    setState(() {
-      if (squall.level != SquallLevel.unknown || !_squall.shouldDisplay) {
-        _squall = squall;
-      }
-      // If we lost contact while a squall was showing, keep the last known
-      // warning on screen rather than blanking it.
-    });
-  }
-
-  void _acknowledgeSquall() {
-    _alarm.acknowledge();
-    setState(() {});
   }
 
   Future<void> _loadSea() async {
@@ -373,20 +336,20 @@ class _HomePageState extends State<HomePage> {
               // declaration is a standing judgement about the day; a squall is
               // happening now and has minutes of lead time, so it must be the
               // first thing seen. Renders nothing when there is no squall.
-              if (_squall.shouldDisplay) ...<Widget>[
+              if (widget.squall.shouldDisplay) ...<Widget>[
                 SquallBanner(
-                  watch: _squall,
-                  acknowledged: _alarm.isAcknowledged(_squall.identity),
-                  onAcknowledge: _acknowledgeSquall,
+                  watch: widget.squall,
+                  acknowledged: widget.squallAcknowledged,
+                  onAcknowledge: widget.onAcknowledgeSquall,
                 ),
                 const SizedBox(height: AqSpace.base),
               ],
-              if (_squall.level == SquallLevel.returnNow &&
-                  !_alarm.isAcknowledged(_squall.identity)) ...<Widget>[
+              if (widget.squall.level == SquallLevel.returnNow &&
+                  !widget.squallAcknowledged) ...<Widget>[
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: _acknowledgeSquall,
+                    onPressed: widget.onAcknowledgeSquall,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFFDC2626),
                       padding: const EdgeInsets.symmetric(vertical: 14),

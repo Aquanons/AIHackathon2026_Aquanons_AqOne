@@ -15,6 +15,7 @@ import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
 import '../models/hotspot_cell.dart';
 import '../models/sos_record.dart';
+import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import '../services/catch_service.dart';
 import '../services/compass_service.dart';
@@ -29,6 +30,7 @@ import 'chathubb.dart';
 import 'checklist_page.dart';
 import 'widgets/compass_dial.dart';
 import 'widgets/offline_map_banner.dart';
+import 'widgets/squall_banner.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
@@ -82,6 +84,9 @@ class VenturePage extends StatefulWidget {
     required this.feeds,
     required this.location,
     this.bottomInset = 0,
+    this.squall = SquallWatch.unavailable,
+    this.squallAcknowledged = false,
+    this.onAcknowledgeSquall,
   });
 
   final VesselIdentity identity;
@@ -94,6 +99,13 @@ class VenturePage extends StatefulWidget {
   /// Space reserved for the shell's floating dock. The map stays full-bleed
   /// behind it; only the controls are lifted clear so they never get covered.
   final double bottomInset;
+
+  /// Polled by AppShell so one squall means one alarm no matter which tab is
+  /// open. RETURN NOW takes the whole screen from there; this is the
+  /// watch-level banner, on the screen a fisher is most likely looking at.
+  final SquallWatch squall;
+  final bool squallAcknowledged;
+  final VoidCallback? onAcknowledgeSquall;
 
   @override
   State<VenturePage> createState() => _VenturePageState();
@@ -602,6 +614,17 @@ class _VenturePageState extends State<VenturePage> {
               child: Column(
                 children: <Widget>[
                   _buildWeatherCapsule(isDark),
+                  if (widget.squall.shouldDisplay) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: SquallBanner(
+                        watch: widget.squall,
+                        acknowledged: widget.squallAcknowledged,
+                        onAcknowledge: widget.onAcknowledgeSquall,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   OfflineMapBanner(ages: _snapshotAges, isDark: isDark),
                   if (_latestSos != null) ...<Widget>[
