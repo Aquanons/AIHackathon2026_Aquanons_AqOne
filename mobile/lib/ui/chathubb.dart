@@ -39,10 +39,12 @@ class ChatService extends ChangeNotifier {
   ChatService({
     this.host = '192.168.4.1',
     this.displayName = 'You',
+    this.backendUrl = 'https://aqone-backend.up.railway.app',
   });
 
   final String host;
   final String displayName;
+  final String backendUrl;
 
   static const int maxMessageLength = 50;
   static const int _maxMessages = 50;
@@ -228,6 +230,19 @@ class ChatService extends ChangeNotifier {
       _pendingQueue.add(trimmed);
       _persistQueue();
     }
+
+    // Also relay to the cloud backend so the dashboard can display it.
+    _relayToBackend(displayName, trimmed);
+  }
+
+  /// Fire-and-forget POST to the backend mesh chat endpoint.
+  /// Errors are silently ignored — the local Heltec relay is the primary path.
+  void _relayToBackend(String sender, String text) {
+    http.post(
+      Uri.parse('$backendUrl/api/mesh/chat'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'sender': sender, 'text': text}),
+    ).timeout(const Duration(seconds: 5)).catchError((_) {});
   }
 
   // ----- History backfill -------------------------------------------------
