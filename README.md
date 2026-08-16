@@ -35,7 +35,7 @@ This table precedes every other claim in this document.
 
 | Component | Status |
 |---|---|
-| **FastAPI + PostgreSQL backend on Railway** | ✅ Deployed, healthcheck green, 73 tests passing |
+| **FastAPI + PostgreSQL backend on Railway** | ✅ Deployed, healthcheck green, 89 tests passing (1 expected failure) |
 | **Drift prediction** (Monte Carlo Lagrangian) | ✅ Built, measured, live |
 | **Bayesian search re-tasking** | ✅ Built, measured, live |
 | **Squall nowcasting** (trained classifier) | ✅ Built, measured, live |
@@ -44,7 +44,7 @@ This table precedes every other claim in this document.
 | **SOS pipeline** phone → backend → dashboard | ✅ Working, with de-duplication |
 | **Responder loop** acknowledge → ETA → handset | ✅ Working |
 | **MDRRMO dashboard** | ✅ Live SOS feed, drift contours, squall watch |
-| **Flutter handset app** | ✅ SOS, offline outbox, squall alarm, weather |
+| **Flutter handset app** | ✅ SOS, offline outbox, squall alarm, weather, and vessel-device authorization for routine data |
 | **Buoy firmware** (WiFi AP + SOS gateway) | ✅ Written and flashed |
 | **Multi-hop LoRa mesh** | ❌ Frame spec written, relay code not implemented |
 | **Outdoor range test** | ❌ Not performed. All range figures are datasheet values |
@@ -55,6 +55,20 @@ This table precedes every other claim in this document.
 an SOS, it reaches the deployed backend, appears on the MDRRMO dashboard within
 10 seconds, a dispatcher acknowledges with an ETA, and that ETA appears on the
 fisher's handset. **No LoRa hardware is required for this path.**
+
+### Vessel-device authorization for routine data
+
+Emergency SOS delivery remains available offline and without an account or
+cloud credential. For routine per-vessel actions, the backend now issues a
+short-lived, revocable credential after an MDRRMO/LGU operator creates a
+one-time pairing code. That credential is bound to one vessel and authorizes
+the handset's SOS-status reads, responder replies, and catch-log operations;
+the backend, rather than a client-supplied vessel ID, decides ownership. The
+current mobile implementation holds this credential only while the app runs;
+encrypted persistent credential storage and a pairing screen are not yet
+implemented. See [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md) for the API
+contract and [`docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`](docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md)
+for verified implementation status.
 
 ### Week 1 dashboard/Flutter contract sprint (in progress)
 
@@ -86,11 +100,8 @@ What that sprint changed, and what is and isn't independently verified so far:
   route. `POST /api/advisories/alert` had no auth dependency at all despite
   publishing directly to the public advisory feed and no caller for it exists
   anywhere in this repo; it now requires a token like every other write in
-  that router. **Not verified by `pytest`** — this sandbox's Python is 3.10,
-  and the backend's own dependencies (`datetime.UTC`, `numpy==2.4.6`) require
-  3.11+, so test collection fails before any test runs, unchanged from
-  before this sprint. `ruff check .` passes. Manually reviewed and
-  `py_compile`-checked only.
+  that router. **Verified after the sprint** — the backend suite now passes
+  with 89 tests passing and one expected failure; `ruff check .` also passes.
 - **APK.** Not rebuilt this sprint — no Android/Flutter build toolchain was
   available. `mobile/AqOne.apk` below is still the pre-sprint build.
 
@@ -293,6 +304,9 @@ uvicorn app.main:app --reload
 
 Variables are documented in `backend/.env.example`. `DATABASE_URL`,
 `JWT_SECRET` and `ADMIN_SETUP_KEY` must be set in any deployed environment.
+`VESSEL_DEVICE_TOKEN_TTL_HOURS` optionally changes the vessel-device token
+lifetime (24 hours by default). The existing migration step also applies the
+vessel-device pairing and revocation tables.
 
 Generate the synthetic dataset, which the evaluation scripts require:
 
@@ -330,6 +344,11 @@ To point the app at a different backend:
 flutter run --dart-define=BACKEND_BASE_URL=https://your-host
 ```
 
+For routine per-vessel testing, have an MDRRMO/LGU operator create a one-time
+pairing code, then enroll the handset against that backend. Exact request and
+revocation rules are in [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md).
+Pairing is not required to raise or queue an SOS.
+
 ### 4. Buoy firmware
 
 Open `firmware/buoy/AqOneBuoy/AqOneBuoy.ino` in Arduino IDE.
@@ -361,7 +380,7 @@ see the status table above and [`firmware/buoy/README.md`](firmware/buoy/README.
 ### 5. Run the tests
 
 ```bash
-cd backend && pytest          # 73 tests
+cd backend && pytest          # 89 passed, 1 expected failure
 cd backend && ruff check .
 cd mobile  && flutter analyze && flutter test
 ```
@@ -449,6 +468,8 @@ interviews with local fishers, not desk research alone.
 | [`17_AI_EXPLAINED_SIMPLY.md`](docs/17_AI_EXPLAINED_SIMPLY.md) | Plain-language guide to the four models |
 | [`18_BACKEND_STRUCTURE.md`](docs/18_BACKEND_STRUCTURE.md) | Backend folder map |
 | [`19_HELTEC_DATA_FLOW.md`](docs/19_HELTEC_DATA_FLOW.md) | Firmware → backend contract |
+| [`05_PUBLIC_API.md`](docs/05_PUBLIC_API.md) | Public API and vessel-device pairing contract |
+| [`25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`](docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md) | Mobile security controls, evidence, and remaining hard stops |
 | [`07_SCOPE_OUT.md`](docs/07_SCOPE_OUT.md) | Deliberate exclusions, and what has since been amended in |
 | [`02_LOAM_PACKET_SPEC.md`](docs/02_LOAM_PACKET_SPEC.md) | LoRa frame format |
 
