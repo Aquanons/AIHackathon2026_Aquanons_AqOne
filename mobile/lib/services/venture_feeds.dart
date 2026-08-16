@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
 import '../data/map_snapshot_store.dart';
+import '../data/welcome_advisory.dart';
 import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
 import '../models/community_spot.dart';
@@ -215,10 +216,17 @@ class VentureFeeds {
           await _backend.getJson(AqOneConfig.advisoriesPath) ??
           await _backend.getJson(AqOneConfig.publicAdvisoriesPath),
     );
+    // The welcome note is appended, never merged into the feed: it is ours,
+    // not the MDRRMO's, and it is present even when the fetch failed
+    // entirely. parseList has already sorted by urgency, and appending keeps
+    // it last so a real advisory is never pushed below it.
     if (decoded == null) {
-      return null;
+      return <Advisory>[WelcomeAdvisory.instance];
     }
-    return Advisory.parseList(decoded);
+    return <Advisory>[
+      ...Advisory.parseList(decoded),
+      WelcomeAdvisory.instance,
+    ];
   }
 
   void close() => _weatherClient.close();

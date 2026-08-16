@@ -419,6 +419,9 @@ class _HomePageState extends State<HomePage> {
                 AdvisoryCard(
                   advisory: _advisories.first,
                   remaining: _advisories.length - 1,
+                  // Preview only: the full card, photo and all, is on the
+                  // Advisories page.
+                  showImage: false,
                   onViewAll: widget.onOpenAdvisories,
                 ),
               ],
