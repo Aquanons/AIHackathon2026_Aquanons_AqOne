@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../core/config.dart';
@@ -290,11 +292,8 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ],
                         ),
-                        child: Icon(
-                          Icons.person_rounded,
-                          color: palette.secondaryText,
-                          size: 28,
-                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _buildAvatar(palette),
                       ),
                     ),
                   ),
@@ -384,6 +383,40 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
+    );
+  }
+
+  /// The header avatar. Mirrors the profile page: the user's uploaded photo
+  /// when there is one, the shared empty-profile asset otherwise, and a plain
+  /// icon if either fails to decode (e.g. the file was deleted underneath us).
+  Widget _buildAvatar(AqPalette palette) {
+    final path = widget.identity.avatarPath;
+    final hasCustomAvatar =
+        !kIsWeb && path != null && path.isNotEmpty && File(path).existsSync();
+
+    if (hasCustomAvatar) {
+      return Image.file(
+        File(path),
+        width: 48,
+        height: 48,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _avatarFallback(palette),
+      );
+    }
+    return Image.asset(
+      'icons/emptyProfile.png',
+      width: 48,
+      height: 48,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _avatarFallback(palette),
+    );
+  }
+
+  Widget _avatarFallback(AqPalette palette) {
+    return Icon(
+      Icons.person_rounded,
+      color: palette.secondaryText,
+      size: 28,
     );
   }
 }

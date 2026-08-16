@@ -192,6 +192,10 @@ class _ProfilePageState extends State<ProfilePage> {
       // Copy out of the picker's temp file so the photo survives after the
       // OS clears its cache/temp directory.
       await File(picked.path).copy(savedPath);
+      // Every photo is written to the same path, and Flutter keys its image
+      // cache on that path - without evicting, replacing the photo keeps
+      // showing the previous one.
+      await FileImage(File(savedPath)).evict();
 
       final updated = await widget.identityStore.setAvatarPath(savedPath);
       if (!mounted) return;
