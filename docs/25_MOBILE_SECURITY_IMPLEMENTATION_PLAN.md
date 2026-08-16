@@ -91,7 +91,7 @@ last committed status, not from assumptions in chat history.
 ## Status table — update on every attempted phase
 
 Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
-`REJECTED`.
+`DEFERRED`, `REJECTED`.
 
 | Phase | Status | Evidence / changed files / verification | Commit subject |
 |---|---|---|---|
