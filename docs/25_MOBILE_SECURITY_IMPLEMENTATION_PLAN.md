@@ -98,7 +98,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 | 0. Baseline and scope lock | COMPLETE | 2026-08-16 baseline recorded below. Secret scan found no live secret; only placeholders in `backend/.env.example` and `docs/guides/07_SECURITY.md`. Local data inventory, route reconciliation, host/protocol list, dependency inventory, and real Flutter verification results are now recorded. `flutter test` passed; `flutter analyze` ran successfully enough to report two pre-existing `info` diagnostics in unrelated dirty files. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: record mobile security baseline` |
 | 1. Transport and endpoint guardrails | COMPLETE | 2026-08-16 transport guardrails implemented in `docs/03_PHONE_BUOY_WIFI.md`, `mobile/lib/core/config.dart`, `mobile/lib/core/endpoint_guard.dart`, `mobile/lib/main.dart`, `mobile/lib/services/backend_client.dart`, `mobile/lib/services/buoy_client.dart`, `mobile/lib/services/forecast_provider.dart`, `mobile/lib/services/tile_cache.dart`, `mobile/lib/ui/chathubb.dart`, and `mobile/test/endpoint_guard_test.dart`. `flutter test` passed. `flutter analyze` reported only two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): constrain app network destinations` |
 | 2. Sensitive-data handling and safe diagnostics | COMPLETE | 2026-08-16 safe diagnostics and local-data hardening completed in `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`, `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/lib/core/app_diagnostics.dart`, `mobile/lib/core/locale_controller.dart`, `mobile/lib/main.dart`, `mobile/lib/ui/chathubb.dart`, `mobile/test/app_diagnostics_test.dart`, and `mobile/test/chat_service_retention_test.dart`. `flutter test` passed. `flutter analyze` reported only the same two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): reduce local data and redact diagnostics` |
-| 3. Device-identity decision gate | NOT STARTED | — | `docs: approve or defer device identity design` |
+| 3. Device-identity decision gate | COMPLETE | 2026-08-16 Option A approved by the user/technical owner in chat. Phase log added below with the explicit decision, allowed follow-on work, and hard-stop carry-forward. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: approve or defer device identity design` |
 | 4. Authenticated normal-operation API path | NOT STARTED | — | `security: add scoped vessel device authorization` |
 | 5. Encrypted local credential and data storage | NOT STARTED | — | `security(mobile): protect local vessel data` |
 | 6. Release hardening and end-to-end verification | NOT STARTED | — | `security: verify mobile release controls` |
@@ -538,6 +538,50 @@ Do not add `flutter_secure_storage`, a token header, device registration,
 authorization policies, ownership checks, or RLS until Option A is approved.
 If Option B is selected, mark Phases 4, 5, and 7 `REJECTED` or `DEFERRED` with
 the accepted risk; continue only with release hardening.
+
+### Phase 3 log — 2026-08-16
+
+**Changed files**
+
+- `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`
+
+**Decision**
+
+- Selected option: `A. Server-issued device credential`
+- Decision source: explicit user correction in chat on 2026-08-16
+- Technical meaning:
+  - SOS must remain available when the credential is absent, expired, revoked,
+    or the handset is offline.
+  - Normal-operation private reads and writes may now move behind a revocable
+    vessel-bound device credential.
+  - Later phases may add device enrollment, authorization checks, secure local
+    credential storage, and an eventual RLS readiness review, but only under
+    the hard stops already defined in this document.
+
+**Commands run and outcomes**
+
+- `git status --short`
+  - Re-run before this documentation phase. The pre-existing unrelated mobile
+    worktree changes from Phase 0 remained present; this phase touched only the
+    clean plan document.
+- `git diff --check`
+  - Must pass before the phase commit is created.
+
+**Remaining risk**
+
+- Option A authorizes work on authenticated normal-operation flows, but no
+  vessel-bound backend authorization exists yet.
+- The current mobile-facing status, catch, and legacy spot flows still rely on
+  self-declared `vessel_id` until Phases 4 and 5 are truthfully completed.
+
+**Next hard stop**
+
+Before Phase 4 code changes:
+
+1. Write the API contract first and identify exactly which routes become
+   credential-protected.
+2. Stop if any expected target file is already dirty with someone else's work.
+3. Do not make SOS depend on login, token refresh, or internet reachability.
 
 ## Phase 4 — Authenticated normal-operation API path (Option A only)
 
