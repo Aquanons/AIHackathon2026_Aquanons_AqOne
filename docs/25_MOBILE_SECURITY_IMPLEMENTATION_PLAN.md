@@ -908,6 +908,25 @@ pass in the one test whose whole job is proving the data is unreadable. It
 now searches for the normalised number, a substring of it, and the licence
 number.
 
+**Correction after the owner's first Android build**
+
+`flutter run` failed at the Gradle stage. `flutter_secure_storage` 11.0.0,
+published 2026-08-06, raised its `compileSdk` to 37; the Android SDK Platform
+37 installed but Gradle still could not resolve it
+(`Failed to find target with hash string 'android-37'`). This is the native
+build risk this log flagged, arriving exactly where it was expected.
+
+Resolved by holding the dependency at `^10.3.1`, which builds against SDK 36
+- the version this project already compiles against. No Dart change was
+needed: `SecureCredentialStore` uses default options, and version 10 is the
+release that moved Android off the deprecated Jetpack Security library onto
+Keystore-backed custom ciphers, so the protection is the same. Revisit when
+SDK 37 is generally available and Flutter's default `compileSdk` catches up.
+
+Raising the project's `compileSdk` to 37 was rejected as the fix: it would
+put the whole app on a preview SDK days before a demo, to satisfy one
+plugin.
+
 **Residual risk**
 
 - `flutter_secure_storage` is a platform plugin. `flutter pub get` and

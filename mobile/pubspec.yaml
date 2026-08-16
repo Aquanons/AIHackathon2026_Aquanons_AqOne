@@ -68,15 +68,20 @@ dependencies:
   # key live in Android Keystore / iOS Keychain, never in SharedPreferences or
   # SQLite. See docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md.
   #
-  # flutter_secure_storage is a platform plugin, so it carries the same build
-  # risk that bit us with sensors_plus: `flutter pub get` and `flutter analyze`
-  # now pass, but a release build has not been tried.
+  # Held at 10.x deliberately. Version 11.0.0 raised its compileSdk to 37,
+  # an Android SDK so new that Gradle here could not resolve it even after
+  # the platform installed - the build failed with
+  # "Failed to find target with hash string 'android-37'". 10.3.1 builds
+  # against SDK 36, which this project already uses.
   #
-  # 11.x, not 9.x: version 10 removed AndroidOptions.encryptedSharedPreferences
-  # after Google deprecated Jetpack Security, and the plugin encrypts through
-  # the Keystore itself now. SecureCredentialStore therefore uses platform
-  # defaults rather than setting that option.
-  flutter_secure_storage: 11.0.0
+  # The code needs no change between the two: SecureCredentialStore uses
+  # default options, and it is version 10 that rewrote Android off the
+  # deprecated Jetpack Security library onto Keystore-backed custom ciphers.
+  # So 10.x gives the same protection without a canary SDK.
+  #
+  # Revisit when Android SDK 37 is generally available and Flutter's default
+  # compileSdk has caught up.
+  flutter_secure_storage: ^10.3.1
 
   # AES-GCM for individual sensitive columns. Pure Dart - no native config, no
   # Gradle surface - which is why it was chosen over a SQLCipher-backed
