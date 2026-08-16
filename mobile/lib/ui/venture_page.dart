@@ -720,8 +720,6 @@ class _VenturePageState extends State<VenturePage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
-        _buildCompass(isDark),
-        const SizedBox(height: 6),
         _RoundButton(
           icon: Icons.my_location_rounded,
           tooltip: 'My location',
@@ -791,6 +789,14 @@ class _VenturePageState extends State<VenturePage> {
             ),
           ),
         const SizedBox(height: 14),
+        // The compass is a readout, not an action, so it sits apart from the
+        // buttons at the bottom of the rail rather than heading the stack.
+        //
+        // It is not placed below SOS, tempting as the corner is: SOS has to
+        // stay the lowest control on the screen, because that is the one a
+        // thumb finds without looking.
+        _buildCompass(isDark),
+        const SizedBox(height: 10),
         _ActionPill(
           icon: Icons.warning_rounded,
           label: 'SOS',
