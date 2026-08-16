@@ -45,6 +45,8 @@ This table precedes every other claim in this document.
 | **Responder loop** acknowledge → ETA → handset | ✅ Working |
 | **MDRRMO dashboard** | ✅ Live SOS feed, drift contours, squall watch |
 | **Flutter handset app** | ✅ SOS, offline outbox, squall alarm, weather, and vessel-device authorization for routine data |
+| **Voluntary catch logging** | ✅ Offline queue with authenticated upload when the phone regains internet |
+| **Modelled fish-hotspot guidance** | ❌ Contract agreed; server-side model and public endpoint are not yet implemented |
 | **Buoy firmware** (WiFi AP + SOS gateway) | ✅ Written and flashed |
 | **Multi-hop LoRa mesh** | ❌ Frame spec written, relay code not implemented |
 | **Outdoor range test** | ❌ Not performed. All range figures are datasheet values |
@@ -69,6 +71,20 @@ encrypted persistent credential storage and a pairing screen are not yet
 implemented. See [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md) for the API
 contract and [`docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`](docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md)
 for verified implementation status.
+
+### Fisheries intelligence — separate and opt-in
+
+AqOne also has an optional fisheries-intelligence track. Fishers may choose to
+record catch logs, which are stored locally first and uploaded only when the
+phone has internet; they never use LoRa airtime reserved for emergencies.
+Modelled fish-hotspot guidance is planned to combine consented, aggregated
+catch logs with seasonal and environmental indicators. It must show confidence,
+coverage, and data age, must not expose an individual fisher's productive
+location, and can never override a safety warning. It is **not implemented
+yet**: the app deliberately shows no hotspot layer until the server-side model
+and endpoint exist. See [`docs/23_INTEGRATED_SYSTEM_DESIGN.md`](docs/23_INTEGRATED_SYSTEM_DESIGN.md)
+for the proposed subsystem and [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md)
+for its current API status.
 
 ### Week 1 dashboard/Flutter contract sprint (in progress)
 
