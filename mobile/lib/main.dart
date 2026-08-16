@@ -12,6 +12,7 @@ import 'data/catch_store.dart';
 import 'data/checklist_store.dart';
 import 'data/fishing_spot_store.dart';
 import 'data/identity_store.dart';
+import 'data/map_snapshot_store.dart';
 import 'data/outbox_store.dart';
 import 'services/backend_client.dart';
 import 'services/buoy_client.dart';
@@ -165,7 +166,13 @@ class _AqOneAppState extends State<AqOneApp> {
       identity: _identityStore,
       backend: _backend,
     );
-    _feeds = VentureFeeds(backend: _backend);
+    // Snapshots make the Venture map usable with no signal: the last good
+    // response for each feed is replayed when a fetch fails, so opening
+    // the app offshore shows buoys and coverage rather than empty sea.
+    _feeds = VentureFeeds(
+      backend: _backend,
+      snapshots: MapSnapshotStore(_db),
+    );
     _restore();
   }
 

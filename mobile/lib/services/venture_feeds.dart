@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
+import '../data/map_snapshot_store.dart';
 import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
 import '../models/community_spot.dart';
@@ -26,7 +27,9 @@ class VentureFeeds {
     required BackendClient backend,
     http.Client? weatherClient,
     ForecastProvider? forecastProvider,
+    MapSnapshotStore? snapshots,
   })  : _backend = backend,
+        _snapshots = snapshots,
         _weatherClient = weatherClient ?? http.Client(),
         _forecast = forecastProvider ??
             AqOneForecastProvider(
@@ -37,6 +40,43 @@ class VentureFeeds {
   final BackendClient _backend;
   final http.Client _weatherClient;
   final ForecastProvider _forecast;
+
+  /// Null in tests and anywhere a database is not worth standing up. Every
+  /// feed then behaves exactly as it did before offline support existed.
+  final MapSnapshotStore? _snapshots;
+
+  /// Fetches [path], snapshotting the response so the same feed can be served
+  /// with no signal.
+  ///
+  /// The snapshot holds the raw body, so a stored response parses through the
+  /// identical model code as a live one. There is no second code path to keep
+  /// correct, which matters for data a rescue may depend on.
+  Future<Object?> _cachedJson(String feed, Future<Object?> Function() fetch) async {
+    final Object? live = await fetch();
+    final MapSnapshotStore? store = _snapshots;
+    if (live != null) {
+      if (store != null) {
+        await store.save(feed, jsonEncode(live));
+      }
+      return live;
+    }
+    if (store == null) {
+      return null;
+    }
+    final MapSnapshot? cached = await store.load(feed);
+    if (cached == null) {
+      return null;
+    }
+    try {
+      return jsonDecode(cached.payload);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// When each feed was last successfully fetched, for the offline banner.
+  Future<Map<String, DateTime>> snapshotAges() async =>
+      _snapshots?.ages() ?? const <String, DateTime>{};
 
   /// Current conditions from Open-Meteo.
   Future<WeatherSnapshot?> weather({
@@ -78,7 +118,10 @@ class VentureFeeds {
   }
 
   Future<List<BuoyMarker>?> buoys() async {
-    final decoded = await _backend.getJson(AqOneConfig.buoysPath);
+    final decoded = await _cachedJson(
+      MapSnapshotStore.feedBuoys,
+      () => _backend.getJson(AqOneConfig.buoysPath),
+    );
     if (decoded == null) {
       return null;
     }
@@ -93,8 +136,10 @@ class VentureFeeds {
   /// the weather outlook: a hotspot needs other fishers' consented catch data
   /// joined with environmental history, and a handset has neither.
   Future<HotspotSurface?> hotspots() async {
-    final Object? decoded =
-        await _backend.getJson(AqOneConfig.publicHotspotsPath);
+    final Object? decoded = await _cachedJson(
+      MapSnapshotStore.feedHotspots,
+      () => _backend.getJson(AqOneConfig.publicHotspotsPath),
+    );
     if (decoded == null) {
       return null;
     }
@@ -119,7 +164,15 @@ class VentureFeeds {
     final path = kind == HazardKind.wave
         ? AqOneConfig.waveAlertsPath
         : AqOneConfig.capsizingAlertsPath;
-    final decoded = await _backend.getJson(path);
+    // Hazards expire far sooner than the other feeds - see
+    // MapSnapshotStore.hazardMaxAge. A six-hour-old wave warning says
+    // nothing about the sea a fisherman is looking at now.
+    final decoded = await _cachedJson(
+      kind == HazardKind.wave
+          ? MapSnapshotStore.feedWaveAlerts
+          : MapSnapshotStore.feedCapsizeAlerts,
+      () => _backend.getJson(path),
+    );
     if (decoded == null) {
       return null;
     }
@@ -129,8 +182,12 @@ class VentureFeeds {
   /// The MDRRMO-set sea condition. Falls back to the public endpoint so the
   /// banner still populates if the authenticated one is unavailable.
   Future<SeaCondition?> seaCondition() async {
-    final decoded = await _backend.getJson(AqOneConfig.seaConditionPath) ??
-        await _backend.getJson(AqOneConfig.publicSeaConditionPath);
+    final decoded = await _cachedJson(
+      MapSnapshotStore.feedSeaCondition,
+      () async =>
+          await _backend.getJson(AqOneConfig.seaConditionPath) ??
+          await _backend.getJson(AqOneConfig.publicSeaConditionPath),
+    );
     if (decoded == null) {
       return null;
     }
@@ -152,8 +209,12 @@ class VentureFeeds {
   }
 
   Future<List<Advisory>?> advisories() async {
-    final decoded = await _backend.getJson(AqOneConfig.advisoriesPath) ??
-        await _backend.getJson(AqOneConfig.publicAdvisoriesPath);
+    final decoded = await _cachedJson(
+      MapSnapshotStore.feedAdvisories,
+      () async =>
+          await _backend.getJson(AqOneConfig.advisoriesPath) ??
+          await _backend.getJson(AqOneConfig.publicAdvisoriesPath),
+    );
     if (decoded == null) {
       return null;
     }

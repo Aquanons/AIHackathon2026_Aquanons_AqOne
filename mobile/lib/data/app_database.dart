@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 10,
+      version: 11,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         // Each step is wrapped in try/catch so a partially-applied migration
@@ -94,6 +94,14 @@ class AppDatabase {
           // comment for why this carries no prediction/trend/health columns.
           await _createFishingSpotOutbox(db);
         }
+        if (oldVersion < 11) {
+          // v11: offline map. The Venture map's feeds lived in memory only,
+          // so closing the app at the dock and reopening it offshore left a
+          // blank sea - no buoys, no coverage, no last hazard picture. This
+          // holds the last good response per feed so the map is usable with
+          // no signal at all.
+          await _createMapSnapshot(db);
+        }
       },
       onCreate: (db, version) async {
         await db.execute('''
@@ -143,6 +151,7 @@ class AppDatabase {
         await _createCatchOutbox(db);
         await _createChecklistItems(db);
         await _createFishingSpotOutbox(db);
+        await _createMapSnapshot(db);
       },
     );
   }
@@ -262,6 +271,22 @@ class AppDatabase {
   /// logs are. No prediction/trend/health/reporter-count columns exist here
   /// - see FishingSpot's doc comment for why fabricating those would be
   /// dishonest about a model that doesn't exist.
+  /// One row per feed, holding the raw JSON exactly as the backend sent it.
+  ///
+  /// Raw rather than parsed columns on purpose: the models already know how
+  /// to read that shape, so a snapshot stays readable when a feed gains a
+  /// field, and a schema change on the backend cannot silently corrupt what
+  /// a fisherman sees offshore.
+  static Future<void> _createMapSnapshot(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS map_snapshot (
+        feed       TEXT PRIMARY KEY,
+        payload    TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL
+      )
+    ''');
+  }
+
   static Future<void> _createFishingSpotOutbox(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS fishing_spot_outbox (
