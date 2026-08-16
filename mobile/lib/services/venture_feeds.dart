@@ -9,6 +9,7 @@ import '../models/buoy_marker.dart';
 import '../models/community_spot.dart';
 import '../models/daily_outlook.dart';
 import '../models/hazard_alert.dart';
+import '../models/hotspot_cell.dart';
 import '../models/sea_condition.dart';
 import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
@@ -82,6 +83,22 @@ class VentureFeeds {
       return null;
     }
     return BuoyMarker.parseList(decoded);
+  }
+
+  /// The modelled fish-hotspot surface.
+  ///
+  /// Returns null when the endpoint does not exist yet, which is the current
+  /// state and the reason the map simply draws no layer rather than falling
+  /// back to something weaker. There is no device-side substitute here, unlike
+  /// the weather outlook: a hotspot needs other fishers' consented catch data
+  /// joined with environmental history, and a handset has neither.
+  Future<HotspotSurface?> hotspots() async {
+    final Object? decoded =
+        await _backend.getJson(AqOneConfig.publicHotspotsPath);
+    if (decoded == null) {
+      return null;
+    }
+    return HotspotCell.parse(decoded);
   }
 
   /// DEPRECATED, and no longer called from anywhere.

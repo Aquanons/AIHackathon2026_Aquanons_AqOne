@@ -168,6 +168,19 @@ class AqOneConfig {
   /// so anything a handset had already queued still uploads.
   static const String spotsPath = '/api/spots';
 
+  /// Fish-hotspot surface (§6.2): binned cells scored by a model over
+  /// consented catch logs joined with environmental data.
+  ///
+  /// Not implemented yet - Phase 3 in the delivery plan. The client renders
+  /// the layer only when this answers, so switching the model on is a backend
+  /// deploy rather than a handset release. Contract in docs/05_PUBLIC_API.md.
+  static const String publicHotspotsPath = '/api/public/hotspots';
+
+  /// How often Venture refreshes the hotspot surface. A model that runs daily
+  /// does not need a 30-second poll; this only exists so a surface published
+  /// mid-trip appears without a restart.
+  static const Duration hotspotRefreshInterval = Duration(minutes: 15);
+
   /// Squall nowcast (AI #1). Public because the handset has no account - see
   /// backend/app/api/public.py.
   static const String publicSquallPath = '/api/public/squall';

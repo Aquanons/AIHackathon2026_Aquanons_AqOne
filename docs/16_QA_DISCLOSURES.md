@@ -237,6 +237,27 @@ records our refusal to build enforcement features — not for lack of time, but
 because positioning a safety network as surveillance would destroy adoption
 among the people it protects.
 
+### A feature we removed on privacy grounds — worth volunteering
+
+Venture briefly shipped manual fishing-spot reporting: a pin-drop that
+published a fisher's exact GPS coordinates, attributed to their vessel, to
+every other handset, with no consent step.
+
+We cut it. It contradicted our own design in two places — §6.2 requires
+hotspot locations to be spatially binned and protected against exposing an
+individual's exact productive location, and §6.1 puts all fisheries
+collection behind separate informed consent. A productive fishing spot is
+livelihood. Publishing one precisely, for free, to everyone with the app is
+not a feature a fisher would have asked for, and the fact that it demoed well
+is exactly why it survived as long as it did.
+
+Catch logging already collects species, quantity and position under consent,
+which is the input the hotspot model needs. The replacement path is binned
+cells from that model, never individual pins. See `docs/05_PUBLIC_API.md`.
+
+**This is a good answer to give before you are asked.** It shows the
+governance section is load-bearing rather than decorative.
+
 ### Mitigations already in the codebase
 
 These are design decisions a judge can verify:
@@ -331,6 +352,12 @@ leeway models do.
   weather API, not a trained model and not buoy-derived. The fused
   buoy + weather scorer is specified but unbuilt, and the thresholds
   themselves are unreviewed by anyone who fishes these waters.
+- **There is no hotspot model.** The contract is written
+  (`docs/05_PUBLIC_API.md`) and the app renders the layer the moment the
+  endpoint answers, but nothing is scored today and the map shows no hotspot
+  layer at all. If asked what happened to the fish-hotspot feature, the
+  answer is that we removed the manual version on purpose — see below — and
+  the modelled replacement is Phase 3.
 - The Venture compass reads **magnetic** north from the handset magnetometer.
   It is uncorrected for declination (under a degree locally, well inside
   sensor noise) and will read badly near an engine or a magnetic phone mount;

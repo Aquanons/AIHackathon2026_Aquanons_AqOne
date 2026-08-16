@@ -189,6 +189,70 @@ Field notes, all of them load-bearing:
 Parsing and every one of these rules is pinned by
 `mobile/test/daily_outlook_test.dart`.
 
+## Fish hotspots — **contract agreed, not yet implemented**
+
+### `GET /api/public/hotspots`
+
+The modelled hotspot surface (§6.2): consented catch logs joined with
+seasonal and environmental indicators, scored server-side.
+
+**This endpoint does not exist yet** — it is Phase 3 in the delivery plan.
+The handset polls it and draws nothing when it 404s. There is deliberately no
+client-side fallback: a hotspot needs other fishers' consented data joined
+with environmental history, and a handset has neither, so the honest answer
+until the model exists is an empty map.
+
+Response `200`:
+
+```json
+{
+  "generated_at": "2026-08-16T02:00:00Z",
+  "model_version": "hotspot-v0.1",
+  "min_reporters": 5,
+  "cells": [
+    {
+      "center_lat": 11.72,
+      "center_lon": 122.36,
+      "cell_size_degrees": 0.05,
+      "score": 0.82,
+      "observations": 34
+    }
+  ]
+}
+```
+
+Rules the shape enforces, all of them deliberate:
+
+- **Cells, never points.** §6.2 requires binning that protects an
+  individual's exact productive location. There is no field in which a
+  precise coordinate could be expressed, so the privacy property belongs to
+  the contract rather than to whatever renders it.
+- `score` is relative suitability 0–1, **not** a probability of catching
+  anything. §6.2 forbids implying guaranteed catch, and the client renders it
+  as opacity of a single hue — never a red-to-green ramp, which reads as a
+  safety verdict.
+- `observations` and `min_reporters` are shown in the map legend. §6.3's
+  minimum-reporter rule stops one prolific fisher becoming "the model", and a
+  cell resting on two reports must not look like one resting on two hundred.
+- `generated_at` drives a visible staleness label, per §3.4.
+- Cells should be withheld server-side when they fall below the reporter
+  threshold. The client cannot tell a withheld cell from an empty sea, which
+  is the intended asymmetry.
+
+Parsing is pinned by `mobile/test/hotspot_cell_test.dart`.
+
+### `POST /api/spots` — **deprecated, no callers**
+
+Manual pin-drop fishing spots. Removed from the handset. It published exact
+coordinates, attributed to a vessel, to every other handset, with no consent
+gate — the direct opposite of §6.2's binning requirement and §6.1's separate
+opt-in. The dashboard's `fetchHotspots()` that once read it no longer exists
+either.
+
+Endpoint and tables are left in place so anything a handset had already
+queued still uploads. Nothing writes new spots. Delete both once the
+outstanding queues are known to be drained.
+
 ### PAGASA
 
 When a data-sharing agreement exists, PAGASA replaces the **atmospheric half

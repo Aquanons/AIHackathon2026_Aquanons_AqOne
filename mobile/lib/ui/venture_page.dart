@@ -13,6 +13,7 @@ import '../models/buoy_marker.dart';
 import '../models/catch_record.dart';
 import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
+import '../models/hotspot_cell.dart';
 import '../models/sos_record.dart';
 import '../models/weather_snapshot.dart';
 import '../services/catch_service.dart';
@@ -33,6 +34,11 @@ const Color _surfaceDark = Color(0xFF1E293B);
 const Color _canvasDark = Color(0xFF0F172A);
 const Color _danger = Color(0xFFDC2626);
 const Color _success = Color(0xFF16A34A);
+
+/// Fill for a modelled hotspot cell. A single hue varied by opacity, not a
+/// traffic-light ramp: suitability is not a safety verdict, and green cells
+/// on a map a fisher reads before leaving would be taken as one.
+const Color _hotspotColor = Color(0xFF14B8A6);
 
 /// How long a fisher has to slide-to-cancel before the SOS actually sends.
 /// Short enough to still read as "immediate" - the button does not gate the
@@ -97,6 +103,7 @@ class _VenturePageState extends State<VenturePage> {
   final RequestGuard _buoyGuard = RequestGuard();
   final RequestGuard _waveGuard = RequestGuard();
   final RequestGuard _capsizeGuard = RequestGuard();
+  final RequestGuard _hotspotGuard = RequestGuard();
   StreamSubscription<void>? _sosSub;
   Timer? _pollTimer;
 
@@ -119,6 +126,12 @@ class _VenturePageState extends State<VenturePage> {
   bool _safetyDialogShown = false;
 
   List<BuoyMarker> _buoys = const <BuoyMarker>[];
+
+  /// The modelled hotspot surface, or null while the endpoint does not exist.
+  /// Null draws nothing at all - see HotspotCell's doc comment for why there
+  /// is no client-side substitute.
+  HotspotSurface? _hotspots;
+  Timer? _hotspotTimer;
   final Map<HazardKind, List<HazardAlert>> _hazards =
       <HazardKind, List<HazardAlert>>{};
   final Set<String> _announcedHazardIds = <String>{};
@@ -156,8 +169,13 @@ class _VenturePageState extends State<VenturePage> {
       _locate(initial: true);
       _loadBuoys();
       _loadHazards();
+      _loadHotspots();
       _refreshSosStatus();
       _refreshCatchCount();
+      _hotspotTimer = Timer.periodic(
+        AqOneConfig.hotspotRefreshInterval,
+        (_) => _loadHotspots(),
+      );
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
         _loadHazards();
@@ -170,6 +188,7 @@ class _VenturePageState extends State<VenturePage> {
     // Polling must stop with the screen. Left running it drains battery and
     // keeps hitting the backend while the phone is in a pocket at sea.
     _pollTimer?.cancel();
+    _hotspotTimer?.cancel();
     _sosSub?.cancel();
     _catchSub?.cancel();
     // The magnetometer keeps the SoC awake while subscribed, so it must go
@@ -224,6 +243,21 @@ class _VenturePageState extends State<VenturePage> {
       return;
     }
     setState(() => _buoys = buoys);
+  }
+
+  /// Loads the modelled hotspot surface.
+  ///
+  /// A 404 (the current state - the model is Phase 3) leaves _hotspots null
+  /// and the map draws nothing. There is no fallback by design: the honest
+  /// answer to "where are the fish" is silence until something has actually
+  /// been modelled.
+  Future<void> _loadHotspots() async {
+    final version = _hotspotGuard.begin();
+    final surface = await widget.feeds.hotspots();
+    if (!mounted || !_hotspotGuard.isCurrent(version) || surface == null) {
+      return;
+    }
+    setState(() => _hotspots = surface);
   }
 
   Future<void> _loadHazards() async {
@@ -545,6 +579,15 @@ class _VenturePageState extends State<VenturePage> {
                 right: 0,
                 child: Center(child: _buildLocatingPill(isDark)),
               ),
+            // Only present while the layer is. §3.4 requires data age and
+            // coverage to be visible wherever a model output is shown, and
+            // §6.2 forbids implying a guaranteed catch.
+            if (_hotspots != null)
+              Positioned(
+                left: 8,
+                bottom: 26 + widget.bottomInset,
+                child: _buildHotspotLegend(isDark, _hotspots!),
+              ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
             Positioned(
@@ -554,6 +597,70 @@ class _VenturePageState extends State<VenturePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Legend for the hotspot layer, shown only when a surface is on the map.
+  ///
+  /// Deliberately states what the layer is not. A shaded blob on a sea chart
+  /// reads as authority, and this one is a suitability estimate that has never
+  /// promised anyone a fish.
+  Widget _buildHotspotLegend(bool isDark, HotspotSurface surface) {
+    final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
+    final String? age = surface.ageLabel;
+    final int cells = surface.cells.length;
+    final int observations = surface.cells.fold<int>(
+      0,
+      (int sum, HotspotCell c) => sum + c.observations,
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _hotspotColor.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: _hotspotColor.withValues(alpha: 0.38),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Likely fishing areas',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '$cells areas · $observations catch reports'
+            '${age == null ? '' : ' · $age'}'
+            '${surface.minReporters == null ? '' : ' · min ${surface.minReporters} reporters'}',
+            style: TextStyle(fontSize: 9.5, color: fg),
+          ),
+          Text(
+            'Estimate from catch logs. Not a promise of fish, '
+            'and not a safe-to-go-out signal.',
+            style: TextStyle(fontSize: 9.5, color: fg),
+          ),
+        ],
       ),
     );
   }
@@ -575,7 +682,24 @@ class _VenturePageState extends State<VenturePage> {
       if (_userLocation != null) _buildUserMarker(_userLocation!),
     ];
 
+    final hotspots = _hotspots;
     final circles = <CircleMarker>[
+      // Drawn first so buoy coverage and every safety overlay paint on top.
+      // §6.2: safety warnings override and visually supersede hotspot
+      // guidance, which is a paint-order property before it is a policy.
+      if (hotspots != null)
+        for (final cell in hotspots.cells)
+          CircleMarker(
+            point: LatLng(cell.centerLat, cell.centerLon),
+            radius: cell.approxRadiusMeters,
+            useRadiusInMeter: true,
+            // Opacity carries the score. Deliberately no red-to-green scale:
+            // this is suitability, and a green "go here" tier would read as a
+            // safety judgement the model has not made.
+            color: _hotspotColor.withValues(alpha: 0.10 + 0.28 * cell.score),
+            borderColor: _hotspotColor.withValues(alpha: 0.35),
+            borderStrokeWidth: 1,
+          ),
       for (final buoy in _buoys)
         CircleMarker(
           point: LatLng(buoy.latitude, buoy.longitude),
