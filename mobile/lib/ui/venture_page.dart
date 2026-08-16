@@ -21,6 +21,7 @@ import '../services/compass_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_alarm.dart';
 import '../services/sos_service.dart';
+import '../services/tile_cache.dart';
 import '../services/venture_feeds.dart';
 import 'catch_history_page.dart';
 import 'chathubb.dart';
@@ -109,6 +110,12 @@ class _VenturePageState extends State<VenturePage> {
   Timer? _pollTimer;
 
   double _rotation = 0;
+
+  /// Basemap tiles the fisherman has already looked at, kept on disk.
+  ///
+  /// Required by the OSM tile policy rather than optional - see TileCache.
+  /// Only tiles that were actually drawn are stored; nothing is pre-fetched.
+  final TileCache _tiles = TileCache();
 
   final CompassService _compass = CompassService();
   StreamSubscription<CompassReading>? _compassSub;
@@ -202,6 +209,7 @@ class _VenturePageState extends State<VenturePage> {
     // The magnetometer keeps the SoC awake while subscribed, so it must go
     // down with the screen.
     _compassSub?.cancel();
+    _tiles.dispose();
     unawaited(_compass.dispose());
     _mapController.dispose();
     unawaited(_sosAlarm.dispose());
@@ -764,6 +772,12 @@ class _VenturePageState extends State<VenturePage> {
         TileLayer(
           urlTemplate: AqOneConfig.osmTileUrl,
           userAgentPackageName: 'ph.aqone.app',
+          tileProvider: CachedNetworkTileProvider(cache: _tiles),
+          // Keep showing the coarser tile already on screen while a finer one
+          // loads or fails. Offline, that is the difference between a blurry
+          // map and a grey one.
+          keepBuffer: 3,
+          panBuffer: 1,
         ),
         if (circles.isNotEmpty) CircleLayer(circles: circles),
         MarkerLayer(markers: markers),

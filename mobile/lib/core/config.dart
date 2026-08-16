@@ -81,6 +81,16 @@ class AqOneConfig {
   /// source project. Rendered as a visible attribution on the map.
   static const String osmAttribution = '© OpenStreetMap contributors';
 
+  /// Sent on every basemap tile request.
+  ///
+  /// The OSM tile policy §3.4 requires a distinct, stable User-Agent naming
+  /// the app with a contact, and says traffic using a library's generic
+  /// default "will be blocked" without notice. Keep the product name stable
+  /// across releases and bump only the version.
+  static const String tileUserAgent =
+      'AqOne/0.1 (+https://github.com/Aquanons; municipal fisher safety, '
+      'New Washington, Aklan)';
+
   static const String openMeteoBase = 'https://api.open-meteo.com/v1/forecast';
 
   /// Wave model, a different host from the atmospheric one above. Free and
