@@ -58,9 +58,30 @@ feature importance**. We kept it in the card rather than quietly dropping it.
 
 ### F. Open-Meteo Forecast API — *live, in-product*
 
-Current conditions in the mobile app (`mobile/lib/services/venture_feeds.dart`).
-Displayed with the source named and an explicit "this is not a PAGASA warning"
-disclaimer.
+Current conditions and the Home seven-day outlook strip
+(`mobile/lib/services/forecast_provider.dart`). Displayed with the source
+named and an explicit "this is not a PAGASA warning" disclaimer.
+
+**If asked about the red/amber/green day colours, say this:** they are a
+client-side threshold heuristic over public forecast data
+(`mobile/lib/services/safety_score.dart`), not a model and not an official
+call. The authoritative go/no-go is the MDRRMO-set sea condition in the banner
+above the card. The thresholds (30/50 km/h gusts, 1.5/2.5 m waves) are our own
+provisional numbers and have not been reviewed by MDRRMO or by a fisherman —
+that review is listed under known gaps below.
+
+The intended source is a fused backend score combining buoy sensor telemetry
+with the weather feed. The contract for it is written
+(`docs/05_PUBLIC_API.md`) and the app already prefers it when present, but the
+endpoint is **not built**. Do not describe the colours as buoy-driven today.
+
+### F2. Open-Meteo Marine API — *live, in-product*
+
+Significant wave height for the outlook strip, sampled at a fixed offshore
+point because the wave grid has no data over land. When the marine model
+returns nothing for a day — which happens in nearshore cells — the app shows
+the day's colour with an explicit "sea state not available" note rather than
+assuming calm water.
 
 ### G. Basemap tiles
 
@@ -306,3 +327,11 @@ leeway models do.
   not have, because we have not built it.
 - No LoRa downlink to the handset. The phone learns delivery and acknowledgement
   status over the internet, not over the mesh.
+- The forecast strip's safety colours are threshold rules over a public
+  weather API, not a trained model and not buoy-derived. The fused
+  buoy + weather scorer is specified but unbuilt, and the thresholds
+  themselves are unreviewed by anyone who fishes these waters.
+- The Venture compass reads **magnetic** north from the handset magnetometer.
+  It is uncorrected for declination (under a degree locally, well inside
+  sensor noise) and will read badly near an engine or a magnetic phone mount;
+  the dial flags that state but cannot correct it.

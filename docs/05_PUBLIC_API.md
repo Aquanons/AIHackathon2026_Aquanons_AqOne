@@ -123,6 +123,81 @@ Returns that vessel's SOS rows, newest first. The app matches by
 `(vessel_id, seq)` to mark a message `acknowledged` when an MDRRMO responder
 has acked it. No auth for MVP; the id is an unguessable UUID.
 
+## Daily outlook for the app — **contract agreed, not yet implemented**
+
+### `GET /api/public/forecast`
+
+The fused seven-day outlook behind Home's forecast strip: buoy sensor
+telemetry combined with a weather provider, scored server-side.
+
+**This endpoint does not exist yet.** The contract is fixed here first so the
+handset and the backend can be built against it independently. Until it
+answers, the app falls back to Open-Meteo plus its own heuristic
+(`mobile/lib/services/forecast_provider.dart`), so switching it on is a
+backend-only deploy — no handset release.
+
+| Query | Default | Meaning |
+|---|---|---|
+| `lat` | — | Position to forecast for. |
+| `lon` | — | Position to forecast for. |
+| `days` | 7 | Days requested (≤ 7 is what the strip renders). |
+
+Response `200`:
+
+```json
+{
+  "source": "aqone-fusion",
+  "generated_at": "2026-08-16T04:00:00Z",
+  "days": [
+    {
+      "date": "2026-08-16",
+      "weather_code": 95,
+      "temp_max": 31.2,
+      "temp_min": 25.8,
+      "wind_kph": 24,
+      "gust_kph": 41,
+      "precip_mm": 18.4,
+      "wave_m": 2.1,
+      "risk": {
+        "level": "danger",
+        "score": 0.81,
+        "reason": "Gusts 41 km/h, 2.1 m swell at Buoy B",
+        "inputs": ["buoy:buoy-b", "open-meteo"]
+      }
+    }
+  ]
+}
+```
+
+Field notes, all of them load-bearing:
+
+- `weather_code` is **WMO 4677**, the same vocabulary Open-Meteo uses, so one
+  icon mapping on the handset serves every provider.
+- `wave_m` is significant wave height in metres, and is **nullable**. Null
+  means unknown. It must never be sent as `0.0` to mean "we didn't measure" —
+  that reads as flat calm and paints a dangerous day green.
+- `risk` is **optional**. Omit it (or send `null`) and the handset scores the
+  day itself and labels the verdict as device-derived. This is what lets the
+  backend serve weather before the fusion model is ready.
+- `risk.level` is one of `safe` \| `caution` \| `danger` \| `unknown`.
+- `risk.inputs` is how the app knows whether sea state was considered. An
+  entry starting `buoy:` or the literal `wave` counts as sea state; without
+  one, the card tells the user the verdict came from wind and rain only.
+- `risk.score` is 0–1, most dangerous at 1. Advisory, for future tuning — the
+  UI buckets on `level`.
+
+Parsing and every one of these rules is pinned by
+`mobile/test/daily_outlook_test.dart`.
+
+### PAGASA
+
+When a data-sharing agreement exists, PAGASA replaces the **atmospheric half
+only**. Their TenDay API is keyed by municipality rather than coordinates and
+carries no sea state, so wave height keeps coming from the marine model or
+from our own buoys. The call should live behind this endpoint rather than in
+the handset, so attribution and rate terms are honoured in one place and no
+credential ships on a phone.
+
 ## Roles
 
 - `mdrrmo` and `admin` may list and ack. `admin` may also register devices and

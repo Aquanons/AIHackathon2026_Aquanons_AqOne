@@ -83,8 +83,56 @@ class AqOneConfig {
 
   static const String openMeteoBase = 'https://api.open-meteo.com/v1/forecast';
 
+  /// Wave model, a different host from the atmospheric one above. Free and
+  /// keyless like the main endpoint.
+  ///
+  /// This stays in use even after PAGASA is wired in: PAGASA's TenDay API is
+  /// a land forecast keyed by municipality and carries no sea state, so it
+  /// replaces the atmospheric half only.
+  static const String openMeteoMarineBase =
+      'https://marine-api.open-meteo.com/v1/marine';
+
   /// Wind above this is treated as unsafe by the client-side heuristic.
   static const double unsafeWindKph = 30;
+
+  // --- Forecast ------------------------------------------------------------
+
+  /// Days shown in the Home forecast strip.
+  ///
+  /// Seven is what the strip is designed for, but WMO codes past about day 4
+  /// are weak. [forecastConfidentDays] is where the chips start being drawn
+  /// as a lower-confidence outlook rather than a forecast.
+  static const int forecastDays = 7;
+  static const int forecastConfidentDays = 3;
+
+  /// Daily data does not change minute to minute, and the battery has to last
+  /// a fishing trip. Deliberately far slower than [hazardPollInterval].
+  static const Duration forecastRefreshInterval = Duration(minutes: 30);
+
+  /// Marine grid cells are open water. Sampling the municipal centre - which
+  /// is on land - returns nulls, so the wave request is nudged offshore.
+  /// Roughly 8 km south-west of the Aklan reading point, into Sibuyan Sea
+  /// water rather than over Panay.
+  static const double marineSampleLat = 11.7450;
+  static const double marineSampleLon = 122.3200;
+
+  /// PAGASA keys its forecasts by municipality rather than coordinates, so
+  /// the provider interface carries one from the start. Swapping this for a
+  /// value derived from the user's fix is a later change.
+  static const String defaultMunicipality = 'Kalibo, Aklan';
+
+  // Risk thresholds for the device-side fallback score.
+  //
+  // PROVISIONAL. These were picked to be defensible, not because anyone who
+  // fishes these waters has signed off on them. They decide whether a chip
+  // reads green or red, so they should be reviewed by the MDRRMO or an
+  // experienced fisherman before this is put in front of real users.
+  static const double cautionGustKph = 30;
+  static const double dangerGustKph = 50;
+  static const double cautionWaveM = 1.5;
+  static const double dangerWaveM = 2.5;
+  static const double cautionPrecipMm = 20;
+  static const double dangerPrecipMm = 50;
 
   // --- Backend paths -------------------------------------------------------
 
@@ -111,6 +159,13 @@ class AqOneConfig {
   /// Squall nowcast (AI #1). Public because the handset has no account - see
   /// backend/app/api/public.py.
   static const String publicSquallPath = '/api/public/squall';
+
+  /// Fused daily outlook: buoy sensor telemetry combined with a weather
+  /// provider, scored server-side. Not implemented yet - the client falls
+  /// back to Open-Meteo plus its own heuristic whenever this 404s, so it can
+  /// be switched on without a handset release. Contract is documented on
+  /// DailyOutlook.fromAqOne.
+  static const String publicForecastPath = '/api/public/forecast';
 
   /// How often the handset re-checks for a squall. Short enough that the
   /// warning is useful (the model forecasts tens of minutes of lead time),

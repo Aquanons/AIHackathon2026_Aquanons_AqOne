@@ -7,11 +7,13 @@ import '../core/config.dart';
 import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
 import '../models/community_spot.dart';
+import '../models/daily_outlook.dart';
 import '../models/hazard_alert.dart';
 import '../models/sea_condition.dart';
 import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import 'backend_client.dart';
+import 'forecast_provider.dart';
 
 /// Read-only feeds behind the Venture map.
 ///
@@ -22,11 +24,18 @@ class VentureFeeds {
   VentureFeeds({
     required BackendClient backend,
     http.Client? weatherClient,
+    ForecastProvider? forecastProvider,
   })  : _backend = backend,
-        _weatherClient = weatherClient ?? http.Client();
+        _weatherClient = weatherClient ?? http.Client(),
+        _forecast = forecastProvider ??
+            AqOneForecastProvider(
+              backend: backend,
+              fallback: OpenMeteoForecastProvider(client: weatherClient),
+            );
 
   final BackendClient _backend;
   final http.Client _weatherClient;
+  final ForecastProvider _forecast;
 
   /// Current conditions from Open-Meteo.
   Future<WeatherSnapshot?> weather({
@@ -47,6 +56,24 @@ class VentureFeeds {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Seven-day outlook with a per-day risk verdict.
+  ///
+  /// Delegates to the configured [ForecastProvider], which tries the fused
+  /// AqOne endpoint before falling back to Open-Meteo. Null on failure, same
+  /// contract as everything else here: keep the last good strip on screen.
+  Future<List<DailyOutlook>?> forecast({
+    required double lat,
+    required double lon,
+    String? municipality,
+  }) {
+    return _forecast.daily(
+      lat: lat,
+      lon: lon,
+      municipality: municipality ?? AqOneConfig.defaultMunicipality,
+      days: AqOneConfig.forecastDays,
+    );
   }
 
   Future<List<BuoyMarker>?> buoys() async {

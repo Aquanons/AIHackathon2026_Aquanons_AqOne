@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 
 import '../core/config.dart';
 import '../core/tokens.dart';
+import '../data/forecast_cache.dart';
 import '../data/identity_store.dart';
 import '../models/advisory.dart';
+import '../models/daily_outlook.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
 import '../models/sos_record.dart';
@@ -70,6 +72,17 @@ class _HomePageState extends State<HomePage> {
   /// Whether the current reading is for the device position or the fallback.
   bool _weatherAtDevice = false;
 
+  // Seven-day outlook. Refreshed far less often than the buoy or sea polls:
+  // daily data does not change minute to minute and the battery has to last
+  // a trip.
+  List<DailyOutlook> _forecast = const <DailyOutlook>[];
+  Timer? _forecastTimer;
+  static const ForecastCache _forecastCache = ForecastCache();
+
+  /// Set only while the strip on screen came from the offline cache, so it
+  /// can be stamped with when it was actually fetched.
+  DateTime? _forecastFetchedAt;
+
   // Squall nowcast (AI #1) and its alarm.
   SquallWatch _squall = SquallWatch.unavailable;
   Timer? _squallTimer;
@@ -85,6 +98,10 @@ class _HomePageState extends State<HomePage> {
     _loadSea();
     _loadAdvisories();
     _loadWeather();
+    // Cache first so there is something on screen immediately, including with
+    // no signal at all; the live fetch overwrites it when it lands.
+    _restoreCachedForecast();
+    _loadForecast();
     _loadSquall();
     _buoyTimer = Timer.periodic(
       AqOneConfig.buoyPollInterval,
@@ -98,6 +115,10 @@ class _HomePageState extends State<HomePage> {
       AqOneConfig.squallPollInterval,
       (_) => _loadSquall(),
     );
+    _forecastTimer = Timer.periodic(
+      AqOneConfig.forecastRefreshInterval,
+      (_) => _loadForecast(),
+    );
   }
 
   @override
@@ -105,6 +126,7 @@ class _HomePageState extends State<HomePage> {
     _buoyTimer?.cancel();
     _seaTimer?.cancel();
     _squallTimer?.cancel();
+    _forecastTimer?.cancel();
     _alarm.dispose();
     _changes?.cancel();
     super.dispose();
@@ -186,6 +208,48 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Paints the last stored strip before any network call returns.
+  ///
+  /// Skipped entirely if a live fetch has already landed, so a fast network
+  /// never gets overwritten by older cached days.
+  Future<void> _restoreCachedForecast() async {
+    final CachedForecast? cached = await _forecastCache.load();
+    if (!mounted || cached == null || _forecast.isNotEmpty) {
+      return;
+    }
+    setState(() {
+      _forecast = cached.days;
+      _forecastFetchedAt = cached.fetchedAt;
+    });
+  }
+
+  /// The card's Retry button. Current conditions and the outlook come from
+  /// different endpoints, and if one is down the other usually is too, so the
+  /// one button retries both.
+  void _retryWeather() {
+    unawaited(_loadWeather());
+    unawaited(_loadForecast());
+  }
+
+  Future<void> _loadForecast() async {
+    final fix = await widget.location.cachedFixIfPermitted();
+    final List<DailyOutlook>? days = await widget.feeds.forecast(
+      lat: fix?.lat ?? AqOneConfig.aklanLat,
+      lon: fix?.lon ?? AqOneConfig.aklanLon,
+    );
+    if (!mounted || days == null || days.isEmpty) {
+      // Failure leaves whatever is on screen alone. A dropped poll at sea is
+      // routine and must not blank the outlook.
+      return;
+    }
+    setState(() {
+      _forecast = days;
+      // Live data, so drop the "as of" stamp the cached strip was carrying.
+      _forecastFetchedAt = null;
+    });
+    unawaited(_forecastCache.save(days, DateTime.now()));
+  }
+
   Future<void> _loadRecords() async {
     final records = await widget.service.history();
     if (!mounted) {
@@ -224,6 +288,7 @@ class _HomePageState extends State<HomePage> {
             await _loadSea();
             await _loadAdvisories();
             await _loadWeather();
+            await _loadForecast();
             await widget.service.retryPending();
             await widget.service.reconcile();
             await _loadRecords();
@@ -339,7 +404,9 @@ class _HomePageState extends State<HomePage> {
               WeatherCard(
                 snapshot: _weather,
                 isLoading: _weatherLoading,
-                onRetry: _loadWeather,
+                onRetry: _retryWeather,
+                forecast: _forecast,
+                forecastAge: _forecastFetchedAt,
                 locationLabel:
                     _weatherAtDevice ? 'your position' : 'Aklan (default)',
               ),
