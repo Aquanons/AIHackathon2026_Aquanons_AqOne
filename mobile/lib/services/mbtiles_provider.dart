@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 // See tile_cache.dart: widgets for the ImageProvider machinery, dart:ui
 // prefixed so ui.Image does not collide with the Image widget.
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';

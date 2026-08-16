@@ -3,9 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-// widgets, not foundation: ImageProvider, ImageConfiguration and the
-// ImageStreamCompleter family live here. dart:ui is prefixed because its
-// Image would otherwise collide with the Image widget.
+// The ImageProvider machinery (ImageProvider, ImageConfiguration, the
+// ImageStreamCompleter family) comes from widgets; SynchronousFuture is in
+// foundation, which widgets does not re-export. dart:ui is prefixed because
+// its Image would otherwise collide with the Image widget.
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
