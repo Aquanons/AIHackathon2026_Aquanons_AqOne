@@ -822,8 +822,9 @@ so no ownership conflict applied.
 
 **Changed files**
 
-- `mobile/pubspec.yaml` — added `flutter_secure_storage: ^9.2.4`,
-  `cryptography: ^2.7.0`, and dev-only `sqflite_common_ffi: ^2.4.2`.
+- `mobile/pubspec.yaml` — added `flutter_secure_storage` (resolved 11.0.0),
+  `cryptography: ^2.7.0` (resolved 2.9.0), and dev-only
+  `sqflite_common_ffi: ^2.4.2`.
 - `mobile/lib/data/secure_credential_store.dart` (new) — Keystore/Keychain
   storage for the vessel bearer token, device id, and the field-encryption
   key (DEK).
@@ -873,15 +874,32 @@ token in memory only and never persisted it.
   before this phase: plaintext personal fields, unauthenticated calls,
   working SOS.
 
+**Correction after the owner's first analyze run**
+
+The first implementation set `AndroidOptions(encryptedSharedPreferences: true)`
+and `IOSOptions(accessibility: ...)`. `flutter analyze` failed:
+`The named parameter 'encryptedSharedPreferences' isn't defined`. The resolved
+version is **11.0.0**, and version 10 removed that option after Google
+deprecated the Jetpack Security library behind it; the plugin now encrypts
+through the Keystore itself. `SecureCredentialStore` therefore uses platform
+defaults. iOS Keychain accessibility was dropped in the same change rather
+than guessed at — there is no iOS target in this checkout, so setting it
+would have been an unverifiable claim.
+
+Two `info` diagnostics introduced by earlier work were fixed in the same
+pass: a missing `const` in `demo_hotspots.dart` and a needlessly nullable
+local in `squall_alarm.dart` (`Vibration.hasVibrator()` returns a non-nullable
+`bool` in the resolved version).
+
 **Residual risk**
 
-- `flutter_secure_storage` is a platform plugin. This project has twice been
-  broken by native plugin configuration. Until `flutter pub get` and a
-  release build are run, the dependency is unproven.
-- On Android, `encryptedSharedPreferences: true` requires minSdk 23. The
-  project inherits `flutter.minSdkVersion`; this was read from
-  `android/app/build.gradle.kts` as inherited, not pinned, and has not been
-  confirmed against the resolved value.
+- `flutter_secure_storage` is a platform plugin. `flutter pub get` and
+  `flutter analyze` now pass, but no release build has been attempted, and
+  this project has twice been broken by native plugin configuration at build
+  time rather than analysis time.
+- Android minSdk for `flutter_secure_storage` 11 has not been checked against
+  the project's inherited `flutter.minSdkVersion`. A debug build succeeding
+  would settle it.
 - Field encryption protects data at rest against filesystem extraction. It
   does not protect a running, unlocked, rooted device, where the key is
   reachable.
@@ -925,8 +943,10 @@ result and its limitations here.
    livelihood-sensitive location data under the Phase 0 inventory and should
    be encrypted with the same cipher, but the change touches sync and upload
    paths and was kept out of this phase to keep the diff reviewable.
-3. iOS: no iOS target is present in this checkout, so Keychain options are
-   written but untested.
+3. iOS: no iOS target is present in this checkout. Keychain accessibility is
+   left at the plugin default; when an iOS target exists, decide explicitly
+   between `first_unlock_this_device` (background outbox flushes keep
+   working) and a stricter setting, and verify it.
 
 **Next hard stop**
 

@@ -69,11 +69,14 @@ dependencies:
   # SQLite. See docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md.
   #
   # flutter_secure_storage is a platform plugin, so it carries the same build
-  # risk that bit us with sensors_plus: verify `flutter pub get` and a release
-  # build before relying on it. encryptedSharedPreferences requires Android
-  # minSdk 23; this project inherits flutter.minSdkVersion, which is 24 on
-  # current Flutter.
-  flutter_secure_storage: ^9.2.4
+  # risk that bit us with sensors_plus: `flutter pub get` and `flutter analyze`
+  # now pass, but a release build has not been tried.
+  #
+  # 11.x, not 9.x: version 10 removed AndroidOptions.encryptedSharedPreferences
+  # after Google deprecated Jetpack Security, and the plugin encrypts through
+  # the Keystore itself now. SecureCredentialStore therefore uses platform
+  # defaults rather than setting that option.
+  flutter_secure_storage: 11.0.0
 
   # AES-GCM for individual sensitive columns. Pure Dart - no native config, no
   # Gradle surface - which is why it was chosen over a SQLCipher-backed

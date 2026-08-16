@@ -25,11 +25,11 @@ class DemoHotspots {
 
   /// Spread across the municipal waters rather than clustered, so the
   /// demonstration shows the range of the opacity scale rather than one blob.
-  static final HotspotSurface surface = HotspotSurface(
+  static const HotspotSurface surface = HotspotSurface(
     isDemo: true,
     minReporters: 5,
     modelVersion: 'example',
-    cells: const <HotspotCell>[
+    cells: <HotspotCell>[
       HotspotCell(
         centerLat: 11.7250,
         centerLon: 122.3600,

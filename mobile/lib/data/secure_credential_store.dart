@@ -28,23 +28,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// queued distress message.
 class SecureCredentialStore {
   SecureCredentialStore({FlutterSecureStorage? storage})
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(
-                // Backed by the Android Keystore rather than plain
-                // SharedPreferences. Phase 2 disabled Android backup for the
-                // app's data; this keeps the credential out of reach even
-                // with filesystem access to app-private storage.
-                encryptedSharedPreferences: true,
-              ),
-              iOptions: IOSOptions(
-                // Not synced to iCloud, and unavailable until the device has
-                // been unlocked once after boot. first_unlock rather than
-                // ...ThisDeviceOnly's stricter variants because background
-                // outbox flushes must still be able to read the token.
-                accessibility: KeychainAccessibility.first_unlock_this_device,
-              ),
-            );
+      // Platform defaults on purpose. flutter_secure_storage 10 removed
+      // AndroidOptions.encryptedSharedPreferences - Google deprecated the
+      // Jetpack Security library behind it - and the plugin now encrypts
+      // through the Keystore itself, so the option no longer exists to set.
+      // iOS Keychain accessibility is left at the default too: there is no
+      // iOS target in this checkout, so tightening it would be an
+      // unverifiable claim. Recorded as a carry-forward in
+      // docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md.
+      : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 

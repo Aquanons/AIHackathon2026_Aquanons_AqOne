@@ -57,8 +57,8 @@ class SquallAlarm {
 
   Future<void> _startVibration() async {
     try {
-      final bool? hasVibrator = await Vibration.hasVibrator();
-      if (hasVibrator != true || !_ringing) {
+      final bool hasVibrator = await Vibration.hasVibrator();
+      if (!hasVibrator || !_ringing) {
         return;
       }
       // Same pattern as SOS. Two sharp pulses then a pause, repeating - a
