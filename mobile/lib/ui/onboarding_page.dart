@@ -303,7 +303,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         ),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<LicenseType>(
-                          value: _licenseType,
+                          initialValue: _licenseType,
                           isExpanded: true,
                           style: TextStyle(
                             color: authText,

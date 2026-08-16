@@ -37,7 +37,7 @@ void main() {
     return MaterialApp(
       locale: locale,
       supportedLocales: kSupportedLocales,
-      localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

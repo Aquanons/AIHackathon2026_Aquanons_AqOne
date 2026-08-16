@@ -581,7 +581,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: AqSpace.sm),
                 DropdownButtonFormField<LicenseType>(
-                  value: _licenseType,
+                  initialValue: _licenseType,
                   isExpanded: true,
                   style: const TextStyle(color: _authText, fontSize: 15),
                   decoration: _decoration('Registration type', Icons.badge_outlined),

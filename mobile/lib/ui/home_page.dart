@@ -495,12 +495,14 @@ class _HomePageState extends State<HomePage> {
 class _BuoyNetworkItem {
   final String ssid;
   final int signalStrength;
-  bool isConnected;
+  /// Mutated as the user connects and disconnects; never supplied by a
+  /// caller, so it is initialised here rather than taking a constructor
+  /// parameter nobody passes.
+  bool isConnected = false;
 
   _BuoyNetworkItem({
     required this.ssid,
     required this.signalStrength,
-    this.isConnected = false,
   });
 }
 

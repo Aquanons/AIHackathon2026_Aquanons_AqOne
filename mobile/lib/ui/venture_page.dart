@@ -1889,7 +1889,7 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
     final fg = isDark ? Colors.white : const Color(0xFF0F172A);
     final dim = isDark ? Colors.white60 : const Color(0xFF64748B);
     final fieldFill = isDark ? _surfaceDark : Colors.white;
-    final accent = const Color(0xFF0284C7);
+    const Color accent = Color(0xFF0284C7);
     final inset = MediaQuery.of(context).viewInsets.bottom;
 
     final border = OutlineInputBorder(

@@ -188,7 +188,7 @@ class SosRecord {
         // carry an INTEGER-affinity value from before buoy_id became a
         // string (see app_database.dart schema note), and this keeps old
         // outbox rows readable instead of crashing on upgrade.
-        buoyId: (row['buoy_id'] as Object?)?.toString(),
+        buoyId: row['buoy_id']?.toString(),
         srcId: (row['src_id'] as num?)?.toInt(),
         seq: (row['seq'] as num?)?.toInt(),
         serverTs: (row['server_ts'] as num?)?.toInt(),

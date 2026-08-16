@@ -147,7 +147,7 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
               : _catches.isEmpty
                   ? ListView(
                       children: <Widget>[
-                        SizedBox(height: 120),
+                        const SizedBox(height: 120),
                         Center(
                           child: Text(
                             'No catches logged today yet.',
