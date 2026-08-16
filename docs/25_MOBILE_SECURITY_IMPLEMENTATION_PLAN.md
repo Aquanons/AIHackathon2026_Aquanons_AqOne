@@ -952,21 +952,66 @@ the check passes, which inflates the raw diff. The content change is 761
 lines; `git diff --ignore-cr-at-eol` shows it. A repo-wide
 `git add --renormalize .` in its own commit would stop this recurring.
 
-**Verification still owed (owner must run)**
+**Extraction test — PASSED, 2026-08-16**
 
-```powershell
-cd mobile; flutter pub get
-cd mobile; flutter analyze
-cd mobile; flutter test
-git diff --check
+Run by the owner on an Android emulator against a debug build, with a test
+profile saved through the Profile screen (boat `BG-123`, name
+`Juan dela Cruz`, phone `09171234567`).
+
+```
+cmd /c "adb exec-out run-as com.example.aqone cat databases/aqone_outbox.db > out.db"
+dir out.db      -> 86016 bytes
+
+findstr /C:"enc:v1:" out.db
+  phone         enc:v1:4SzvWFxKnx/dAjJza+fUMHoD7b5qzD2+rdIS+BaumibF4ziPGj9mfNU=
+  skipper_name  enc:v1:1MW7qCN2QDVhTD4ojCHl...
+  license_number ...BYRqNmdIzW+3IuYp5sbwROU
+  remember_me / trust_tier / license_type -> plaintext, as designed
+
+findstr /C:"BG-123" out.db
+  boat BG-123 , vessel_id 5ef1fd562df8d870fe7cdeb787d47639
+
+findstr /C:"+63" out.db
+  (no match)
 ```
 
-Plus the extraction check this phase requires: install a debug build, save a
-profile with a name and phone number, then pull the database
-(`adb exec-out run-as ph.aqone.app cat databases/aqone_outbox.db > out.db`)
-and confirm `skipper_name`, `license_number` and `phone` appear as
-`enc:v1:...` while `boat` and `vessel_id` are readable. Record the exact
-result and its limitations here.
+This is the evidence this phase demanded, and it is what "the library was
+added is not proof" was pointing at. Three things are established:
+
+1. Personal fields are ciphertext in the file an attacker would pull off a
+   device: name, phone and licence number all carry the `enc:v1:` prefix.
+2. The phone number does not appear in readable form anywhere in the file,
+   in the normalised `+63...` form the app actually writes.
+3. Emergency-critical fields are plaintext exactly as designed - `boat` and
+   `vessel_id` are readable, so a responder can still identify the vessel
+   with no keystore available.
+
+**Limitations of this test, stated plainly**
+
+- Android emulator only. No physical device, and no iOS (no iOS target
+  exists in this checkout).
+- Debug build. `run-as` does not work on a release build, so this proves the
+  data is encrypted, not that the release build behaves identically.
+- It proves encryption at rest against filesystem extraction. It says
+  nothing about a rooted, running, unlocked device, where the key is
+  reachable through the app process.
+
+**Verification still owed (owner must run)**
+
+`flutter pub get` passed. `flutter analyze` passed after the corrections
+above. `flutter test` last ran at 127 passed / 2 failed; both failures were
+test-side assertions fixed in commit `bc28400` and have **not been re-run
+since**. `git diff --check` passed path-scoped for each commit in this phase.
+
+Remaining, and it is two commands:
+
+```powershell
+cd mobile; flutter analyze
+cd mobile; flutter test
+```
+
+Record the real output here, then set this phase COMPLETE. Do not set it
+COMPLETE on the strength of the extraction test alone.
 
 **Carry-forward — do not lose these**
 
