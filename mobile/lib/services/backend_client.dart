@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
 import '../core/endpoint_guard.dart';
+import '../data/secure_credential_store.dart';
 import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
 
@@ -108,8 +109,12 @@ class VesselDeviceCredential {
 }
 
 class BackendClient {
-  BackendClient({http.Client? client, String? baseUrl})
-      : _client = client ?? http.Client(),
+  BackendClient({
+    http.Client? client,
+    String? baseUrl,
+    SecureCredentialStore? credentials,
+  })  : _client = client ?? http.Client(),
+        _credentials = credentials,
         _baseUrl = baseUrl ?? AqOneConfig.backendBaseUrl {
     EndpointGuard.requireHttpsAbsolute(
       _baseUrl,
@@ -119,6 +124,12 @@ class BackendClient {
 
   final http.Client _client;
   final String _baseUrl;
+
+  /// Keystore/Keychain backing for the bearer token. Null in tests and in any
+  /// caller that has no platform store, in which case the credential lives
+  /// for the session only - which is exactly how Phase 4 left it.
+  final SecureCredentialStore? _credentials;
+
   String? _vesselBearerToken;
 
   bool get hasVesselCredential =>
@@ -130,8 +141,21 @@ class BackendClient {
         trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
+  /// Sets the token and persists it to the platform keystore.
+  ///
+  /// A failed write is not an error the caller has to handle: the session
+  /// continues with the token in memory, which is strictly better than
+  /// refusing an enrolment because a keystore was unavailable.
+  Future<void> _persistVesselBearerToken(String token) async {
+    setVesselBearerToken(token);
+    await _credentials?.writeVesselToken(token);
+  }
+
   void clearVesselBearerToken() {
     _vesselBearerToken = null;
+    // Fire and forget: a revoked token must not linger on disk, but nothing
+    // in the calling paths can usefully wait on a keystore delete.
+    unawaited(_credentials?.clearVesselCredential() ?? Future<void>.value());
   }
 
   Future<VesselDeviceCredential?> enrollVesselDevice({
@@ -165,7 +189,8 @@ class BackendClient {
       if (credential == null) {
         return null;
       }
-      setVesselBearerToken(credential.token);
+      await _persistVesselBearerToken(credential.token);
+      await _credentials?.writeDeviceId('${credential.deviceId}');
       return credential;
     } catch (_) {
       return null;
@@ -199,7 +224,9 @@ class BackendClient {
       if (credential == null) {
         return null;
       }
-      setVesselBearerToken(credential.token);
+      // Persisted, not just set: leaving the old token on disk would mean a
+      // restart resurrects an expired credential and the next call 401s.
+      await _persistVesselBearerToken(credential.token);
       return credential;
     } catch (_) {
       return null;

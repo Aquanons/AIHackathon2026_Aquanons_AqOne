@@ -100,7 +100,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 | 2. Sensitive-data handling and safe diagnostics | COMPLETE | 2026-08-16 safe diagnostics and local-data hardening completed in `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`, `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/lib/core/app_diagnostics.dart`, `mobile/lib/core/locale_controller.dart`, `mobile/lib/main.dart`, `mobile/lib/ui/chathubb.dart`, `mobile/test/app_diagnostics_test.dart`, and `mobile/test/chat_service_retention_test.dart`. `flutter test` passed. `flutter analyze` reported only the same two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): reduce local data and redact diagnostics` |
 | 3. Device-identity decision gate | COMPLETE | 2026-08-16 Option A approved by the user/technical owner in chat. Phase log added below with the explicit decision, allowed follow-on work, and hard-stop carry-forward. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: approve or defer device identity design` |
 | 4. Authenticated normal-operation API path | COMPLETE | 2026-08-16 backend vessel-device authorization, contract updates, migration, tests, and mobile auth-aware service changes completed. Verified with bundled-Python `pytest` (`89 passed, 1 xfailed`) and `ruff check .` after dependency install, plus `flutter test` (passed) and `flutter analyze` (only the same two pre-existing `info` diagnostics in unrelated dirty files). Repo-wide `git diff --check` remains blocked by unrelated dirty mobile files; path-scoped diff check for this phase passed. Changed files are recorded in the Phase 4 log below. | `security: add scoped vessel device authorization` |
-| 5. Encrypted local credential and data storage | NOT STARTED | — | `security(mobile): protect local vessel data` |
+| 5. Encrypted local credential and data storage | IN PROGRESS | 2026-08-16 implementation started. Verification commands cannot be run by the implementing agent (no Flutter SDK in its environment); status stays IN PROGRESS until the owner runs them and the evidence is recorded here. | `security(mobile): protect local vessel data` |
 | 6. Release hardening and end-to-end verification | NOT STARTED | — | `security: verify mobile release controls` |
 | 7. Deferred RLS decision | NOT STARTED | — | `docs: record rls readiness decision` |
 
@@ -793,6 +793,147 @@ If encryption causes SOS queue creation, offline startup, or recovery after an
 app update to fail, roll back that phase's uncommitted implementation and report
 the evidence. Do not ship unavailable emergency functionality for at-rest
 encryption alone.
+
+### Phase 5 log — 2026-08-16
+
+**Status: IN PROGRESS. Implementation is complete; verification is not.**
+The implementing agent has no Flutter SDK and no device, so none of this
+phase's required commands were run by it. Per the operating contract, nothing
+below is described as verified. The owner must run the commands in
+"Verification still owed" before this phase may be marked COMPLETE.
+
+**Pre-existing changes at start of phase**
+
+`git status --short` was empty. No other contributor's work was in the tree,
+so no ownership conflict applied.
+
+**Decisions taken with the technical owner (chat, 2026-08-16)**
+
+1. *Credential in platform keystore, plus field encryption for sensitive
+   columns.* Whole-database encryption (SQLCipher) was considered and
+   rejected. Reason: this phase's own hard stop forbids shipping if
+   encryption can break SOS queue creation, offline startup, or recovery
+   after an app update. A SQLCipher database keyed from the Keystore fails
+   all three the moment the key is unavailable — device restore, keystore
+   invalidation, or an OEM lock-screen change — because the SOS outbox lives
+   in the same file. Field encryption confines that blast radius to personal
+   data the fisherman can retype.
+2. *No enrollment UI in this phase.* Recorded as a carry-forward below.
+
+**Changed files**
+
+- `mobile/pubspec.yaml` — added `flutter_secure_storage: ^9.2.4`,
+  `cryptography: ^2.7.0`, and dev-only `sqflite_common_ffi: ^2.4.2`.
+- `mobile/lib/data/secure_credential_store.dart` (new) — Keystore/Keychain
+  storage for the vessel bearer token, device id, and the field-encryption
+  key (DEK).
+- `mobile/lib/core/field_cipher.dart` (new) — AES-GCM per-field encryption
+  with an `enc:v1:` prefix.
+- `mobile/lib/data/identity_store.dart` — encrypts `skipper_name`,
+  `license_number`, `phone` on write; decrypts on read.
+- `mobile/lib/services/backend_client.dart` — persists the bearer token on
+  enrol and on refresh; clears it from the keystore on revocation.
+- `mobile/lib/main.dart` — reads the keystore at startup, off the critical
+  path, and injects the cipher and the restored token.
+- `mobile/test/field_cipher_test.dart` (new).
+- `mobile/test/identity_store_encryption_test.dart` (new) — asserts against
+  the raw SQLite rows, not the store API.
+- `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` — this log.
+
+**What is encrypted, and what deliberately is not**
+
+| Field | At rest | Why |
+|---|---|---|
+| `skipper_name`, `license_number`, `phone` | AES-GCM | Personal data per the Phase 0 inventory |
+| `vessel_id`, `boat` | Plaintext | Emergency-critical: these identify the vessel to responders. Putting a rescue behind a keystore read is not acceptable |
+| `license_type`, `trust_tier` | Plaintext | Non-sensitive categories |
+| `avatar_path` | Plaintext | App-private filename; the image itself is already excluded from backup (Phase 2) |
+| `outbox` (SOS) | Plaintext | Constraint 1. A queued distress message must never depend on a key |
+| `catch_outbox` lat/lon and notes | **Not yet encrypted** | Carry-forward; see below |
+
+**Migration**
+
+There is no migration step, by design. `FieldCipher.decrypt` returns any
+value lacking the `enc:v1:` prefix unchanged, so rows written before this
+phase keep working and are re-written encrypted the next time the profile is
+saved. Nothing sweeps the database, so no interrupted sweep can corrupt it.
+There was also no plaintext credential to migrate: Phase 4 held the bearer
+token in memory only and never persisted it.
+
+**Device-loss behaviour**
+
+- Server-side revocation already exists from Phase 4:
+  `POST /api/vessel-auth/devices/{device_id}/revoke`.
+- `clearVesselCredential()` removes the token and device id but keeps the
+  DEK, so the holder's own profile stays readable. Revocation is about
+  stopping a device talking to the backend, not destroying the owner's data.
+- `forgetEverything()` also drops the DEK. Fields encrypted with it are then
+  unrecoverable by design. The SOS outbox is unaffected.
+- If the keystore is unreadable at startup, the app runs exactly as it did
+  before this phase: plaintext personal fields, unauthenticated calls,
+  working SOS.
+
+**Residual risk**
+
+- `flutter_secure_storage` is a platform plugin. This project has twice been
+  broken by native plugin configuration. Until `flutter pub get` and a
+  release build are run, the dependency is unproven.
+- On Android, `encryptedSharedPreferences: true` requires minSdk 23. The
+  project inherits `flutter.minSdkVersion`; this was read from
+  `android/app/build.gradle.kts` as inherited, not pinned, and has not been
+  confirmed against the resolved value.
+- Field encryption protects data at rest against filesystem extraction. It
+  does not protect a running, unlocked, rooted device, where the key is
+  reachable.
+- No extraction test has been performed. "The library was added" is not
+  proof, and this phase says so explicitly.
+
+**Line endings — read before reviewing the diff**
+
+`identity_store.dart`, `backend_client.dart`, `main.dart` and `pubspec.yaml`
+were committed with CRLF while the repo's `.gitattributes` requests
+`eol=lf`. `git diff --check` therefore flagged every added line as trailing
+whitespace. Those four files were normalised to LF as part of this change so
+the check passes, which inflates the raw diff. The content change is 761
+lines; `git diff --ignore-cr-at-eol` shows it. A repo-wide
+`git add --renormalize .` in its own commit would stop this recurring.
+
+**Verification still owed (owner must run)**
+
+```powershell
+cd mobile; flutter pub get
+cd mobile; flutter analyze
+cd mobile; flutter test
+git diff --check
+```
+
+Plus the extraction check this phase requires: install a debug build, save a
+profile with a name and phone number, then pull the database
+(`adb exec-out run-as ph.aqone.app cat databases/aqone_outbox.db > out.db`)
+and confirm `skipper_name`, `license_number` and `phone` appear as
+`enc:v1:...` while `boat` and `vessel_id` are readable. Record the exact
+result and its limitations here.
+
+**Carry-forward — do not lose these**
+
+1. **No enrollment UI exists.** Nothing in the app calls
+   `enrollVesselDevice`, so no credential is ever created and the secure
+   store is inert in practice. Phase 4 built the client and backend; the
+   pairing-code screen was never built. Until it is, the authenticated path
+   is unreachable from the app.
+2. `catch_outbox` lat/lon and notes remain plaintext. They are
+   livelihood-sensitive location data under the Phase 0 inventory and should
+   be encrypted with the same cipher, but the change touches sync and upload
+   paths and was kept out of this phase to keep the diff reviewable.
+3. iOS: no iOS target is present in this checkout, so Keychain options are
+   written but untested.
+
+**Next hard stop**
+
+Do not mark Phase 5 COMPLETE, and do not start Phase 6, until the commands
+above have been run and their real output is recorded here. If
+`flutter pub get` fails on `flutter_secure_storage`, roll back this phase's
+implementation rather than shipping a half-wired credential path.
 
 ## Phase 6 — Release hardening and end-to-end verification
 

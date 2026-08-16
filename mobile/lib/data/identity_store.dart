@@ -6,6 +6,7 @@ import '../core/config.dart';
 import '../core/validators.dart';
 import '../models/license_type.dart';
 import '../models/trust_tier.dart';
+import '../core/field_cipher.dart';
 import 'app_database.dart';
 
 /// What this handset claims about itself.
@@ -83,9 +84,32 @@ class VesselIdentity {
 }
 
 class IdentityStore {
-  IdentityStore(this._db);
+  IdentityStore(this._db, {FieldCipher? cipher})
+      : _cipher = cipher ?? FieldCipher.plaintext();
 
   final AppDatabase _db;
+
+  /// Encrypts the personal fields only. Injected rather than looked up so
+  /// tests and the onboarding path can run without a platform keystore.
+  FieldCipher _cipher;
+
+  /// Swapped in once the keystore has been read at startup. Rows written
+  /// before that stay plaintext and are re-written encrypted on the next
+  /// save - see FieldCipher for why there is no migration sweep.
+  void useCipher(FieldCipher cipher) => _cipher = cipher;
+
+  /// Personal data, encrypted at rest when a key is available.
+  ///
+  /// Deliberately NOT included: vessel_id and boat identify the vessel to
+  /// responders and are emergency-critical, license_type and trust_tier are
+  /// non-sensitive categories, and avatar_path is an app-private filename
+  /// whose image is already excluded from backup. Encrypting the emergency
+  /// fields would put a rescue behind a keystore read.
+  static const Set<String> _encryptedKeys = <String>{
+    _keySkipperName,
+    _keyLicenseNumber,
+    _keyPhone,
+  };
 
   static const String _keyVesselId = 'vessel_id';
   static const String _keyBoat = 'boat';
@@ -106,6 +130,12 @@ class IdentityStore {
     final values = <String, String>{
       for (final row in rows) row['key'] as String: row['value'] as String,
     };
+    for (final String key in _encryptedKeys) {
+      final String? stored = values[key];
+      if (stored != null) {
+        values[key] = await _cipher.decrypt(stored);
+      }
+    }
     final vesselId = values[_keyVesselId];
     final boat = values[_keyBoat];
     if (vesselId == null || boat == null) {
@@ -283,6 +313,13 @@ class IdentityStore {
       if (identity.avatarPath != null && identity.avatarPath!.isNotEmpty)
         _keyAvatarPath: identity.avatarPath!,
     };
+    for (final String key in _encryptedKeys) {
+      final String? clear = values[key];
+      if (clear != null && clear.isNotEmpty) {
+        values[key] = await _cipher.encrypt(clear);
+      }
+    }
+
     final batch = db.batch();
     values.forEach((key, value) {
       batch.insert(

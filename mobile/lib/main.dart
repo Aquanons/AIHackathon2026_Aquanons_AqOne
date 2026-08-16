@@ -13,7 +13,9 @@ import 'data/app_database.dart';
 import 'data/catch_store.dart';
 import 'data/checklist_store.dart';
 import 'data/fishing_spot_store.dart';
+import 'core/field_cipher.dart';
 import 'data/identity_store.dart';
+import 'data/secure_credential_store.dart';
 import 'data/map_snapshot_store.dart';
 import 'data/outbox_store.dart';
 import 'services/backend_client.dart';
@@ -123,6 +125,7 @@ class AqOneApp extends StatefulWidget {
 
 class _AqOneAppState extends State<AqOneApp> {
   late final AppDatabase _db;
+  final SecureCredentialStore _secureStore = SecureCredentialStore();
   late final IdentityStore _identityStore;
   late final SosService _service;
   late final CatchService _catches;
@@ -147,7 +150,7 @@ class _AqOneAppState extends State<AqOneApp> {
     _db = AppDatabase();
     _identityStore = IdentityStore(_db);
     _location = LocationService();
-    _backend = BackendClient();
+    _backend = BackendClient(credentials: _secureStore);
     _service = SosService(
       outbox: OutboxStore(_db),
       identity: _identityStore,
@@ -180,7 +183,9 @@ class _AqOneAppState extends State<AqOneApp> {
       backend: _backend,
       snapshots: MapSnapshotStore(_db),
     );
-    _restore();
+    // Keystore before the rest of restore, so a returning skipper's profile
+    // decrypts on first read rather than showing blanks for a frame.
+    _restoreSecureState().whenComplete(_restore);
   }
 
   void _onLocaleChanged() {
@@ -198,6 +203,31 @@ class _AqOneAppState extends State<AqOneApp> {
     _feeds.close();
     _backend.close();
     super.dispose();
+  }
+
+  /// Reads the keystore and, if it answers, turns on field encryption and
+  /// restores the vessel credential.
+  ///
+  /// Deliberately not awaited before the first frame. Constraint 1 of the
+  /// security plan is that an SOS must be possible in airplane mode; a
+  /// keystore read that hangs or fails must not stand between launch and the
+  /// SOS button. Until this completes the app behaves exactly as it did
+  /// before Phase 5: plaintext personal fields, unauthenticated backend
+  /// calls.
+  Future<void> _restoreSecureState() async {
+    try {
+      final List<int>? key = await _secureStore.readOrCreateFieldKey();
+      if (key != null) {
+        _identityStore.useCipher(FieldCipher.withKey(key));
+      }
+      final String? token = await _secureStore.readVesselToken();
+      if (token != null) {
+        _backend.setVesselBearerToken(token);
+      }
+    } catch (_) {
+      // No keystore, or a platform that refused. The app stays usable and
+      // unencrypted rather than failing to start.
+    }
   }
 
   Future<void> _restore() async {
