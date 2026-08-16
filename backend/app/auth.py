@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 ALGORITHM = 'HS256'
 TOKEN_TTL_HOURS = int(os.environ.get('JWT_EXPIRY_HOURS', '12'))
+VESSEL_DEVICE_TOKEN_TTL_HOURS = int(
+    os.environ.get('VESSEL_DEVICE_JWT_EXPIRY_HOURS', '24')
+)
 
 VALID_ROLES = {'mdrrmo', 'lgu', 'admin'}
 
@@ -56,11 +59,24 @@ def normalize_email(email: str) -> str:
 def create_token(user_id: int, email: str, role: str) -> str:
     now = datetime.now(UTC)
     payload = {
+        'kind': 'user',
         'sub': str(user_id),
         'email': email,
         'role': role,
         'iat': now,
         'exp': now + timedelta(hours=TOKEN_TTL_HOURS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
+
+
+def create_vessel_device_token(device_id: int, vessel_id: str) -> str:
+    now = datetime.now(UTC)
+    payload = {
+        'kind': 'vessel_device',
+        'device_id': str(device_id),
+        'vessel_id': vessel_id,
+        'iat': now,
+        'exp': now + timedelta(hours=VESSEL_DEVICE_TOKEN_TTL_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
 
@@ -86,8 +102,63 @@ async def require_user(
     if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=401, detail='authentication required')
     claims = decode_token(credentials.credentials)
+    if claims.get('kind', 'user') != 'user':
+        raise HTTPException(status_code=401, detail='invalid token')
     return {
         'id': claims.get('sub'),
         'email': claims.get('email'),
         'role': claims.get('role'),
+    }
+
+
+async def require_operator_user(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    role = user.get('role')
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=403, detail='operator token required')
+    return user
+
+
+async def require_vessel_device(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict[str, Any]:
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=401, detail='device credential required')
+
+    claims = decode_token(credentials.credentials)
+    if claims.get('kind') != 'vessel_device':
+        raise HTTPException(status_code=401, detail='invalid token')
+
+    device_id_text = claims.get('device_id')
+    vessel_id = claims.get('vessel_id')
+    if not isinstance(device_id_text, str) or not isinstance(vessel_id, str):
+        raise HTTPException(status_code=401, detail='invalid token')
+
+    try:
+        device_id = int(device_id_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail='invalid token') from exc
+
+    from app.db import get_pool
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            '''
+            UPDATE vessel_devices
+               SET last_seen_at = NOW()
+             WHERE id = $1
+            RETURNING id, vessel_id, label, revoked_at
+            ''',
+            device_id,
+        )
+
+    if row is None or row['revoked_at'] is not None:
+        raise HTTPException(status_code=401, detail='device credential revoked')
+    if row['vessel_id'] != vessel_id:
+        raise HTTPException(status_code=401, detail='invalid token')
+
+    return {
+        'device_id': row['id'],
+        'vessel_id': row['vessel_id'],
+        'label': row['label'],
     }

@@ -325,7 +325,8 @@ class SosService {
 
       final vesselIds = pending.map((record) => record.vesselId).toSet();
       var changed = false;
-      final cloudUp = await _backend.isReachable();
+      final cloudUp =
+          _backend.hasVesselCredential && await _backend.isReachable();
 
       for (final vesselId in vesselIds) {
         final records = pending.where((r) => r.vesselId == vesselId).toList();
@@ -418,15 +419,15 @@ class SosService {
         changed = true;
       }
 
-      // A stand-down requested before the backend had assigned this SOS an
-      // event id (see standDown()) could not be sent at the time. This is
-      // where it catches up: `record` here is the pre-update snapshot, so
-      // `record.remoteId == null` with `match.id` non-empty means the event
-      // id just arrived for the first time this tick - exactly once, never
-      // repeated on later ticks once remoteId is set.
-      if (record.isStoodDown && record.remoteId == null && match.id.isNotEmpty) {
-        unawaited(_backend.replyToSos(int.tryParse(match.id) ?? -1, 2));
+      // Any fisher reply saved locally before the backend had assigned this SOS
+      // an event id - or while the vessel credential was absent/revoked - can
+      // be flushed once reconcile knows the backend id and a token is present.
+      if (record.fisherReply != null && match.id.isNotEmpty) {
+        unawaited(
+          _backend.replyToSos(int.tryParse(match.id) ?? -1, record.fisherReply!),
+        );
       }
+
     }
     return changed;
   }

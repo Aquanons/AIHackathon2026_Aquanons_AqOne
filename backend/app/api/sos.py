@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.auth import require_user
+from app.auth import require_user, require_vessel_device
 from app.db import get_pool
 
 # Responder status vocabulary. One byte, so it survives a 64-byte LoRa frame in
@@ -317,17 +317,20 @@ async def resolve_sos(
 
 
 @router.get('/vessel/{vessel_id}')
-async def vessel_sos(vessel_id: str) -> dict[str, object]:
+async def vessel_sos(
+    vessel_id: str,
+    device: dict[str, object] = Depends(require_vessel_device),
+) -> dict[str, object]:
     """What the handset polls to learn whether anyone answered.
 
-    Unauthenticated for the same reason ingest is: a handset in distress has no
-    token. It returns only the events belonging to the vessel id in the path, so
-    it discloses nothing a dispatcher would not already be shouting over VHF.
-
-    This route did not exist. The app has been calling
-    /api/v1/vessels/{id}/sos, which no router ever served, so reconciliation
-    silently 404'd and no acknowledgement ever reached a fisherman.
+    Protected under Option A. The backend derives vessel ownership from the
+    verified device credential, not from the path; the path value is only a
+    consistency check so a mismatched client cannot read another vessel's data.
     """
+    owned_vessel_id = str(device['vessel_id'])
+    if vessel_id != owned_vessel_id:
+        raise HTTPException(status_code=403, detail='device is not paired for that vessel')
+
     pool = get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -341,11 +344,11 @@ async def vessel_sos(vessel_id: str) -> dict[str, object]:
             ORDER BY created_at DESC
             LIMIT 20
             ''',
-            vessel_id,
+            owned_vessel_id,
         )
 
     return {
-        'vessel_id': vessel_id,
+        'vessel_id': owned_vessel_id,
         # Server time, so the handset can correct for clock drift before
         # rendering a countdown against eta_at.
         'server_time': datetime.now(UTC).isoformat(),
@@ -377,12 +380,12 @@ class ReplyIn(BaseModel):
 
 
 @router.post('/{event_id}/reply')
-async def fisher_reply(event_id: int, payload: ReplyIn) -> dict[str, object]:
-    """Record the fisher's reply. Unauthenticated, like ingest.
-
-    It can only annotate an event that already exists and cannot create one, so
-    the worst an abuser achieves is a wrong flag on an incident a dispatcher is
-    already looking at.
+async def fisher_reply(
+    event_id: int,
+    payload: ReplyIn,
+    device: dict[str, object] = Depends(require_vessel_device),
+) -> dict[str, object]:
+    """Record the fisher's reply on that vessel's own incident.
 
     SAFE_NOW resolves the incident, which is what lets a dispatcher release
     assets to somebody else.
@@ -396,11 +399,13 @@ async def fisher_reply(event_id: int, payload: ReplyIn) -> dict[str, object]:
                    fisher_replied_at = NOW(),
                    resolved_at = CASE WHEN $2 = $3 THEN NOW() ELSE resolved_at END
              WHERE id = $1
+               AND vessel_id = $4
             RETURNING id, fisher_reply, fisher_replied_at, resolved_at
             ''',
             event_id,
             payload.reply,
             REPLY_SAFE_NOW,
+            device['vessel_id'],
         )
     if row is None:
         raise HTTPException(status_code=404, detail='no such SOS event')

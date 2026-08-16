@@ -21,6 +21,7 @@ from app.api.sos import protected_router as sos_read_router
 from app.api.sos import router as sos_ingest_router
 from app.api.spots import router as spots_router
 from app.api.squall import router as squall_router
+from app.api.vessel_auth import router as vessel_auth_router
 from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
 
@@ -49,8 +50,9 @@ app.include_router(auth_router)
 # authenticate. Reading and acknowledging SOS events stays protected.
 app.include_router(sos_ingest_router)
 
-# Catch logging - unauthenticated for the same reason SOS ingest is: the
-# handset has no account. See app/api/catch.py.
+# Catch logging now sits behind a vessel-bound device credential rather than a
+# dispatcher token. Keeping it off the blanket operator dependency here lets
+# the mobile app use its own credential type while SOS ingest stays open.
 app.include_router(catch_ingest_router)
 
 # Fishing spots (community-reported "fish hotspots") - both ingest and read
@@ -64,6 +66,9 @@ app.include_router(spots_router)
 # ingest is: the fisherman app has no account by design, so anything it needs
 # in an emergency cannot sit behind a token. See app/api/public.py.
 app.include_router(public_router)
+# Vessel-device pairing + token lifecycle. Some routes are public
+# (enrollment), others require an operator or vessel-device token per-route.
+app.include_router(vessel_auth_router)
 
 # Advisories handles its own auth per-route rather than a blanket dependency
 # here, because public_advisories_router (below) is intentionally

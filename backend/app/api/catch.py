@@ -5,15 +5,12 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.auth import require_user
+from app.auth import require_user, require_vessel_device
 from app.db import get_pool
 
-# Deliberately NOT behind require_user, for the same reason as sos.py: a
-# fisherman logging a catch at sea has no account and no way to obtain a
-# token out there. The whole app has no login system - vessel_id is a
-# locally-generated identifier, not a credential - so trusting it from the
-# body here is consistent with how every other handset-facing write already
-# works (see sos.py's ingest_sos), not a gap specific to this endpoint.
+# Routes stay on their own router rather than under the blanket operator auth
+# in main.py because these writes are now protected by a vessel-bound device
+# credential, not by an MDRRMO operator token.
 router = APIRouter(prefix='/api/catch-logs', tags=['catch'])
 
 # The read side is dispatcher/reporting data and stays protected.
@@ -62,13 +59,20 @@ class ConfirmWeightIn(BaseModel):
 
 
 @router.post('', status_code=200)
-async def ingest_catch_log(payload: CatchLogIn) -> dict[str, object]:
+async def ingest_catch_log(
+    payload: CatchLogIn,
+    device: dict[str, object] = Depends(require_vessel_device),
+) -> dict[str, object]:
     """Accept a catch log from the handset. Idempotent on local_id.
 
-    Mirrors ingest_sos's shape: the vessel may be unknown to the backend if
-    this is the first thing it has ever sent, so the vessel row is created
-    on demand rather than rejecting the write over a missing foreign key.
+    Protected under Option A. The backend derives the owning vessel from the
+    verified device credential and rejects a mismatched client-supplied
+    vessel_id instead of trusting it.
     """
+    owned_vessel_id = str(device['vessel_id'])
+    if payload.vessel_id != owned_vessel_id:
+        raise HTTPException(status_code=403, detail='device is not paired for that vessel')
+
     pool = get_pool()
     async with pool.acquire() as conn, conn.transaction():
         await conn.execute(
@@ -77,7 +81,7 @@ async def ingest_catch_log(payload: CatchLogIn) -> dict[str, object]:
                 VALUES ($1, $1)
                 ON CONFLICT (id) DO NOTHING
                 ''',
-            payload.vessel_id,
+            owned_vessel_id,
         )
 
         row = await conn.fetchrow(
@@ -97,7 +101,7 @@ async def ingest_catch_log(payload: CatchLogIn) -> dict[str, object]:
                   notes        = COALESCE(catch_logs.notes, EXCLUDED.notes)
                 RETURNING id, created_at, (xmax = 0) AS was_inserted
                 ''',
-            payload.vessel_id,
+            owned_vessel_id,
             payload.local_id,
             payload.species_name,
             payload.estimated_quantity_kg,
@@ -119,14 +123,16 @@ async def ingest_catch_log(payload: CatchLogIn) -> dict[str, object]:
 
 
 @router.post('/{catch_log_id}/confirm-weight')
-async def confirm_weight(catch_log_id: int, payload: ConfirmWeightIn) -> dict[str, object]:
+async def confirm_weight(
+    catch_log_id: int,
+    payload: ConfirmWeightIn,
+    device: dict[str, object] = Depends(require_vessel_device),
+) -> dict[str, object]:
     """Records the real, reweighed figure for a catch already on file.
 
-    Unauthenticated like the ingest endpoint above, for the same reason -
-    this is a handset-facing write with no account behind it. Idempotent by
-    construction: confirming the same catch again just overwrites with
-    whatever the handset now believes is correct, which is the fisherman
-    correcting their own entry, not a replay to guard against.
+    Protected under Option A, and restricted to the token's own vessel rows.
+    Idempotent by construction: confirming the same catch again just
+    overwrites with whatever the handset now believes is correct.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -137,10 +143,12 @@ async def confirm_weight(catch_log_id: int, payload: ConfirmWeightIn) -> dict[st
                    quantity_confirmed    = TRUE,
                    quantity_confirmed_at = NOW()
              WHERE id = $1
+               AND vessel_id = $3
             RETURNING id, quantity_kg, quantity_confirmed, quantity_confirmed_at
             ''',
             catch_log_id,
             payload.quantity_kg,
+            device['vessel_id'],
         )
     if row is None:
         raise HTTPException(status_code=404, detail='no such catch log')

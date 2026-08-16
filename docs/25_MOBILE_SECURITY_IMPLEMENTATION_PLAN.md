@@ -99,7 +99,7 @@ Allowed status values: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`,
 | 1. Transport and endpoint guardrails | COMPLETE | 2026-08-16 transport guardrails implemented in `docs/03_PHONE_BUOY_WIFI.md`, `mobile/lib/core/config.dart`, `mobile/lib/core/endpoint_guard.dart`, `mobile/lib/main.dart`, `mobile/lib/services/backend_client.dart`, `mobile/lib/services/buoy_client.dart`, `mobile/lib/services/forecast_provider.dart`, `mobile/lib/services/tile_cache.dart`, `mobile/lib/ui/chathubb.dart`, and `mobile/test/endpoint_guard_test.dart`. `flutter test` passed. `flutter analyze` reported only two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): constrain app network destinations` |
 | 2. Sensitive-data handling and safe diagnostics | COMPLETE | 2026-08-16 safe diagnostics and local-data hardening completed in `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`, `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/lib/core/app_diagnostics.dart`, `mobile/lib/core/locale_controller.dart`, `mobile/lib/main.dart`, `mobile/lib/ui/chathubb.dart`, `mobile/test/app_diagnostics_test.dart`, and `mobile/test/chat_service_retention_test.dart`. `flutter test` passed. `flutter analyze` reported only the same two pre-existing `info` diagnostics in unrelated dirty files: `mobile/lib/data/demo_hotspots.dart` and `mobile/lib/services/squall_alarm.dart`. | `security(mobile): reduce local data and redact diagnostics` |
 | 3. Device-identity decision gate | COMPLETE | 2026-08-16 Option A approved by the user/technical owner in chat. Phase log added below with the explicit decision, allowed follow-on work, and hard-stop carry-forward. Changed files: `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md` only. | `docs: approve or defer device identity design` |
-| 4. Authenticated normal-operation API path | NOT STARTED | — | `security: add scoped vessel device authorization` |
+| 4. Authenticated normal-operation API path | COMPLETE | 2026-08-16 backend vessel-device authorization, contract updates, migration, tests, and mobile auth-aware service changes completed. Verified with bundled-Python `pytest` (`89 passed, 1 xfailed`) and `ruff check .` after dependency install, plus `flutter test` (passed) and `flutter analyze` (only the same two pre-existing `info` diagnostics in unrelated dirty files). Repo-wide `git diff --check` remains blocked by unrelated dirty mobile files; path-scoped diff check for this phase passed. Changed files are recorded in the Phase 4 log below. | `security: add scoped vessel device authorization` |
 | 5. Encrypted local credential and data storage | NOT STARTED | — | `security(mobile): protect local vessel data` |
 | 6. Release hardening and end-to-end verification | NOT STARTED | — | `security: verify mobile release controls` |
 | 7. Deferred RLS decision | NOT STARTED | — | `docs: record rls readiness decision` |
@@ -622,6 +622,139 @@ git diff --check
 Stop if any route authorizes data based solely on the client-provided
 `vessel_id`. Stop if the only way to send SOS is an authenticated HTTP request.
 Do not put a long-lived shared secret in the app to “authenticate” all phones.
+
+### Phase 4 log — 2026-08-16
+
+**Changed files**
+
+- `backend/app/api/catch.py`
+- `backend/app/api/metrics.py`
+- `backend/app/api/sos.py`
+- `backend/app/api/vessel_auth.py`
+- `backend/app/auth.py`
+- `backend/app/main.py`
+- `backend/migrations/014_vessel_device_auth.sql`
+- `backend/tests/test_sos_ingest.py`
+- `backend/tests/test_vessel_auth.py`
+- `docs/05_PUBLIC_API.md`
+- `docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md`
+- `mobile/lib/services/backend_client.dart`
+- `mobile/lib/services/catch_service.dart`
+- `mobile/lib/services/sos_service.dart`
+- `mobile/test/backend_client_vessel_auth_test.dart`
+
+**Implementation summary**
+
+- Wrote the Phase 4 API contract first in `docs/05_PUBLIC_API.md`, adding:
+  - operator-issued one-time pairing codes;
+  - public vessel-device enrollment;
+  - vessel-device token refresh;
+  - operator-side device revocation;
+  - credential requirements for per-vessel SOS status/reply and catch-log
+    writes.
+- Added backend vessel-device auth primitives in `backend/app/auth.py`:
+  - user tokens are now typed as `kind=user`;
+  - new `kind=vessel_device` JWTs bind one device record to one vessel;
+  - new dependencies enforce operator-only and vessel-device-only routes;
+  - revoked or mismatched device tokens are rejected at the backend boundary.
+- Added `backend/app/api/vessel_auth.py` plus migration
+  `backend/migrations/014_vessel_device_auth.sql` to create:
+  - one-time pairing-code rows;
+  - revocable vessel-device records;
+  - enrollment, refresh, revoke, and device-introspection routes.
+- Hardened normal-operation handset routes:
+  - `GET /api/sos/vessel/{vessel_id}` now requires a vessel-device token and
+    cross-checks the path against the token vessel before querying by the
+    token-derived vessel id;
+  - `POST /api/sos/{event_id}/reply` now updates only when the event belongs
+    to the token vessel;
+  - `POST /api/catch-logs` now rejects a mismatched body `vessel_id` and
+    writes only to the token vessel;
+  - `POST /api/catch-logs/{catch_log_id}/confirm-weight` now updates only rows
+    belonging to the token vessel.
+- Added backend negative tests proving a vessel A credential cannot:
+  - read vessel B's SOS status;
+  - reply to vessel B's SOS;
+  - upload a catch log under vessel B's id;
+  - confirm weight on vessel B's catch row.
+- Updated mobile service code without touching dirty UI/package files:
+  - `BackendClient` can now enroll, refresh, hold, attach, and clear an
+    in-memory vessel-device bearer token;
+  - absent/revoked credentials no longer turn catch uploads into permanent
+    rejections;
+  - SOS cloud reconcile now skips credential-protected backend polling when no
+    valid vessel token is present and keeps buoy/local fallback behavior
+    intact;
+  - saved fisher replies are retried when reconcile later learns the backend
+    event id and a credential is present.
+- Fixed one unrelated backend lint blocker in `backend/app/api/metrics.py`
+  (missing final newline) so repo lint could truthfully run.
+
+**Commands run and outcomes**
+
+- `git status --short`
+  - Re-run before Phase 4 work. The declared Phase 4 targets were clean.
+  - Important blocker identified for later work: `mobile/pubspec.yaml` is
+    still dirty from another contributor, so Phase 5 secure-storage dependency
+    changes must not start until ownership is resolved.
+- `git diff --check`
+  - Repo-wide run was blocked by unrelated dirty mobile files with trailing
+    whitespace in other contributors' work (`mobile/lib/services/venture_feeds.dart`,
+    `mobile/lib/ui/app_shell.dart`, `mobile/lib/ui/venture_page.dart`, and
+    `mobile/pubspec.yaml`).
+  - Path-scoped rerun for the Phase 4 files passed. Git emitted only line-
+    ending warnings for `backend/app/auth.py` and `backend/app/api/metrics.py`;
+    no diff-check failures remained in this phase's files.
+- Bundled Python dependency bootstrap:
+  - Initial `pytest` / `ruff` attempts failed because the workspace runtime did
+    not yet have those packages installed.
+  - Installed `backend/requirements-dev.txt` into the bundled Python runtime,
+    then re-ran verification successfully.
+- Bundled Python syntax pass:
+  - `python -m compileall app tests` passed before the full backend dependency
+    set was available, confirming no Python parse errors in the changed backend
+    code or tests.
+- Backend verification:
+  - `python -m pytest`
+    - Passed with `89 passed, 1 xfailed, 1 warning in 33.88s`.
+    - The remaining warning was a `StarletteDeprecationWarning` from
+      `fastapi.testclient`, not a Phase 4 failure.
+  - `python -m ruff check .`
+    - Passed after removing one unused import in the new vessel-auth test and
+      fixing the pre-existing missing final newline in `backend/app/api/metrics.py`.
+- Flutter verification:
+  - `flutter analyze`
+    - Completed via unsandboxed run.
+    - Reported only the same two pre-existing `info` diagnostics in unrelated
+      dirty files:
+      - `mobile/lib/data/demo_hotspots.dart:28:41`
+      - `mobile/lib/services/squall_alarm.dart:60:19`
+  - `flutter test`
+    - Passed after the final Phase 4 mobile changes, including the new
+      `backend_client_vessel_auth_test.dart`.
+
+**Remaining risk**
+
+- The backend now has a real vessel-device credential model, and the mobile
+  service layer can enroll/refresh and honor that credential in memory, but
+  Phase 5 at-rest protection is still outstanding.
+- No persistent secure vessel credential storage has been added yet. A device
+  restart loses the in-memory bearer token until later secure-storage work is
+  completed.
+- No new pairing UX was added in this phase because the dirty mobile UI/package
+  files remained out of bounds. The backend contract and mobile service hooks
+  now exist for later UI/storage work.
+
+**Next hard stop**
+
+Do not start Phase 5 until:
+
+1. ownership of `mobile/pubspec.yaml` is resolved, because secure-storage
+   dependency work must edit that file and it is currently dirty from another
+   contributor;
+2. the secure-storage package choice is reviewed for maintenance, platform
+   support, licence, and release-build compatibility; and
+3. the Phase 5 migration plan preserves queued SOS behavior across app updates.
 
 ## Phase 5 — Encrypted local credential and data storage (Option A only)
 

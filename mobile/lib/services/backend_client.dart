@@ -69,6 +69,44 @@ class RemoteSos {
   }
 }
 
+class VesselDeviceCredential {
+  const VesselDeviceCredential({
+    required this.token,
+    required this.expiresAt,
+    required this.deviceId,
+    required this.vesselId,
+    required this.label,
+  });
+
+  final String token;
+  final String expiresAt;
+  final int deviceId;
+  final String vesselId;
+  final String label;
+
+  static VesselDeviceCredential? fromJson(Map<String, dynamic> json) {
+    final token = json['token'];
+    final expiresAt = json['expires_at'];
+    final device = json['device'];
+    if (token is! String || expiresAt is! String || device is! Map<String, dynamic>) {
+      return null;
+    }
+    final id = device['id'];
+    final vesselId = device['vessel_id'];
+    final label = device['label'];
+    if (id is! num || vesselId is! String || label is! String) {
+      return null;
+    }
+    return VesselDeviceCredential(
+      token: token,
+      expiresAt: expiresAt,
+      deviceId: id.toInt(),
+      vesselId: vesselId,
+      label: label,
+    );
+  }
+}
+
 class BackendClient {
   BackendClient({http.Client? client, String? baseUrl})
       : _client = client ?? http.Client(),
@@ -81,6 +119,93 @@ class BackendClient {
 
   final http.Client _client;
   final String _baseUrl;
+  String? _vesselBearerToken;
+
+  bool get hasVesselCredential =>
+      _vesselBearerToken != null && _vesselBearerToken!.isNotEmpty;
+
+  void setVesselBearerToken(String? token) {
+    final trimmed = token?.trim();
+    _vesselBearerToken =
+        trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  void clearVesselBearerToken() {
+    _vesselBearerToken = null;
+  }
+
+  Future<VesselDeviceCredential?> enrollVesselDevice({
+    required String vesselId,
+    required String pairingCode,
+    String deviceLabel = 'Fisher handset',
+  }) async {
+    try {
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(_baseUrl, '/api/vessel-auth/enroll'),
+          headers: const <String, String>{
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(<String, Object?>{
+            'vessel_id': vesselId,
+            'pairing_code': pairingCode,
+            'device_label': deviceLabel,
+          }),
+        ),
+      ).timeout(AqOneConfig.backendTimeout);
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final credential = VesselDeviceCredential.fromJson(decoded);
+      if (credential == null) {
+        return null;
+      }
+      setVesselBearerToken(credential.token);
+      return credential;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<VesselDeviceCredential?> refreshVesselCredential() async {
+    if (!hasVesselCredential) {
+      return null;
+    }
+    try {
+      final response = await _send(
+        _request(
+          'POST',
+          EndpointGuard.backend(_baseUrl, '/api/vessel-auth/refresh'),
+          headers: _withVesselAuth(),
+        ),
+      ).timeout(AqOneConfig.backendTimeout);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        clearVesselBearerToken();
+        return null;
+      }
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final credential = VesselDeviceCredential.fromJson(decoded);
+      if (credential == null) {
+        return null;
+      }
+      setVesselBearerToken(credential.token);
+      return credential;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> isReachable() async {
     try {
       final response = await _send(
@@ -179,12 +304,24 @@ class BackendClient {
   /// The path was previously /api/v1/vessels/{id}/sos, which no router ever
   /// served - every poll 404'd, so no acknowledgement ever reached a fisherman.
   Future<List<RemoteSos>> vesselSos(String vesselId) async {
+    if (!hasVesselCredential) {
+      return const <RemoteSos>[];
+    }
     final uri = EndpointGuard.backend(
       _baseUrl,
       '/api/sos/vessel/${Uri.encodeComponent(vesselId)}',
     );
-    final response =
-        await _send(_request('GET', uri)).timeout(AqOneConfig.backendTimeout);
+    final response = await _send(
+      _request(
+        'GET',
+        uri,
+        headers: _withVesselAuth(),
+      ),
+    ).timeout(AqOneConfig.backendTimeout);
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      clearVesselBearerToken();
+      return const <RemoteSos>[];
+    }
     if (response.statusCode != 200) {
       return const <RemoteSos>[];
     }
@@ -207,16 +344,25 @@ class BackendClient {
   /// 1 = still in danger, 2 = safe now. Tells the dispatcher the fisher is
   /// alive and read the ETA - which the acknowledgement alone cannot confirm.
   Future<bool> replyToSos(int eventId, int reply) async {
+    if (!hasVesselCredential) {
+      return false;
+    }
     try {
       final response = await _send(
         _request(
           'POST',
           EndpointGuard.backend(_baseUrl, '/api/sos/$eventId/reply'),
-          headers: const {'Content-Type': 'application/json'},
+          headers: _withVesselAuth(
+            const {'Content-Type': 'application/json'},
+          ),
           body: jsonEncode(<String, Object?>{'reply': reply}),
         ),
       )
           .timeout(AqOneConfig.backendTimeout);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        clearVesselBearerToken();
+        return false;
+      }
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -249,18 +395,26 @@ class BackendClient {
   /// failure or 5xx should be retried, but a 4xx means the entry itself is
   /// unacceptable and retrying forever would just burn battery.
   Future<CatchUploadResult> postCatchLog(Map<String, Object?> payload) async {
+    if (!hasVesselCredential) {
+      return const CatchUploadResult.authRequired();
+    }
     try {
       final response = await _send(
         _request(
           'POST',
           EndpointGuard.backend(_baseUrl, AqOneConfig.catchLogsPath),
-          headers: const <String, String>{
+          headers: _withVesselAuth(const <String, String>{
             'Content-Type': 'application/json',
-          },
+          }),
           body: jsonEncode(payload),
         ),
       )
           .timeout(AqOneConfig.backendTimeout);
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        clearVesselBearerToken();
+        return const CatchUploadResult.authRequired();
+      }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         String? serverId;
@@ -299,6 +453,9 @@ class BackendClient {
     String catchLogId,
     Map<String, Object?> payload,
   ) async {
+    if (!hasVesselCredential) {
+      return false;
+    }
     try {
       final response = await _send(
         _request(
@@ -307,13 +464,17 @@ class BackendClient {
             _baseUrl,
             '${AqOneConfig.catchLogsPath}/$catchLogId/confirm-weight',
           ),
-          headers: const <String, String>{
+          headers: _withVesselAuth(const <String, String>{
             'Content-Type': 'application/json',
-          },
+          }),
           body: jsonEncode(payload),
         ),
       )
           .timeout(AqOneConfig.backendTimeout);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        clearVesselBearerToken();
+        return false;
+      }
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -410,6 +571,17 @@ class BackendClient {
     return http.Response.fromStream(streamed);
   }
 
+  Map<String, String> _withVesselAuth([Map<String, String>? headers]) {
+    final merged = <String, String>{
+      if (headers != null) ...headers,
+    };
+    final token = _vesselBearerToken;
+    if (token != null && token.isNotEmpty) {
+      merged['Authorization'] = 'Bearer $token';
+    }
+    return merged;
+  }
+
   void close() => _client.close();
 }
 
@@ -426,12 +598,15 @@ class CatchUploadResult {
   const CatchUploadResult.rejected(String reason)
       : this._(CatchUploadKind.rejected, message: reason);
 
+  const CatchUploadResult.authRequired()
+      : this._(CatchUploadKind.authRequired);
+
   final CatchUploadKind kind;
   final String? serverId;
   final String? message;
 }
 
-enum CatchUploadKind { success, retry, rejected }
+enum CatchUploadKind { success, retry, rejected, authRequired }
 
 /// Outcome of a single fishing-spot upload attempt. Mirrors
 /// [CatchUploadResult] in shape.

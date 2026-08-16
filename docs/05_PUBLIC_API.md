@@ -15,9 +15,96 @@ Out of scope: ingest (`docs/04_INGEST_API.md`) and the radio hops.
 
 - HTTPS. Base URL is `https://incredible-liberation-production-aad7.up.railway.app`.
 - Dashboard requests are authenticated by API key (`X-Api-Key`); the mobile
-  app may use unauthenticated read endpoints while the app has no login (role
-  `fisherman` only sees its own vessel status client-side).
+  app's safety feeds remain unauthenticated, but per-vessel normal-operation
+  reads and writes now require a vessel-device bearer token issued by the
+  backend. SOS ingest itself stays unauthenticated.
 - JSON bodies; `charset=utf-8`.
+
+## Vessel-device credential flow (Option A)
+
+Routine per-vessel reads and writes are no longer authorized by a client-
+supplied `vessel_id` alone. The backend now issues a revocable handset
+credential that is bound to one vessel.
+
+### `POST /api/vessel-auth/pairing-codes`
+
+Operator-authenticated (`mdrrmo` / `lgu` / `admin`). Issues a short-lived
+pairing code for one vessel. Body:
+
+```json
+{
+  "vessel_id": "NW-001",
+  "boat": "NW-001"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "vessel_id": "NW-001",
+  "pairing_code": "K7Q4M9PX",
+  "expires_at": "2026-08-16T05:15:00Z"
+}
+```
+
+Rules:
+
+- The code is one-time use.
+- The code expires after 15 minutes.
+- A lost/replaced handset gets a new code; old devices are revoked.
+
+### `POST /api/vessel-auth/enroll`
+
+Consumes the one-time code and returns a vessel-device bearer token. Body:
+
+```json
+{
+  "vessel_id": "NW-001",
+  "pairing_code": "K7Q4M9PX",
+  "device_label": "Jade's Android"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "token": "eyJ...",
+  "expires_at": "2026-08-17T05:00:00Z",
+  "device": {
+    "id": 12,
+    "vessel_id": "NW-001",
+    "label": "Jade's Android",
+    "paired_at": "2026-08-16T05:00:00Z"
+  }
+}
+```
+
+Rules:
+
+- Token lifetime is 24 hours.
+- The token binds one device record to one vessel.
+- The backend treats the token's vessel as authoritative. A body/path
+  `vessel_id` may be checked for consistency, but never trusted as ownership.
+
+### `POST /api/vessel-auth/refresh`
+
+Requires the current vessel-device bearer token. Returns a fresh token for the
+same device/vessel pair and the new expiry time.
+
+### `POST /api/vessel-auth/devices/{device_id}/revoke`
+
+Operator-authenticated. Revokes a lost or replaced handset. Body:
+
+```json
+{
+  "reason": "lost device"
+}
+```
+
+Once revoked, the device token must no longer authorize any per-vessel read or
+write. SOS ingest remains available without it.
 
 ## Endpoints
 
@@ -117,11 +204,45 @@ data: {"event": "acknowledged", "sos": { ... }}
 The phone learns nothing beyond its buoy (`docs/03_PHONE_BUOY_WIFI.md`) unless
 it has internet. If it does, it can reconcile its outbox:
 
-### `GET /api/v1/vessels/{vessel_id}/sos`
+### `GET /api/sos/vessel/{vessel_id}`
 
 Returns that vessel's SOS rows, newest first. The app matches by
-`(vessel_id, seq)` to mark a message `acknowledged` when an MDRRMO responder
-has acked it. No auth for MVP; the id is an unguessable UUID.
+`(local_id, seq)` to mark a message `acknowledged` when an MDRRMO responder
+has acked it.
+
+Requires a vessel-device bearer token. The token's vessel must match the path
+vessel id; the backend queries by the verified token vessel, not by trusting
+the path as ownership.
+
+### `POST /api/sos/{event_id}/reply`
+
+The fisher's reply to a responder acknowledgement.
+
+```json
+{
+  "reply": 1
+}
+```
+
+- `1` = still in danger
+- `2` = safe now
+
+Requires a vessel-device bearer token. The backend updates the event only when
+it belongs to that token's vessel.
+
+### `POST /api/catch-logs`
+
+Creates or deduplicates one catch log upload from the handset.
+
+Requires a vessel-device bearer token. The backend derives the owning vessel
+from the token and rejects a mismatched body `vessel_id`.
+
+### `POST /api/catch-logs/{catch_log_id}/confirm-weight`
+
+Confirms the real reweighed catch figure.
+
+Requires a vessel-device bearer token. The backend updates the row only when it
+belongs to that token's vessel.
 
 ## Daily outlook for the app — **contract agreed, not yet implemented**
 
@@ -266,7 +387,8 @@ credential ships on a phone.
 
 - `mdrrmo` and `admin` may list and ack. `admin` may also register devices and
   revoke API keys (back-office, not in this doc).
-- `fisherman` reads only through the app; no auth required for MVP.
+- `fisherman` reads safety feeds without auth, but per-vessel status / reply /
+  catch routes now require a paired vessel-device credential.
 
 ## Conventions
 

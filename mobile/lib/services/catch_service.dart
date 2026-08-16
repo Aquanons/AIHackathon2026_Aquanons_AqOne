@@ -154,6 +154,9 @@ class CatchService {
   }
 
   Future<bool> _syncPendingUploads() async {
+    if (!_backend.hasVesselCredential) {
+      return false;
+    }
     var changed = false;
     final pending = await _store.awaitingSync();
     for (final record in pending) {
@@ -177,12 +180,17 @@ class CatchService {
           // The connection is down. Stop rather than hammering the rest of
           // the queue with attempts that will all fail the same way.
           return changed;
+        case CatchUploadKind.authRequired:
+          return changed;
       }
     }
     return changed;
   }
 
   Future<bool> _syncPendingWeightConfirmations() async {
+    if (!_backend.hasVesselCredential) {
+      return false;
+    }
     var changed = false;
     final pending = await _store.awaitingWeightSync();
     for (final record in pending) {
