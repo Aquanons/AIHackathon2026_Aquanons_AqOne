@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+// See tile_cache.dart: widgets for the ImageProvider machinery, dart:ui
+// prefixed so ui.Image does not collide with the Image widget.
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -166,22 +168,22 @@ class _MbtilesImage extends ImageProvider<_MbtilesImage> {
     );
   }
 
-  Future<Codec> _load(ImageDecoderCallback decode) async {
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
     final Uint8List? bytes = await pack.read(coordinates);
     if (bytes != null && bytes.isNotEmpty) {
-      return decode(await ImmutableBuffer.fromUint8List(bytes));
+      return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     }
     // Outside the packed area. Hand off to the network provider, which has
     // its own cache; offline this throws and flutter_map draws its error
     // tile, same as before.
-    final Completer<Codec> completer = Completer<Codec>();
+    final Completer<ui.Codec> completer = Completer<ui.Codec>();
     final ImageStream stream = fallback.resolve(ImageConfiguration.empty);
     late ImageStreamListener listener;
     listener = ImageStreamListener(
       (ImageInfo info, bool _) async {
         stream.removeListener(listener);
         final ByteData? data = await info.image.toByteData(
-          format: ImageByteFormat.png,
+          format: ui.ImageByteFormat.png,
         );
         if (data == null) {
           completer.completeError(
@@ -191,7 +193,7 @@ class _MbtilesImage extends ImageProvider<_MbtilesImage> {
         }
         completer.complete(
           decode(
-            await ImmutableBuffer.fromUint8List(data.buffer.asUint8List()),
+            await ui.ImmutableBuffer.fromUint8List(data.buffer.asUint8List()),
           ),
         );
       },

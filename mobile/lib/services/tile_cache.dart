@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+// widgets, not foundation: ImageProvider, ImageConfiguration and the
+// ImageStreamCompleter family live here. dart:ui is prefixed because its
+// Image would otherwise collide with the Image widget.
+import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -236,7 +240,7 @@ class _CachedTileImage extends ImageProvider<_CachedTileImage> {
     );
   }
 
-  Future<Codec> _load(ImageDecoderCallback decode) async {
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
     Uint8List? bytes = await cache.read(url);
     if (bytes == null) {
       bytes = await cache.fetch(url);
@@ -250,7 +254,7 @@ class _CachedTileImage extends ImageProvider<_CachedTileImage> {
       // error tile instead of the widget tree blowing up.
       throw StateError('Tile unavailable offline: $url');
     }
-    return decode(await ImmutableBuffer.fromUint8List(bytes));
+    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
   }
 
   @override
