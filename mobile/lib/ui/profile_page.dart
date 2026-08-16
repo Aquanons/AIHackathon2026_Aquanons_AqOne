@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../core/validators.dart';
 import '../data/identity_store.dart';
 import '../models/license_type.dart';
 import '../models/trust_tier.dart';
+import 'avatar_crop_page.dart';
 import 'info_page.dart';
 import 'widgets/language_picker.dart';
 
@@ -175,11 +177,13 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     setState(() => _pickingAvatar = true);
+    final String? previousPath = widget.identity.avatarPath;
     try {
       if (choice == _AvatarAction.remove) {
         final updated = await widget.identityStore.setAvatarPath(null);
         if (!mounted) return;
         widget.onIdentityUpdated(updated);
+        await _discardAvatarFile(previousPath);
         return;
       }
 
@@ -188,27 +192,46 @@ class _ProfilePageState extends State<ProfilePage> {
           : ImageSource.gallery;
       final picked = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        // Deliberately generous: this is the crop input, not the stored
+        // avatar. Downscaling here would throw away detail the user is about
+        // to zoom into.
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 90,
       );
       if (picked == null || !mounted) {
         return;
       }
 
+      final Uint8List? cropped = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute<Uint8List>(
+          builder: (_) => AvatarCropPage(source: File(picked.path)),
+        ),
+      );
+      // Backing out of the cropper cancels the whole change; the old photo
+      // stays exactly as it was.
+      if (cropped == null || !mounted) {
+        return;
+      }
+
       final dir = await getApplicationDocumentsDirectory();
-      final savedPath = '${dir.path}/profile_avatar.jpg';
-      // Copy out of the picker's temp file so the photo survives after the
-      // OS clears its cache/temp directory.
-      await File(picked.path).copy(savedPath);
-      // Every photo is written to the same path, and Flutter keys its image
-      // cache on that path - without evicting, replacing the photo keeps
-      // showing the previous one.
-      await FileImage(File(savedPath)).evict();
+      // Unique filename per upload, and this is load-bearing rather than
+      // tidiness. Image keys its resolved stream on the file path, so writing
+      // every photo to the same profile_avatar.jpg meant the widget kept the
+      // already-decoded old bytes and the new picture never appeared -
+      // evicting the cache did not help, because the widget still held the
+      // completed stream. A new path forces a genuine re-resolve.
+      final savedPath =
+          '${dir.path}/profile_avatar_${DateTime.now().millisecondsSinceEpoch}.png';
+      await File(savedPath).writeAsBytes(cropped, flush: true);
 
       final updated = await widget.identityStore.setAvatarPath(savedPath);
       if (!mounted) return;
       widget.onIdentityUpdated(updated);
+
+      // Only after the new path is safely persisted. Deleting first would
+      // leave a fisherman with no photo at all if the write failed.
+      await _discardAvatarFile(previousPath);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -221,6 +244,29 @@ class _ProfilePageState extends State<ProfilePage> {
       if (mounted) {
         setState(() => _pickingAvatar = false);
       }
+    }
+  }
+
+  /// Removes a superseded avatar from disk and from the image cache.
+  ///
+  /// Every upload now writes a new file, so without this the documents
+  /// directory would accumulate one image per change, on handsets where
+  /// storage is often the scarcest resource.
+  ///
+  /// Failure is swallowed on purpose: a leftover file is untidy, a crash in
+  /// the middle of changing a profile photo is not.
+  Future<void> _discardAvatarFile(String? path) async {
+    if (path == null || path.isEmpty) {
+      return;
+    }
+    try {
+      await FileImage(File(path)).evict();
+      final File file = File(path);
+      if (file.existsSync()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Ignored deliberately - see above.
     }
   }
 
