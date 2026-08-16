@@ -91,6 +91,14 @@ class AqOneConfig {
       'AqOne/0.1 (+https://github.com/Aquanons; municipal fisher safety, '
       'New Washington, Aklan)';
 
+  /// Bundled offline basemap for the municipal waters.
+  ///
+  /// Absent until someone generates it - see docs/24_OFFLINE_MAP.md, which
+  /// documents the self-hosted render that produces this file legally. The
+  /// app checks for it at startup and carries on without it, so a missing
+  /// pack is a degraded map rather than a broken one.
+  static const String offlineMapAsset = 'assets/map/new_washington.mbtiles';
+
   static const String openMeteoBase = 'https://api.open-meteo.com/v1/forecast';
 
   /// Wave model, a different host from the atmospheric one above. Free and

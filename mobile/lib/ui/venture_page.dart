@@ -19,6 +19,7 @@ import '../models/weather_snapshot.dart';
 import '../services/catch_service.dart';
 import '../services/compass_service.dart';
 import '../services/location_service.dart';
+import '../services/mbtiles_provider.dart';
 import '../services/sos_alarm.dart';
 import '../services/sos_service.dart';
 import '../services/tile_cache.dart';
@@ -117,6 +118,11 @@ class _VenturePageState extends State<VenturePage> {
   /// Only tiles that were actually drawn are stored; nothing is pre-fetched.
   final TileCache _tiles = TileCache();
 
+  /// Bundled pack first, disk cache second, network last. Null until the
+  /// chain is built, and the map simply renders from the network until then -
+  /// one frame, and never a blocking spinner over a safety screen.
+  TileProvider? _tileProvider;
+
   final CompassService _compass = CompassService();
   StreamSubscription<CompassReading>? _compassSub;
 
@@ -169,6 +175,7 @@ class _VenturePageState extends State<VenturePage> {
     super.initState();
     _sosSub = widget.sos.changes.listen((_) => _refreshSosStatus());
     _catchSub = widget.catches.changes.listen((_) => _refreshCatchCount());
+    _initTileProvider();
     _compassSub = _compass.readings.listen((CompassReading reading) {
       if (!mounted) {
         return;
@@ -274,6 +281,17 @@ class _VenturePageState extends State<VenturePage> {
       return;
     }
     setState(() => _hotspots = surface);
+  }
+
+  Future<void> _initTileProvider() async {
+    final TileProvider provider = await buildTileProvider(
+      cache: _tiles,
+      assetPath: AqOneConfig.offlineMapAsset,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _tileProvider = provider);
   }
 
   Future<void> _refreshSnapshotAges() async {
@@ -772,7 +790,7 @@ class _VenturePageState extends State<VenturePage> {
         TileLayer(
           urlTemplate: AqOneConfig.osmTileUrl,
           userAgentPackageName: 'ph.aqone.app',
-          tileProvider: CachedNetworkTileProvider(cache: _tiles),
+          tileProvider: _tileProvider ?? CachedNetworkTileProvider(cache: _tiles),
           // Keep showing the coarser tile already on screen while a finer one
           // loads or fails. Offline, that is the difference between a blurry
           // map and a grey one.
