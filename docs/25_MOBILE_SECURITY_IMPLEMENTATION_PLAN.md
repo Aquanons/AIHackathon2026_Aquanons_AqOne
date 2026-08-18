@@ -1146,6 +1146,65 @@ Android SDK 37, which this toolchain cannot resolve). `flutter pub outdated`
 otherwise shows only patch-level drift plus `flutter_lints` 4 → 6, which is a
 lint-rule change deliberately deferred until after the demo.
 
+**Build verification — run 2026-08-17**
+
+| Check | Result |
+|---|---|
+| `flutter analyze` | **No issues found** (257.9s) |
+| `flutter test` | **129 passed** |
+| `flutter build apk --release` | **Succeeded**, `app-release.apk`, 60.5 MB |
+| `./gradlew :app:signingReport` | Ran; see the finding below |
+
+The release build succeeding is a real result, not a formality: R8 shrinking
+and obfuscation were newly enabled in this phase, and this is the first build
+that exercised them. Nothing was stripped that broke the build. Runtime
+behaviour under R8 is still only proven by the scenario table below.
+
+**FINDING — the release artifact is currently debug-signed**
+
+`signingReport` output:
+
+```
+Variant: release
+Config: debug
+Store: C:\Users\User\.android\debug.keystore
+Alias: AndroidDebugKey
+SHA-256: 8A:1E:58:5D:...:B9:F4:95
+```
+
+`Config: debug` on the release variant means `android/key.properties` does
+not exist yet, so the fallback applied exactly as designed. **This APK must
+not be distributed to anyone.** The debug key is public and identical on
+every machine with Android tooling installed; an APK signed with it can be
+replaced by anyone.
+
+This is the mechanism working, not failing - the fallback exists so a
+teammate without the keystore can still build - but the phase cannot be
+approved while it holds. To fix, follow `mobile/android/key.properties.example`
+to generate a keystore, then re-run `signingReport` and confirm the release
+variant reports `Config: release` with a SHA-256 that is *not* the debug
+fingerprint above.
+
+**APK size — 60.5 MB, worth attention before a pilot**
+
+`flutter build apk --release` produces a fat APK containing native libraries
+for every Android ABI. The fishermen this is built for have cheap handsets
+and metered data. Two options, neither done in this phase:
+
+- `flutter build appbundle` — Play delivers only the ABI each device needs.
+  Required for Play distribution anyway.
+- `flutter build apk --split-per-abi` — roughly a third of the size each, for
+  sideloading, which is how a pilot would actually distribute this.
+
+**Carry-forward — deprecated Gradle flags**
+
+`android/gradle.properties` sets `android.newDsl=false` and
+`android.builtInKotlin=false`, both added by the Flutter template and both
+now deprecated; AGP warns they will be removed in version 10. Not urgent and
+not touched here, because changing the Kotlin plugin arrangement mid-week is
+exactly the class of change that cost this project a day already. Revisit
+after the demo.
+
 **Release scenario test record — TO BE FILLED BY THE OWNER**
 
 Build first, and confirm which key signed it:
@@ -1171,10 +1230,10 @@ passing one.
 
 **Verification still owed (owner must run)**
 
+`flutter analyze`, `flutter test` and `flutter build apk --release` have
+been run and passed - see the table above. Still owed:
+
 ```powershell
-cd mobile; flutter analyze
-cd mobile; flutter test
-cd mobile; flutter build apk --release
 cd backend; pytest
 cd backend; ruff check .
 git diff --check
@@ -1184,6 +1243,14 @@ git diff --check
 3.10 and the project pins `numpy==2.4.6`, which requires 3.11 or newer.
 Nothing in this phase touched backend code, but the plan asks for the full
 suite and the result must be recorded, not assumed.
+
+**Phase 6 cannot be marked COMPLETE until:**
+
+1. a release keystore exists and `signingReport` shows the release variant on
+   a non-debug key;
+2. the seven scenarios below have been run against that signed release build
+   and recorded;
+3. `pytest` and `ruff check .` have been run and recorded.
 
 **Carry-forward**
 
