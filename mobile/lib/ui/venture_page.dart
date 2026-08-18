@@ -692,7 +692,9 @@ class _VenturePageState extends State<VenturePage> {
   ///
   /// Deliberately states what the layer is not. A shaded blob on a sea chart
   /// reads as authority, and this one is a suitability estimate that has never
-  /// promised anyone a fish.
+  /// promised anyone a fish. Kept to a single compact chip so the map - the
+  /// thing a fisherman is actually reading - keeps its screen: the full
+  /// wording is one tap away rather than permanently parked over the water.
   Widget _buildHotspotLegend(bool isDark, HotspotSurface surface) {
     final AppLocalizations t = AppLocalizations.of(context);
     final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
@@ -705,26 +707,46 @@ class _VenturePageState extends State<VenturePage> {
       (int sum, HotspotCell c) => sum + c.observations,
     );
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: accent.withValues(alpha: demo ? 0.7 : 0.35),
-          width: demo ? 1.5 : 1,
+    // The chip carries the short form; the long form - counts, age, model
+    // caveats, and for demo data the flat statement that nobody reported it -
+    // goes to the sheet behind the tap.
+    final String summary = demo
+        ? 'Example zones · not real data'
+        : '${t.hotspotLegendTitle} · $cells areas';
+
+    return Semantics(
+      button: true,
+      label: demo
+          ? 'Example fishing zones, not real data. Tap for details.'
+          : 'Fishing zone legend. Tap for details.',
+      child: GestureDetector(
+        onTap: () => _showHotspotLegendDetail(
+          isDark: isDark,
+          demo: demo,
+          accent: accent,
+          cells: cells,
+          observations: observations,
+          age: age,
+          minReporters: surface.minReporters,
+          title: t.hotspotLegendTitle,
+          disclaimer: t.hotspotLegendDisclaimer,
         ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: accent.withValues(alpha: demo ? 0.7 : 0.35),
+              width: demo ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Container(
-                width: 10,
-                height: 10,
+                width: 9,
+                height: 9,
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.38),
                   borderRadius: BorderRadius.circular(2),
@@ -732,67 +754,126 @@ class _VenturePageState extends State<VenturePage> {
               ),
               const SizedBox(width: 6),
               Text(
-                t.hotspotLegendTitle,
+                summary,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 10,
+                  fontWeight: demo ? FontWeight.w800 : FontWeight.w700,
                   color: isDark ? Colors.white : const Color(0xFF0F172A),
                 ),
               ),
-              if (demo) ...<Widget>[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'EXAMPLE',
-                    style: TextStyle(
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                      color: Colors.white,
+              const SizedBox(width: 4),
+              Icon(Icons.info_outline_rounded, size: 11, color: fg),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The wording the chip no longer has room for, on demand.
+  Future<void> _showHotspotLegendDetail({
+    required bool isDark,
+    required bool demo,
+    required Color accent,
+    required int cells,
+    required int observations,
+    required String? age,
+    required int? minReporters,
+    required String title,
+    required String disclaimer,
+  }) {
+    final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? _canvasDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.38),
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (demo) ...<Widget>[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'EXAMPLE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (demo) ...<Widget>[
+                // No counts, no age, no model version. Every one of those makes
+                // invented data read as measured, and the numbers on these
+                // cells are inventions too.
+                Text(
+                  'Sample areas, to show how this map works.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    color: fg,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'NOT real fishing data. Nobody reported these.',
+                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
+                ),
+              ] else ...<Widget>[
+                Text(
+                  '$cells areas · $observations catch reports'
+                  '${age == null ? '' : ' · $age'}'
+                  '${minReporters == null ? '' : ' · min $minReporters reporters'}',
+                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  disclaimer,
+                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 3),
-          if (demo) ...<Widget>[
-            // No counts, no age, no model version. Every one of those makes
-            // invented data read as measured, and the numbers on these cells
-            // are inventions too.
-            Text(
-              'Sample areas, to show how this map works.',
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w700,
-                color: fg,
-              ),
-            ),
-            Text(
-              'NOT real fishing data. Nobody reported these.',
-              style: TextStyle(fontSize: 9.5, height: 1.3, color: fg),
-            ),
-          ] else ...<Widget>[
-            Text(
-              '$cells areas · $observations catch reports'
-              '${age == null ? '' : ' · $age'}'
-              '${surface.minReporters == null ? '' : ' · min ${surface.minReporters} reporters'}',
-              style: TextStyle(fontSize: 9.5, color: fg),
-            ),
-            Text(
-              t.hotspotLegendDisclaimer,
-              style: TextStyle(fontSize: 9.5, color: fg),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -1021,13 +1102,36 @@ class _VenturePageState extends State<VenturePage> {
           onTap: _openCatchHistory,
         ),
         const SizedBox(height: 10),
+        // The three pills are deliberately identical in size. At sea, with wet
+        // hands and a moving deck, a button is found by where it is and what
+        // colour it is, not by reading it - so shape carries no meaning here
+        // and colour carries all of it: teal repeat, blue log, red SOS.
         if (_lastCatch != null) ...<Widget>[
           _ActionPill(
             icon: Icons.replay_rounded,
-            label: 'Repeat: ${_lastCatchLabel(_lastCatch!)}',
+            label: 'Repeat',
             color: const Color(0xFF0EA5A4),
             isDark: isDark,
+            tooltip: 'Repeat: ${_lastCatchLabel(_lastCatch!)}',
             onTap: _repeatingCatch ? null : _repeatLastCatch,
+          ),
+          // The species/weight the repeat button would log, kept off the
+          // button itself so the pill width never depends on a fish name.
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SizedBox(
+              width: _kActionPillWidth,
+              child: Text(
+                _lastCatchLabel(_lastCatch!),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 8),
         ],
@@ -1043,12 +1147,18 @@ class _VenturePageState extends State<VenturePage> {
             padding: const EdgeInsets.only(top: 6),
             child: GestureDetector(
               onTap: _openCatchHistory,
-              child: Text(
-                '$_pendingCatches waiting to upload',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  decoration: TextDecoration.underline,
-                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+              child: SizedBox(
+                width: _kActionPillWidth,
+                child: Text(
+                  '$_pendingCatches waiting to upload',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    decoration: TextDecoration.underline,
+                    color: isDark ? Colors.white70 : const Color(0xFF475569),
+                  ),
                 ),
               ),
             ),
@@ -1367,6 +1477,15 @@ class _RoundButton extends StatelessWidget {
   }
 }
 
+/// Fixed footprint for every primary action pill on the venture map.
+///
+/// Repeat, Log Catch and SOS are all this wide and this tall. Uniform size is
+/// the point: it makes the rail a predictable set of targets rather than a
+/// ragged column whose widths shift as soon as someone lands a fish with a
+/// long name, and it leaves colour as the one thing that tells them apart.
+const double _kActionPillWidth = 176;
+const double _kActionPillHeight = 50;
+
 class _ActionPill extends StatelessWidget {
   const _ActionPill({
     required this.icon,
@@ -1374,6 +1493,7 @@ class _ActionPill extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
+    this.tooltip,
   });
 
   final IconData icon;
@@ -1382,45 +1502,60 @@ class _ActionPill extends StatelessWidget {
   final bool isDark;
   final VoidCallback? onTap;
 
+  /// Longer wording for the label that no longer fits on a fixed-width pill.
+  final String? tooltip;
+
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     final display = enabled
         ? color
         : (isDark ? const Color(0xFF334155) : const Color(0xFF94A3B8));
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: display.withValues(alpha: 0.4),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 20, color: Colors.white),
-        label: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            letterSpacing: 0.3,
-          ),
+    final Widget pill = SizedBox(
+      width: _kActionPillWidth,
+      height: _kActionPillHeight,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(_kActionPillHeight / 2),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: display.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: display,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ElevatedButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: 20, color: Colors.white),
+          label: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: 0.3,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: display,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            // Zero minimum: the SizedBox above owns the size, so the three
+            // pills stay identical no matter how long their labels are.
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(_kActionPillHeight / 2),
+            ),
+          ),
         ),
       ),
     );
+    final String? message = tooltip;
+    return message == null ? pill : Tooltip(message: message, child: pill);
   }
 }
 
