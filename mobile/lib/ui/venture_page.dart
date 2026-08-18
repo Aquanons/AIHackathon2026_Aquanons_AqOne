@@ -821,11 +821,25 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
+  /// What the rest of the mesh sees this handset as. Prefers skipper name,
+  /// then boat, then vessel ID - the wheel is never blank.
+  String get _chatDisplayName {
+    for (final candidate in <String>[
+      widget.identity.skipperName,
+      widget.identity.boat,
+      widget.identity.vesselId,
+    ]) {
+      final trimmed = candidate.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return 'You';
+  }
+
   // --- Chat Hub FAB (bottom-right) — iOS Messages icon shape ---
   Widget _buildChatHubButton(bool isDark) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const Chathubb()),
+        MaterialPageRoute<void>(builder: (_) => Chathubb(displayName: _chatDisplayName)),
       ),
       child: SizedBox(
         width: 58,

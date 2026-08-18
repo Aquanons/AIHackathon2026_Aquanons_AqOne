@@ -369,7 +369,12 @@ class ChatService extends ChangeNotifier {
 // ---------------------------------------------------------------------------
 
 class Chathubb extends StatefulWidget {
-  const Chathubb({super.key});
+  const Chathubb({super.key, this.displayName = 'You'});
+
+  /// Who this handset appears as to the rest of the mesh. Venture passes the
+  /// skipper or boat name so the wheel shows something a neighbour recognises
+  /// rather than "You" on every phone.
+  final String displayName;
 
   @override
   State<Chathubb> createState() => _ChathubbState();

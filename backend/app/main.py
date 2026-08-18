@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
 from app.api.drift import router as drift_router
+from app.api.mesh import router as mesh_router
 from app.api.metrics import router as metrics_router
 from app.api.sea_condition import router as sea_condition_router
 from app.api.squall import router as squall_router
@@ -35,6 +36,10 @@ app = FastAPI(lifespan=lifespan)
 # Auth is the only unauthenticated API surface: /api/login, /api/admin-signup
 # (itself gated by ADMIN_SETUP_KEY) and /api/me, which authenticates itself.
 app.include_router(auth_router)
+
+# The mesh chat relay is unauthenticated - the hub and fishermen have no accounts.
+# It carries public messages only (name, text, origin) on a fixed schema the hub validates.
+app.include_router(mesh_router)
 
 # Everything else requires a valid bearer token. Declaring it here rather than
 # on each route means a newly added endpoint is protected by default - the safe
