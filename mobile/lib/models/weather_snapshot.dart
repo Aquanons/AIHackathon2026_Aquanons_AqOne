@@ -57,26 +57,42 @@ class WeatherSnapshot {
   /// ignores the official sea condition, buoy hazards, wave height and tide.
   /// Anything shown from this must be labelled as informational.
   ///
-  /// Known gap carried over from the source implementation: fog and showers
-  /// are treated as safe. That is almost certainly too permissive, but the
-  /// rule is preserved verbatim so the change is a deliberate product
-  /// decision rather than a silent one.
+  /// The condition buckets were widened when the forecast strip landed, so
+  /// this now has to name the wet ones explicitly. Fog and showers are still
+  /// treated as safe here, which is too permissive - but this only drives the
+  /// current-conditions note, and the forecast strip's SafetyScore is the
+  /// place where that judgement is made properly.
   bool get looksUnsafe {
     if (windSpeed > AqOneConfig.unsafeWindKph) {
       return true;
     }
     return condition == WeatherCondition.thunderstorm ||
+        condition == WeatherCondition.severeThunderstorm ||
+        condition == WeatherCondition.heavyRain ||
         condition == WeatherCondition.rainy;
   }
 }
 
+/// WMO code buckets, one per distinguishable icon.
+///
+/// Widened from the source project's seven buckets: every wet code from
+/// drizzle to a downpour used to collapse into a single umbrella, so a
+/// thunderstorm on Thursday looked exactly like light drizzle on Tuesday.
+/// A forecast strip is useless if the days do not look different.
 enum WeatherCondition {
   sunny('Sunny & Clear', Icons.wb_sunny_rounded),
-  partlyCloudy('Partly Cloudy', Icons.cloud_rounded),
+  partlyCloudy('Partly Cloudy', Icons.wb_cloudy_rounded),
+  overcast('Overcast', Icons.cloud_rounded),
   foggy('Foggy', Icons.foggy),
+  // Icons are deliberately drawn from the long-standing Material set rather
+  // than the newer weather symbols (Icons.rainy and friends), which do not
+  // exist on every Flutter version this has to build against.
+  drizzle('Light Drizzle', Icons.blur_on_rounded),
   rainy('Rainy', Icons.umbrella_rounded),
+  heavyRain('Heavy Rain', Icons.water_drop_rounded),
   showers('Showers', Icons.grain_rounded),
   thunderstorm('Thunderstorm', Icons.thunderstorm_rounded),
+  severeThunderstorm('Severe Storm', Icons.flash_on_rounded),
   calm('Sunny & Calm', Icons.wb_sunny_rounded);
 
   const WeatherCondition(this.label, this.icon);
@@ -84,22 +100,49 @@ enum WeatherCondition {
   final String label;
   final IconData icon;
 
-  /// WMO code mapping, matching the source project's buckets.
+  /// WMO 4677 interpretation codes as served by Open-Meteo.
   static WeatherCondition fromCode(int code) {
     if (code == 0) {
       return WeatherCondition.sunny;
     }
-    if (code >= 1 && code <= 3) {
+    if (code >= 1 && code <= 2) {
       return WeatherCondition.partlyCloudy;
+    }
+    if (code == 3) {
+      return WeatherCondition.overcast;
     }
     if (code == 45 || code == 48) {
       return WeatherCondition.foggy;
     }
-    if (code >= 51 && code <= 67) {
+    // 51-57 drizzle and freezing drizzle.
+    if (code >= 51 && code <= 57) {
+      return WeatherCondition.drizzle;
+    }
+    // 61 slight, 63 moderate, 65 heavy rain; 66/67 freezing rain.
+    if (code == 65 || code == 67) {
+      return WeatherCondition.heavyRain;
+    }
+    if (code >= 61 && code <= 67) {
       return WeatherCondition.rainy;
     }
-    if (code >= 80 && code <= 82) {
+    // 71-77 snow: not a Philippine concern, but the codes exist and must not
+    // fall through to "calm".
+    if (code >= 71 && code <= 77) {
+      return WeatherCondition.heavyRain;
+    }
+    // 80 slight showers, 81 moderate, 82 violent.
+    if (code == 82) {
+      return WeatherCondition.heavyRain;
+    }
+    if (code >= 80 && code <= 81) {
       return WeatherCondition.showers;
+    }
+    if (code == 85 || code == 86) {
+      return WeatherCondition.showers;
+    }
+    // 95 thunderstorm; 96/99 thunderstorm with hail.
+    if (code == 96 || code == 99) {
+      return WeatherCondition.severeThunderstorm;
     }
     if (code >= 95) {
       return WeatherCondition.thunderstorm;

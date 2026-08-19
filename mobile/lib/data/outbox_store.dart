@@ -78,7 +78,7 @@ class OutboxStore {
   Future<SosRecord?> advance(
     String localId,
     DeliveryState candidate, {
-    int? buoyId,
+    String? buoyId,
     int? srcId,
     int? seq,
     int? serverTs,
@@ -118,6 +118,79 @@ class OutboxStore {
           : current.acknowledgedAt,
     );
     return save(updated);
+  }
+
+  /// Store what the responder sent back for this SOS.
+  ///
+  /// Returns true when something actually changed, so the caller only pushes a
+  /// UI update when there is news - a poll every 15 seconds that reports "no
+  /// change" should not repaint a countdown the user is watching.
+  Future<bool> saveResponder(
+    String localId, {
+    String? remoteId,
+    String? etaAt,
+    int? responderStatus,
+    String? responderNote,
+  }) async {
+    final db = await _db.database;
+    final existing = await db.query(
+      'outbox',
+      columns: <String>['remote_id', 'eta_at', 'responder_status', 'responder_note'],
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      return false;
+    }
+    final row = existing.first;
+
+    final next = <String, Object?>{
+      if (remoteId != null && row['remote_id'] != remoteId) 'remote_id': remoteId,
+      if (etaAt != null && row['eta_at'] != etaAt) 'eta_at': etaAt,
+      if (responderStatus != null && row['responder_status'] != responderStatus)
+        'responder_status': responderStatus,
+      if (responderNote != null && row['responder_note'] != responderNote)
+        'responder_note': responderNote,
+    };
+    if (next.isEmpty) {
+      return false;
+    }
+
+    await db.update(
+      'outbox',
+      next,
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+    );
+    return true;
+  }
+
+  /// Updates the note on an SOS already in the outbox.
+  ///
+  /// Used by the post-dispatch "what's wrong?" follow-up: the initial send
+  /// goes out with no note so it is never delayed waiting on the fisher to
+  /// type, and the chosen emergency type/description is attached afterwards.
+  Future<void> updateNote(String localId, String note) async {
+    final db = await _db.database;
+    await db.update(
+      'outbox',
+      <String, Object?>{'note': note},
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+    );
+  }
+
+  /// Record the fisher's own reply locally, so the button reflects reality even
+  /// if the network call to the backend fails.
+  Future<void> saveFisherReply(String localId, int reply) async {
+    final db = await _db.database;
+    await db.update(
+      'outbox',
+      <String, Object?>{'fisher_reply': reply},
+      where: 'local_id = ?',
+      whereArgs: <Object?>[localId],
+    );
   }
 
   Future<SosRecord?> recordFailure(String localId, String error) async {

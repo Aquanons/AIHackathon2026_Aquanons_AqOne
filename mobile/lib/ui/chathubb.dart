@@ -7,6 +7,8 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/endpoint_guard.dart';
+
 // ---------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------
@@ -29,10 +31,14 @@ class ChatMessage {
 // Service — WebSocket chat client for the Heltec WiFi-relay hub
 //
 // The Heltec module runs as a WiFi access point (default SSID "Aquan") and
-// exposes a WebSocket server at ws://<ap_ip>/ws.  Connected clients are
-// shown on a "client wheel" in the UI.  An HTTP GET /history endpoint
-// provides backfill on connect.  Messages sent while offline are queued
-// in SharedPreferences and flushed when the connection is restored.
+// exposes a WebSocket server on its OWN port (`ws://<ap_ip>:81`, no path -
+// see AqOneConfig.buoyWsUrl and docs/21_WEEK1_CONTRACT_FIXTURES.md). It is a
+// separate WebSocketsServer instance from the HTTP server on port 80, so it
+// has no `/ws` route - a client that connects to port 80 will never reach
+// it. Connected clients are shown on a "client wheel" in the UI. An HTTP
+// GET /history endpoint provides backfill on connect. Messages sent while
+// offline are queued in SharedPreferences and flushed when the connection is
+// restored.
 // ---------------------------------------------------------------------------
 
 class ChatService extends ChangeNotifier {
@@ -48,6 +54,7 @@ class ChatService extends ChangeNotifier {
 
   static const int maxMessageLength = 50;
   static const int _maxMessages = 50;
+  static const Duration _messageRetention = Duration(hours: 24);
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
@@ -69,8 +76,8 @@ class ChatService extends ChangeNotifier {
   String? get lastError => _lastError;
   int get pendingCount => _pendingQueue.length;
 
-  String get _wsUrl => 'ws://$host/ws';
-  String get _historyUrl => 'http://$host/history';
+  Uri get _wsUri => EndpointGuard.buoyWs(host);
+  Uri get _historyUri => EndpointGuard.buoyHistory(host);
 
   /// Starts the connection loop and loads persisted messages / queue.
   Future<void> start() async {
@@ -86,13 +93,13 @@ class ChatService extends ChangeNotifier {
     if (_connecting || _disposed) return;
     _connecting = true;
     _lastError = null;
-    notifyListeners();
+    _notify();
 
     try {
       await _subscription?.cancel();
       _subscription = null;
 
-      final channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
+      final channel = WebSocketChannel.connect(_wsUri);
       _channel = channel;
 
       // Awaiting [ready] surfaces connection errors inside our try/catch
@@ -106,13 +113,13 @@ class ChatService extends ChangeNotifier {
         onError: (Object e) {
           _connected = false;
           _connecting = false;
-          _lastError = e.toString();
-          notifyListeners();
+          _lastError = _describeChatError(e);
+          _notify();
         },
         onDone: () {
           _connected = false;
           _connecting = false;
-          notifyListeners();
+          _notify();
         },
         cancelOnError: true,
       );
@@ -122,15 +129,15 @@ class ChatService extends ChangeNotifier {
 
       _connected = true;
       _connecting = false;
-      notifyListeners();
+      _notify();
 
       await _backfillHistory();
       await _flushQueue();
     } catch (e) {
       _connected = false;
       _connecting = false;
-      _lastError = e.toString();
-      notifyListeners();
+      _lastError = _describeChatError(e);
+      _notify();
     }
   }
 
@@ -162,7 +169,7 @@ class ChatService extends ChangeNotifier {
           ..addAll((json['list'] as List<dynamic>?)
                   ?.map((e) => e.toString()) ??
               []);
-        notifyListeners();
+        _notify();
 
       case 'msg':
         final name = json['from'] as String? ?? '?';
@@ -175,7 +182,7 @@ class ChatService extends ChangeNotifier {
           time: DateTime.now(),
         ));
         _trimMessages();
-        notifyListeners();
+        _notify();
 
       case 'history':
         final list = json['messages'] as List<dynamic>?;
@@ -193,14 +200,47 @@ class ChatService extends ChangeNotifier {
         }
         _trimMessages();
         _persistMessages();
-        notifyListeners();
+        _notify();
     }
   }
 
   void _trimMessages() {
-    while (_messages.length > _maxMessages) {
-      _messages.removeAt(0);
+    final retained = retainRecentMessages(_messages);
+    _messages
+      ..clear()
+      ..addAll(retained);
+  }
+
+  static List<ChatMessage> retainRecentMessages(
+    Iterable<ChatMessage> messages, {
+    DateTime? now,
+  }) {
+    final DateTime cutoff =
+        (now ?? DateTime.now()).subtract(_messageRetention);
+    final List<ChatMessage> retained = messages
+        .where((ChatMessage message) => !message.time.isBefore(cutoff))
+        .toList(growable: true);
+    if (retained.length > _maxMessages) {
+      retained.removeRange(0, retained.length - _maxMessages);
     }
+    return retained;
+  }
+
+  /// Fire-and-forget POST to the backend mesh chat endpoint.
+  /// Errors are silently ignored — the local Heltec relay is the primary path.
+  void _relayToBackend(String sender, String text) {
+    // .then<void> before .catchError is deliberate: catchError must return the
+    // future's own type, so attaching it straight to a Future<Response> throws
+    // at runtime on the exact failure this is meant to swallow.
+    http
+        .post(
+          Uri.parse('$backendUrl/api/mesh/chat'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'sender': sender, 'text': text}),
+        )
+        .timeout(const Duration(seconds: 5))
+        .then<void>((_) {})
+        .catchError((Object _) {});
   }
 
   // ----- Outgoing messages ------------------------------------------------
@@ -218,7 +258,7 @@ class ChatService extends ChangeNotifier {
     _messages.add(msg);
     _trimMessages();
     _persistMessages();
-    notifyListeners();
+    _notify();
 
     if (_connected) {
       _safeSend(jsonEncode({
@@ -235,22 +275,12 @@ class ChatService extends ChangeNotifier {
     _relayToBackend(displayName, trimmed);
   }
 
-  /// Fire-and-forget POST to the backend mesh chat endpoint.
-  /// Errors are silently ignored — the local Heltec relay is the primary path.
-  void _relayToBackend(String sender, String text) {
-    http.post(
-      Uri.parse('$backendUrl/api/mesh/chat'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({'sender': sender, 'text': text}),
-    ).timeout(const Duration(seconds: 5)).catchError((_) {});
-  }
-
   // ----- History backfill -------------------------------------------------
 
   Future<void> _backfillHistory() async {
     try {
       final res = await http
-          .get(Uri.parse(_historyUrl))
+          .get(_historyUri)
           .timeout(const Duration(seconds: 4));
       if (res.statusCode != 200) return;
       final dynamic json = jsonDecode(res.body);
@@ -270,7 +300,7 @@ class ChatService extends ChangeNotifier {
       }
       _trimMessages();
       _persistMessages();
-      notifyListeners();
+      _notify();
     } catch (_) {
       // Hub offline — not an error on mobile.
     }
@@ -328,7 +358,7 @@ class ChatService extends ChangeNotifier {
         ));
       }
       _trimMessages();
-      notifyListeners();
+      _notify();
     } catch (_) {}
   }
 
@@ -352,6 +382,41 @@ class ChatService extends ChangeNotifier {
     try {
       _channel?.sink.add(data);
     } catch (_) {}
+  }
+
+  /// Turns a raw WebSocket/HTTP exception into text a fisher standing near
+  /// the buoy can read. [lastError] is not shown anywhere in the UI yet, but
+  /// it is public API on a service other screens may reasonably read from
+  /// later, so it should never carry Dart's own exception text.
+  static String _describeChatError(Object error) {
+    final text = error.toString();
+    if (text.contains('TimeoutException')) {
+      return 'no reply from the chat hub';
+    }
+    if (text.contains('SocketException') ||
+        text.contains('Connection refused') ||
+        text.contains('Failed host lookup')) {
+      return 'not connected to the Aquan WiFi hub';
+    }
+    if (text.contains('WebSocketChannelException') ||
+        text.contains('WebSocketException')) {
+      return 'chat connection dropped';
+    }
+    return 'could not connect to the chat hub';
+  }
+
+  /// Guards every `notifyListeners()` call in this class.
+  ///
+  /// Most call sites here run after an `await` (WebSocket connect, HTTP
+  /// backfill, SharedPreferences I/O) or inside a stream callback - both can
+  /// resume/fire after [dispose] has already run, e.g. when the fisherman
+  /// backs out of chat while a connection attempt is still in flight.
+  /// `ChangeNotifier.notifyListeners()` throws once disposed, so every call
+  /// goes through this check instead of calling it directly.
+  void _notify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   @override
@@ -381,7 +446,9 @@ class Chathubb extends StatefulWidget {
 }
 
 class _ChathubbState extends State<Chathubb> {
-  final ChatService _service = ChatService();
+  // Built in initState, not as a field initialiser: the name comes from
+  // `widget`, which is not available while fields are being initialised.
+  late final ChatService _service;
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _onAquan = false;
@@ -389,6 +456,7 @@ class _ChathubbState extends State<Chathubb> {
   @override
   void initState() {
     super.initState();
+    _service = ChatService(displayName: widget.displayName);
     _service.start();
     _checkWifi();
     // Poll WiFi status every 5 s.
@@ -417,7 +485,7 @@ class _ChathubbState extends State<Chathubb> {
     if (!onAq) {
       try {
         final res = await http
-            .get(Uri.parse('http://192.168.4.1/history'))
+            .get(EndpointGuard.buoyHistory(_service.host))
             .timeout(const Duration(seconds: 2));
         onAq = res.statusCode == 200;
       } catch (_) {}
@@ -462,7 +530,7 @@ class _ChathubbState extends State<Chathubb> {
               onPressed: () => Navigator.of(context).pop(),
             ),
             title: Text(
-              'Chat (istoryahanai)',
+              'Chat',
               style: TextStyle(
                 color: isDark ? Colors.white : Colors.black87,
                 fontWeight: FontWeight.w700,

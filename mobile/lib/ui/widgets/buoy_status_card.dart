@@ -24,12 +24,19 @@ class BuoyStatusCard extends StatelessWidget {
 
     return _Shell(
       palette: palette,
-      accent:
-          current.mesh == MeshHealth.ok ? AqColors.success : AqColors.warning,
+      accent: current.uplink ? AqColors.success : AqColors.warning,
       headline: 'Buoy ${current.buoyId}',
-      detail: current.mesh.description,
-      battery: current.hasBattery ? current.battery : null,
-      queued: current.queued,
+      // Mirrors the buoy's own captive-portal copy
+      // (firmware/buoy/AqOneBuoy/AqOneBuoy.ino handlePortal()) so the phone
+      // and the buoy never disagree about what "connected" means. The
+      // firmware does not report a battery reading today, so this card must
+      // not show one - showing a number the buoy never sent would be exactly
+      // the fake operational state the Week 1 plan bans.
+      detail: current.uplink
+          ? 'Link to shore is up. Your SOS will reach the rescue centre now.'
+          : 'Link to shore is down. This buoy will hold your SOS and deliver '
+              'it automatically once the link returns.',
+      queued: current.queueDepth,
     );
   }
 }
@@ -40,7 +47,6 @@ class _Shell extends StatelessWidget {
     required this.accent,
     required this.headline,
     required this.detail,
-    this.battery,
     this.queued = 0,
   });
 
@@ -48,12 +54,10 @@ class _Shell extends StatelessWidget {
   final Color accent;
   final String headline;
   final String detail;
-  final int? battery;
   final int queued;
 
   @override
   Widget build(BuildContext context) {
-    final batteryLabel = battery;
     return Container(
       padding: const EdgeInsets.all(AqSpace.base),
       decoration: BoxDecoration(
@@ -85,16 +89,6 @@ class _Shell extends StatelessWidget {
                   ),
                 ),
               ),
-              if (batteryLabel != null)
-                Text(
-                  '$batteryLabel%',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'monospace',
-                    color: palette.secondaryText,
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: AqSpace.sm),

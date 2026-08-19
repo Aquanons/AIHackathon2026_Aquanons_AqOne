@@ -1,6 +1,43 @@
 (function () {
   'use strict';
 
+  // Failsafe: never leave the operator staring at the loading spinner.
+  //
+  // The overlay is hidden near the end of this script, so any uncaught error
+  // above that point froze the dashboard behind "Loading buoy network data..."
+  // with no indication of what went wrong. Registered first, before anything
+  // that can throw, so a future breakage degrades to a visible dashboard plus a
+  // console error rather than a dead screen.
+  window.addEventListener('error', function (event) {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    console.error('[AqOne] Dashboard init failed:', event.message, 'at', event.filename + ':' + event.lineno);
+  });
+
+  // ===== SHARED HELPERS (web/js/dashboard-utils.js) =====
+  // Loaded before this script in dashboard.html. The inline fallback below
+  // only runs if that tag failed to load - degrading to "still escapes text
+  // and still reports itself offline" rather than throwing ReferenceErrors
+  // through every call site that follows.
+  var dashboardUtils = window.AqOneDashboardUtils || {
+    escapeHtml: function (value) {
+      if (value == null) return '';
+      return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+    classifyFreshness: function () { return 'offline'; },
+    freshnessLabel: function (state) { return (state || 'offline').toUpperCase(); }
+  };
+  var escapeHtml = dashboardUtils.escapeHtml;
+  var classifyFreshness = dashboardUtils.classifyFreshness;
+  var freshnessLabel = dashboardUtils.freshnessLabel;
+  var alertBadge = dashboardUtils.alertBadge || function (isLive) {
+    return isLive
+      ? { text: 'LIVE', cssClass: 'alert-live-badge' }
+      : { text: 'DEMO', cssClass: 'alert-demo-badge' };
+  };
+
   // ===== CONFIG =====
   // New Washington, Aklan municipal centre (PhilAtlas: 11.6473 N, 122.4356 E).
   // Zoom 11 framed the whole province; 12 frames the municipality and its
@@ -230,10 +267,18 @@
   map.getPane('aiTrackPane').style.zIndex = 440;
   map.createPane('aiSquallPane');
   map.getPane('aiSquallPane').style.zIndex = 450;
+  const dangerZoneLayer = L.layerGroup();
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
-    const colors = { facility: '#3498db', incident: '#e74c3c', buoy: '#9b59b6', vessel: '#22c55e' };
+    // Vessels are slate, not green.
+    //
+    // Every other colour here encodes a status - blue facility, red incident,
+    // purple buoy, and green for "safe" throughout the rest of the dashboard.
+    // A vessel is an entity, not a verdict, and painting it green made boats
+    // indistinguishable from the safe-route layer. Slate reads as neutral and
+    // keeps green meaning only one thing.
+    const colors = { facility: '#3498db', incident: '#e74c3c', buoy: '#9b59b6', vessel: '#334155' };
     const color = colors[type] || '#3498db';
     return L.divIcon({
       className: 'custom-marker',
@@ -297,11 +342,16 @@
     var pressureRow = b.pressure != null
       ? [['Pressure', b.pressure.toFixed(1) + ' hPa (' + (b.pressureTrend > 0 ? '+' : '') + b.pressureTrend + ')']]
       : [];
+    // These readings (battery, signal, pressure, current) are the fixed
+    // sample values in initialBuoys above, not live telemetry from hardware -
+    // no buoy in this deployment reports them yet. Rule 4 of
+    // docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md bans presenting
+    // that as if it were live, so every buoy popup says so explicitly.
     const marker = L.marker([b.lat, b.lng], { icon: createMarkerIcon('buoy') })
       .bindPopup(makePopup(b.name, [
         ['Status', b.status.charAt(0).toUpperCase() + b.status.slice(1)],
-        ['Battery', b.battery + '%'],
-        ['Signal', b.signal]
+        ['Battery', b.battery + '% (simulated)'],
+        ['Signal', b.signal + ' (simulated)']
       ].concat(pressureRow, extraRows), { cls: b.status, text: b.status }));
     buoyLayer.addLayer(marker);
   });
@@ -362,13 +412,21 @@
     var n1 = findNode(link[0]);
     var n2 = findNode(link[1]);
     if (!n1 || !n2) return;
+    // The mesh is the product. Drawn at 1.5px and 45% opacity it was
+    // effectively invisible against the basemap, which made a correctly
+    // connected array look like scattered unconnected buoys.
     var line = L.polyline([[n1.lat, n1.lng], [n2.lat, n2.lng]], {
       color: '#22d3ee',
-      weight: 1.5,
-      opacity: 0.45,
-      dashArray: '5 8',
+      weight: 2.5,
+      opacity: 0.85,
+      dashArray: '6 6',
       smoothFactor: 1
     });
+    line.bindTooltip(
+      link[0] + ' ↔ ' + link[1] + ' · ' +
+      (_metresBetween(n1.lat, n1.lng, n2.lat, n2.lng) / 1000).toFixed(1) + ' km LoRa link',
+      { sticky: true, className: 'drift-incident-label' }
+    );
     meshLayer.addLayer(line);
     meshPolylines.push(line);
   });
@@ -450,6 +508,160 @@
     incidentMarkers.push(marker);
   });
 
+  let apiBuoys = [];
+  var dangerZoneRequestId = 0;
+  var lastDangerZoneResult = null;
+  var dangerZoneCacheKey = 'aqone-last-danger-zone-result-new-washington-grid-v2';
+
+  function readCachedDangerZoneResult() {
+    try {
+      var cached = JSON.parse(localStorage.getItem(dangerZoneCacheKey));
+      return cached && Array.isArray(cached.predictions) ? cached : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function cacheDangerZoneResult(result) {
+    try {
+      localStorage.setItem(dangerZoneCacheKey, JSON.stringify(result));
+    } catch (error) {
+      console.warn('[AqOne] Could not cache the latest danger-zone scan');
+    }
+  }
+
+  function escapeDangerZoneText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderDangerZones(result) {
+    var predictions = result.predictions;
+    var alertPredictions = predictions.filter(function (prediction) {
+      return prediction.level !== 'low';
+    });
+
+    dangerZoneLayer.clearLayers();
+    var firstPredictionMarker = null;
+    predictions.forEach(function (prediction) {
+      var circle = L.circle([prediction.lat, prediction.lng], {
+        radius: prediction.radius,
+        color: prediction.color,
+        fillColor: prediction.color,
+        fillOpacity: prediction.level === 'danger' ? 0.2 : prediction.level === 'watch' ? 0.12 : 0.05,
+        opacity: prediction.level === 'low' ? 0.55 : 0.95,
+        weight: prediction.level === 'danger' ? 3 : prediction.level === 'watch' ? 2 : 1.5,
+        dashArray: prediction.level === 'danger' ? null : prediction.level === 'watch' ? '7 5' : '4 7',
+        className: 'danger-zone-circle danger-zone-circle-' + prediction.level
+      });
+      var icon = L.divIcon({
+        className: '',
+        html: '<div class="danger-zone-map-icon danger-zone-map-icon-' + prediction.level + '">' +
+          '<span>' + (prediction.level === 'low' ? '&check;' : '!') + '</span><i></i></div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+      var marker = L.marker([prediction.lat, prediction.lng], {
+        icon: icon,
+        interactive: true,
+        zIndexOffset: 700
+      });
+      var reasons = prediction.reasons.map(escapeDangerZoneText).join(' &middot; ');
+      var popup = '<div class="popup-title" style="color:' + prediction.color + ';">' +
+        escapeDangerZoneText(prediction.label) + ' Zone</div>' +
+        '<div class="popup-row"><span>Area</span><span>' + escapeDangerZoneText(prediction.name) + '</span></div>' +
+        '<div class="popup-row"><span>Coordinates</span><span>' + prediction.lat.toFixed(3) + '\u00b0, ' + prediction.lng.toFixed(3) + '\u00b0</span></div>' +
+        '<div class="popup-row"><span>Hazard probability</span><span style="font-weight:800;color:' + prediction.color + ';">' + prediction.score + '%</span></div>' +
+        '<div class="popup-row"><span>Model probability</span><span>' + prediction.modelProbability + '%</span></div>' +
+        '<div class="popup-row"><span>Live wind / gust</span><span>' + Number(prediction.features.wind_speed_10m).toFixed(1) + ' / ' + Number(prediction.features.wind_gusts_10m).toFixed(1) + ' km/h</span></div>' +
+        '<div class="popup-row"><span>Live wave / period</span><span>' + Number(prediction.features.wave_height).toFixed(2) + ' m / ' + Number(prediction.features.wave_period).toFixed(1) + ' s</span></div>' +
+        '<div class="popup-row"><span>GEBCO depth</span><span>' + prediction.depthM.toFixed(0) + ' m</span></div>' +
+        '<div class="popup-row"><span>Radius</span><span>' + (prediction.radius / 1000).toFixed(1) + ' km</span></div>' +
+        '<div class="popup-row"><span>Warning trigger</span><span>' + escapeDangerZoneText(prediction.trigger) + '</span></div>' +
+        '<div class="popup-divider"></div>' +
+        '<div style="font-size:11px;line-height:1.45;color:#d1d5db;">' + reasons + '</div>' +
+        '<div style="margin-top:7px;font-size:10px;color:#9ca3af;">' + escapeDangerZoneText(prediction.source) + '<br>' +
+        escapeDangerZoneText(result.modelType) + ' · ' + escapeDangerZoneText(result.modelVersion) + '<br>' +
+        '2025 holdout F1: ' + Number(result.metrics.f1).toFixed(3) + ' · ' + escapeDangerZoneText(result.buoySource) + '</div>' +
+        '<div style="margin-top:7px"><span class="popup-badge badge-danger">EXPERIMENTAL · NOT FOR NAVIGATION</span></div>';
+
+      circle.bindPopup(popup);
+      marker.bindPopup(popup);
+      circle.bindTooltip(prediction.name + ' · ' + prediction.score + '%', {
+        direction: 'top',
+        sticky: true
+      });
+      dangerZoneLayer.addLayer(circle);
+      dangerZoneLayer.addLayer(marker);
+      if (!firstPredictionMarker) firstPredictionMarker = marker;
+    });
+
+    if (firstPredictionMarker && new URLSearchParams(window.location.search).get('previewDangerZone') === '1') {
+      firstPredictionMarker.openPopup();
+    }
+
+    var statusText = document.getElementById('danger-zone-status-text');
+    if (statusText) {
+      var dangerCount = alertPredictions.filter(function (prediction) {
+        return prediction.level === 'danger';
+      }).length;
+      var watchCount = alertPredictions.length - dangerCount;
+      var updatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      statusText.textContent = dangerCount + ' danger · ' + watchCount + ' watch · ' + predictions.length + ' zones · Live ' + updatedAt;
+    }
+    if (statusText) {
+      var scanUpdatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      statusText.textContent = result.dangerCount + ' danger · ' + result.watchCount + ' watch · ' +
+        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · Live ' + scanUpdatedAt;
+    }
+  }
+
+  async function refreshDangerZones() {
+    var statusText = document.getElementById('danger-zone-status-text');
+    var statusCard = document.getElementById('danger-zone-status');
+    var refreshButton = document.getElementById('danger-zone-refresh');
+    var requestId = ++dangerZoneRequestId;
+    if (!lastDangerZoneResult) lastDangerZoneResult = readCachedDangerZoneResult();
+    if (lastDangerZoneResult) {
+      renderDangerZones(lastDangerZoneResult);
+    } else {
+      dangerZoneLayer.clearLayers();
+    }
+    if (statusText) statusText.textContent = lastDangerZoneResult ?
+      'Refreshing live data \u00b7 Existing real-data zones remain visible' :
+      'Loading live weather and marine observations...';
+    if (statusCard) statusCard.classList.remove('danger-zone-status-error');
+    if (refreshButton) refreshButton.classList.add('is-refreshing');
+    try {
+      var result = await window.AqOneDangerZonePredictor.predictLive(apiBuoys);
+      if (requestId !== dangerZoneRequestId) return;
+      lastDangerZoneResult = result;
+      cacheDangerZoneResult(result);
+      renderDangerZones(result);
+    } catch (error) {
+      if (requestId !== dangerZoneRequestId) return;
+      if (lastDangerZoneResult) {
+        renderDangerZones(lastDangerZoneResult);
+        if (statusText) statusText.textContent = 'Live refresh unavailable \u00b7 Showing last successful real-data scan';
+        if (statusCard) statusCard.classList.add('danger-zone-status-error');
+        console.warn('[AqOne] Danger-zone refresh unavailable:', error.message);
+        return;
+      }
+      dangerZoneLayer.clearLayers();
+      if (statusText) statusText.textContent = 'Live data unavailable · No hazard zones shown';
+      if (statusCard) statusCard.classList.add('danger-zone-status-error');
+      console.warn('[AqOne] Danger-zone model unavailable:', error.message);
+    } finally {
+      if (requestId === dangerZoneRequestId && refreshButton) {
+        refreshButton.classList.remove('is-refreshing');
+      }
+    }
+  }
+
   // ===== BOUNDARY =====
   const boundaryPoly = L.polygon(opsBoundary, {
     color: '#2ecc71',
@@ -471,6 +683,8 @@
   squallLayer.addTo(map);
   driftLayer.addTo(map);
   boundaryLayer.addTo(map);
+  dangerZoneLayer.addTo(map);
+  refreshDangerZones();
 
   // ===== PIN TOOL (local-only, no backend dependency) =====
   let pinModeActive = false;
@@ -945,7 +1159,9 @@
 
   // ===== TOGGLE LAYERS =====
   function toggleLayer(checkboxId, layer) {
-    document.getElementById(checkboxId).addEventListener('change', function () {
+    const el = document.getElementById(checkboxId);
+    if (!el) return;
+    el.addEventListener('change', function () {
       if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
     });
   }
@@ -953,6 +1169,7 @@
   toggleLayer('toggle-gateways',  gatewayLayer);
   toggleLayer('toggle-vessels',   vesselLayer);
   toggleLayer('toggle-incidents', incidentLayer);
+  toggleLayer('toggle-danger-zones', dangerZoneLayer);
   toggleLayer('toggle-buoys',     buoyLayer);
   toggleLayer('toggle-coverage',  coverageLayer);
   toggleLayer('toggle-mesh',      meshLayer);
@@ -961,17 +1178,26 @@
   toggleLayer('toggle-boundary',  boundaryLayer);
   toggleLayer('toggle-pins',      pinLayer);
 
+  var dangerZoneRefresh = document.getElementById('danger-zone-refresh');
+  if (dangerZoneRefresh) {
+    dangerZoneRefresh.addEventListener('click', function () {
+      refreshDangerZones();
+    });
+  }
+
   // ===== STATS PANEL =====
   const statsWidget = document.getElementById('stats-widget');
   const statsMinimizeBtn = document.getElementById('stats-minimize');
   const statsBody = document.getElementById('stats-body');
   let statsMinimized = false;
 
-  statsMinimizeBtn.addEventListener('click', () => {
-    statsMinimized = !statsMinimized;
-    statsWidget.classList.toggle('minimized', statsMinimized);
-    statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
-  });
+  if (statsMinimizeBtn) {
+    statsMinimizeBtn.addEventListener('click', () => {
+      statsMinimized = !statsMinimized;
+      if (statsWidget) statsWidget.classList.toggle('minimized', statsMinimized);
+      statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
+    });
+  }
 
   // Active alerts card click
   const statAlertsCard = document.querySelector('.stat-card.stat-alerts');
@@ -980,9 +1206,11 @@
     statAlertsCard.addEventListener('click', function() {
       statsTabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => tc.classList.remove('active'));
-      document.querySelector('.stats-tab[data-tab="alerts"]').classList.add('active');
-      document.getElementById('tab-alerts').classList.add('active');
-      if (statsMinimized) { statsMinimized = false; statsWidget.classList.remove('minimized'); statsMinimizeBtn.innerHTML = '&minus;'; }
+      const alertsTab = document.querySelector('.stats-tab[data-tab="alerts"]');
+      const alertsTabContent = document.getElementById('tab-alerts');
+      if (alertsTab) alertsTab.classList.add('active');
+      if (alertsTabContent) alertsTabContent.classList.add('active');
+      if (statsMinimized && statsWidget) { statsMinimized = false; statsWidget.classList.remove('minimized'); if (statsMinimizeBtn) statsMinimizeBtn.innerHTML = '&minus;'; }
     });
   }
 
@@ -991,11 +1219,13 @@
   const legendToggle = document.getElementById('legend-toggle');
   let legendCollapsed = false;
 
-  legendToggle.addEventListener('click', () => {
-    legendCollapsed = !legendCollapsed;
-    legendCard.classList.toggle('collapsed', legendCollapsed);
-    legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
-  });
+  if (legendToggle) {
+    legendToggle.addEventListener('click', () => {
+      legendCollapsed = !legendCollapsed;
+      if (legendCard) legendCard.classList.toggle('collapsed', legendCollapsed);
+      legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
+    });
+  }
 
   // ===== TAB SWITCHING =====
   const statsTabs = document.querySelectorAll('.stats-tab');
@@ -1006,7 +1236,8 @@
       statsTabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => tc.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      const targetContent = document.getElementById('tab-' + tab.dataset.tab);
+      if (targetContent) targetContent.classList.add('active');
     });
   });
 
@@ -1133,14 +1364,26 @@
     { type: 'capsizing-risk',  desc: 'Resolved \u2014 false alarm from single-vessel deviation',            time: '2 hours ago',     lat: 11.6563, lng: 122.5327, status: 'resolved', vesselId: null, confidence: 41, stage: 'STAGE 1 \u2014 SILENT CHECK-IN' },
   ];
 
+  // Real SOS events from the backend. Kept in a separate array from the demo
+  // rows above so that nothing scripted can ever be mistaken for a live
+  // distress call: live entries carry isLive and a real sosEventId, demo rows
+  // carry neither. Live entries always sort first.
+  let liveAlerts = [];
+
+  function allAlerts() {
+    return liveAlerts.concat(alertData);
+  }
+
   function alertIcon(type) {
     const icons = {
       'sos': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
       'wave-zone': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c1.5-2 3.5-3 5.5-3s4 1 5.5 3 3.5 3 5.5 3 4-1 5.5-3"/><path d="M2 7c1.5-2 3.5-3 5.5-3s4 1 5.5 3 3.5 3 5.5 3 4-1 5.5-3"/></svg>`,
       'overdue-vessel': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
       'capsizing-risk': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      'forecast-storm': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.7-9H17.5a4.5 4.5 0 1 1 0 9z"/><path d="M13 11l-2 4h3l-2 4"/></svg>`,
+      'storm-surge': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9c2-3 5-3 7 0s5 3 7 0 5-3 7 0"/><path d="M2 15c2-3 5-3 7 0s5 3 7 0 5-3 7 0"/><path d="M12 2v4"/><path d="M9.5 4.5L12 2l2.5 2.5"/></svg>`,
     };
-    const colors = { 'sos': 'icon-red', 'wave-zone': 'icon-yellow', 'overdue-vessel': 'icon-orange', 'capsizing-risk': 'icon-yellow' };
+    const colors = { 'sos': 'icon-red', 'wave-zone': 'icon-yellow', 'overdue-vessel': 'icon-orange', 'capsizing-risk': 'icon-yellow', 'forecast-storm': 'icon-red', 'storm-surge': 'icon-red' };
     return `<div class="alert-icon ${colors[type] || 'icon-yellow'}">${icons[type] || ''}</div>`;
   }
 
@@ -1155,19 +1398,41 @@
     return '#f1c40f';
   }
 
-  function renderAlerts() {
-    const list = document.getElementById('alert-list');
-    list.innerHTML = alertData.map((a, i) => `
-      <div class="alert-row" data-alert-index="${i}">
-        ${alertIcon(a.type)}
-        <div class="alert-info">
-          <div class="alert-desc">${a.desc}</div>
-          <div class="alert-meta">${a.time} &middot; ${a.lat}&deg; N, ${a.lng}&deg; E</div>
-          <div class="aq-alert-conf">
+  // A live SOS shows no confidence score. The other alert types are model
+  // output and a percentage is meaningful; a person pressing the button is a
+  // fact, and dressing it in a fabricated confidence number would be a lie in
+  // the one place on this dashboard where lying costs the most.
+  function alertConfidenceRow(a) {
+    if (a.isLive) {
+      return `<div class="aq-alert-conf">
+            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
+          </div>`;
+    }
+    return `<div class="aq-alert-conf">
             <span class="aq-conf-mini" style="color:${confidenceColor(a.confidence)};">${a.confidence}% conf</span>
             <span class="aq-conf-bar"><span class="aq-conf-fill" style="width:${a.confidence}%;background:${confidenceColor(a.confidence)};"></span></span>
-            <span class="aq-stage-mini">${a.stage}</span>
-          </div>
+            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
+          </div>`;
+  }
+
+  function renderAlerts() {
+    const list = document.getElementById('alert-list');
+    const rows = allAlerts();
+    list.innerHTML = rows.map((a, i) => `
+      <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}">
+        ${alertIcon(a.type)}
+        <div class="alert-info">
+          <div class="alert-desc">${(function () {
+            var badge = alertBadge(a.isLive);
+            var title = a.isLive ? '' : ' title="Scripted sample data, not a real incident"';
+            return '<span class="' + badge.cssClass + '"' + title + '>' + badge.text + '</span>';
+          })()}${escapeHtml(a.desc)}</div>
+          <div class="alert-meta">${a.time} &middot; ${
+            a.lat == null || a.lng == null
+              ? '<span class="alert-nofix">no GPS fix</span>'
+              : a.lat + '&deg; N, ' + a.lng + '&deg; E'
+          }${a.etaAt ? ' &middot; <span data-eta-at="' + escapeHtml(a.etaAt) + '"></span>' : ''}</div>
+          ${alertConfidenceRow(a)}
         </div>
         ${alertStatusPill(a.status)}
       </div>
@@ -1175,9 +1440,17 @@
 
     list.querySelectorAll('.alert-row').forEach(row => {
       row.addEventListener('click', () => {
-        var a = alertData[row.dataset.alertIndex];
+        var a = rows[row.dataset.alertIndex];
         if (!a) return;
-        map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
+        // An SOS sent without a GPS fix is still a real distress call and must
+        // stay clickable. There is simply nowhere to pan the map to.
+        if (a.lat != null && a.lng != null) {
+          map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
+        }
+        if (a.isLive && a.drawerData) {
+          openIncidentDrawer(a.drawerData, liveSosMarkers[a.sosEventId] || null);
+          return;
+        }
         if (a.vesselId) {
           var vm = vesselMarkers[a.vesselId];
           if (vm) vm.openPopup();
@@ -1188,7 +1461,7 @@
 
   renderAlerts();
 
-  const activeAlertCount = alertData.filter(a => a.status === 'active').length;
+  const activeAlertCount = liveAlerts.filter(a => a.status === 'active').length;
   document.getElementById('badge-alerts').textContent = activeAlertCount;
 
   const liveBanner = document.getElementById('live-alert-banner');
@@ -1198,6 +1471,240 @@
 
   const squallCountEl = document.getElementById('banner-squall-count');
   if (squallCountEl) squallCountEl.textContent = 0;
+
+  // Recomputes the alert badge and banner after alertData changes.
+  //
+  // Restored during the DangerzoneFeature merge: the weather-forecast code
+  // calls this, but the branch's definition sat in the same block as the
+  // removed fish-hotspot system, so taking our side dropped it and left a
+  // ReferenceError on that path. This is the branch's logic minus the hotspot
+  // parts, reusing the elements resolved just above.
+  function syncAlertIndicators() {
+    const activeCount = liveAlerts.filter(function (alert) {
+      return alert.status === 'active';
+    }).length;
+    const alertBadge = document.getElementById('badge-alerts');
+    if (alertBadge) alertBadge.textContent = activeCount;
+    if (bannerCountEl) bannerCountEl.textContent = activeCount;
+    if (liveBanner) liveBanner.classList.toggle('has-alerts', activeCount > 0);
+    renderAlerts();
+  }
+
+  // ===== LIVE SOS FEED =====
+  //
+  // The dashboard previously rendered only the hardcoded demo rows above, so a
+  // real distress call could sit in the database while the screen showed three
+  // fictional vessels. This is the path that makes a pressed button visible.
+  //
+  // Polling rather than SSE: /api/sos/active already exists and needs no
+  // reconnect logic. Three seconds keeps the LGU screen feeling live, and a
+  // missed poll self-heals on the next tick.
+  const LIVE_SOS_POLL_MS = 3000;
+  const liveSosLayer = L.layerGroup().addTo(map);
+  const liveSosMarkers = {};
+  let liveSosFirstLoad = true;
+  let knownSosIds = Object.create(null);
+
+  // ===== FEED FRESHNESS (LIVE / STALE / OFFLINE) =====
+  //
+  // Previously the "LIVE" badge in the header was static markup - it read
+  // LIVE even while loadActiveSos() had been failing silently, and the "Last
+  // updated" banner text was an independent 30-second counter with no
+  // connection to whether a poll had actually succeeded. Both were fake
+  // operational state (Hard Reset rule 4). This tracks the one fact that
+  // matters - when a poll last actually succeeded - and both indicators are
+  // now driven from it.
+  let lastSosSuccessMs = null;
+  const syncStatusEl = document.getElementById('sync-status');
+  const syncTextEl = document.getElementById('sync-text');
+  const bannerTimeEl = document.querySelector('.banner-time');
+
+  function updateSyncStatus() {
+    const state = classifyFreshness(lastSosSuccessMs, Date.now(), {
+      pollIntervalMs: LIVE_SOS_POLL_MS
+    });
+
+    if (syncStatusEl) {
+      syncStatusEl.classList.toggle('is-stale', state === 'stale');
+      syncStatusEl.classList.toggle('is-offline', state === 'offline');
+    }
+    if (syncTextEl) {
+      syncTextEl.textContent = freshnessLabel(state);
+    }
+    if (syncStatusEl) {
+      syncStatusEl.title = lastSosSuccessMs == null
+        ? 'The live SOS feed has not loaded successfully yet'
+        : 'Live SOS feed last refreshed ' + Math.max(0, Math.round((Date.now() - lastSosSuccessMs) / 1000)) + 's ago';
+    }
+    if (bannerTimeEl) {
+      bannerTimeEl.textContent = lastSosSuccessMs == null
+        ? 'never'
+        : Math.max(0, Math.round((Date.now() - lastSosSuccessMs) / 1000)) + 's ago';
+    }
+  }
+
+  updateSyncStatus();
+  // Ticks independently of the poll interval so STALE/OFFLINE appears
+  // promptly even between polls, instead of only updating when a poll
+  // happens to run.
+  setInterval(updateSyncStatus, 1000);
+
+  function liveSosIcon() {
+    return L.divIcon({
+      className: 'live-sos-marker',
+      html: '<span class="live-sos-pulse"></span><span class="live-sos-core">SOS</span>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+  }
+
+  function relativeTime(iso) {
+    const then = new Date(iso).getTime();
+    if (!isFinite(then)) return 'unknown time';
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 60) return secs + ' seconds ago';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+    const hrs = Math.floor(mins / 60);
+    return hrs + (hrs === 1 ? ' hour ' : ' hours ') + (mins % 60) + ' minutes ago';
+  }
+
+  // How the SOS reached us, stated plainly. The dispatcher needs to know
+  // whether the mesh carried this or whether the handset had signal, because
+  // it changes what they can assume about the vessel's situation.
+  function deliveryPath(ev) {
+    const paths = [];
+    if (ev.delivered_via_buoy) paths.push('LoRa mesh' + (ev.buoy_id ? ' via ' + ev.buoy_id : ''));
+    if (ev.delivered_direct) paths.push('direct internet');
+    if (!paths.length) return 'Path unrecorded';
+    return paths.join(' + ');
+  }
+
+  function sosPosition(ev) {
+    if (typeof ev.latitude !== 'number' || typeof ev.longitude !== 'number') {
+      return 'No GPS fix reported';
+    }
+    return ev.latitude.toFixed(4) + '° N, ' + ev.longitude.toFixed(4) + '° E';
+  }
+
+  function liveAlertFromEvent(ev) {
+    const boat = ev.boat || ev.vessel_id || 'Unidentified vessel';
+    const hasFix = typeof ev.latitude === 'number' && typeof ev.longitude === 'number';
+    const alert = {
+      isLive: true,
+      sosEventId: ev.id,
+      type: 'sos',
+      desc: 'SOS — ' + boat + (ev.note ? ' — “' + ev.note + '”' : ''),
+      time: relativeTime(ev.created_at),
+      lat: hasFix ? Number(ev.latitude.toFixed(4)) : null,
+      lng: hasFix ? Number(ev.longitude.toFixed(4)) : null,
+      status: ev.acknowledged_at ? 'acknowledged' : 'active',
+      vesselId: ev.vessel_id || null,
+      confidence: null,
+      stage: 'DISTRESS CALL — ' + deliveryPath(ev)
+    };
+    alert.drawerData = {
+      alertType: 'sos',
+      headerText: 'SOS — DISTRESS CALL RECEIVED',
+      sosEventId: ev.id,
+      vesselId: ev.vessel_id || 'Unknown',
+      owner: boat,
+      position: sosPosition(ev),
+      lat: alert.lat,
+      lng: alert.lng,
+      buoy: ev.buoy_id || 'Not relayed by a buoy',
+      coverage: deliveryPath(ev) + (ev.trust_tier ? ' · trust tier ' + ev.trust_tier : ''),
+      confidence: null,
+      stage: 'DISTRESS CALL — human pressed the button',
+      nextContact: ev.note || 'No message attached',
+      timerBaseline: Math.max(0, Math.floor((Date.now() - new Date(ev.created_at).getTime()) / 1000))
+    };
+    return alert;
+  }
+
+  function syncLiveSosMarkers() {
+    const seen = Object.create(null);
+    liveAlerts.forEach(function (a) {
+      if (a.lat == null || a.lng == null) return;
+      seen[a.sosEventId] = true;
+      let marker = liveSosMarkers[a.sosEventId];
+      if (!marker) {
+        marker = L.marker([a.lat, a.lng], { icon: liveSosIcon(), zIndexOffset: 1000 });
+        // Leaflet renders tooltip content as innerHTML, not textContent - see
+        // https://leafletjs.com/reference.html#tooltip. a.desc carries the
+        // fisher's own note text, so it must be escaped here too.
+        marker.bindTooltip(escapeHtml(a.desc), { direction: 'top', offset: [0, -14] });
+        liveSosLayer.addLayer(marker);
+        liveSosMarkers[a.sosEventId] = marker;
+      } else {
+        marker.setLatLng([a.lat, a.lng]);
+      }
+      marker.off('click');
+      marker.on('click', function () { openIncidentDrawer(a.drawerData, marker); });
+    });
+
+    // Acknowledged events leave /active, so their markers must go too.
+    Object.keys(liveSosMarkers).forEach(function (id) {
+      if (!seen[id]) {
+        liveSosLayer.removeLayer(liveSosMarkers[id]);
+        delete liveSosMarkers[id];
+      }
+    });
+  }
+
+  function loadActiveSos() {
+    return authFetch('/api/sos/active')
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        const events = (data && data.events) || [];
+        liveAlerts = events.map(liveAlertFromEvent);
+
+        // Announce genuinely new calls, but never on the first load - a
+        // dispatcher opening the dashboard should not be hit with a klaxon for
+        // events they already handled before the page refreshed.
+        if (!liveSosFirstLoad) {
+          events.forEach(function (ev) {
+            if (!knownSosIds[ev.id]) {
+              showToast(
+                'SOS received',
+                (ev.boat || ev.vessel_id || 'A vessel') + ' · ' + sosPosition(ev),
+                true
+              );
+            }
+          });
+        }
+        knownSosIds = Object.create(null);
+        events.forEach(function (ev) { knownSosIds[ev.id] = true; });
+        liveSosFirstLoad = false;
+
+        // The one fact updateSyncStatus() needs: this poll actually
+        // succeeded, right now. Everything the LIVE/STALE/OFFLINE indicator
+        // shows is derived from this single timestamp.
+        lastSosSuccessMs = Date.now();
+        updateSyncStatus();
+
+        syncLiveSosMarkers();
+        syncAlertIndicators();
+        renderIncidentFeed();
+      })
+      .catch(function (err) {
+        // A failed poll must not blank the list. The last known set of live
+        // alerts stays on screen rather than a distress call silently
+        // vanishing because one request timed out. It must, however, be
+        // visible in the sync indicator - updateSyncStatus() will move to
+        // STALE/OFFLINE on its own once enough time has passed without a
+        // fresh lastSosSuccessMs, which this call makes immediate instead of
+        // waiting up to a second for the next tick.
+        console.warn('[AqOne] Live SOS poll failed:', err.message);
+        updateSyncStatus();
+      });
+  }
+
+  loadActiveSos();
+  setInterval(loadActiveSos, LIVE_SOS_POLL_MS);
 
   // ===== SAR METRICS TAB =====
   // SAR metrics come from the evaluation scripts via /api/ai/metrics. There is
@@ -1364,12 +1871,31 @@
     document.getElementById('sos-coverage').textContent  = data.coverage;
 
     // confidence + escalation
-    var conf = data.confidence != null ? data.confidence : 0;
-    document.getElementById('sos-confidence-value').textContent = conf + '%';
-    document.getElementById('sos-confidence-value').style.color = confidenceColor(conf);
+    //
+    // A real SOS carries no confidence score and must not be shown with one.
+    // The old code coerced a missing score to 0, which would have rendered a
+    // human distress call as "0% confidence" - the most damaging possible
+    // misreading on this screen. Null hides the meter instead.
+    var confValueEl = document.getElementById('sos-confidence-value');
     var fill = document.getElementById('sos-confidence-fill');
-    fill.style.width = conf + '%';
-    fill.style.background = confidenceColor(conf);
+    var confBlock = confValueEl ? confValueEl.closest('.sos-conf') : null;
+    if (data.confidence == null) {
+      if (confValueEl) confValueEl.textContent = 'Not scored';
+      if (confValueEl) confValueEl.style.color = 'var(--text-muted, #94a3b8)';
+      if (fill) fill.style.width = '0%';
+      if (confBlock) confBlock.classList.add('is-unscored');
+    } else {
+      var conf = data.confidence;
+      if (confBlock) confBlock.classList.remove('is-unscored');
+      if (confValueEl) {
+        confValueEl.textContent = conf + '%';
+        confValueEl.style.color = confidenceColor(conf);
+      }
+      if (fill) {
+        fill.style.width = conf + '%';
+        fill.style.background = confidenceColor(conf);
+      }
+    }
     var stageEl = document.getElementById('sos-stage');
     stageEl.textContent = data.stage || 'Stage 1 \u2014 silent check-in';
     stageEl.className = 'aq-stage-badge';
@@ -1420,30 +1946,184 @@
     }
   });
 
-  sosBtnAcknowledge.addEventListener('click', function () {
-    sosBtnAcknowledge.disabled = true;
-    sosBtnAcknowledge.textContent = 'Acknowledged';
-    console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' acknowledged');
-    if (currentDrawerData) {
-      const idx = alertData.findIndex(function (a) {
-        return a.vesselId === currentDrawerData.vesselId ||
-               (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
+  // ===== ACKNOWLEDGE WITH ETA =====
+  //
+  // Acknowledging is no longer a bare flag. The dispatcher tells the fisherman
+  // what is happening and roughly when help arrives, which is the difference
+  // between "someone saw my SOS" and "I know whether to stay with the boat".
+  //
+  // Minutes are collected here; the backend converts to an absolute arrival
+  // time so the handset's countdown stays correct however slow delivery is.
+  const ackOverlay = document.getElementById('ack-modal-overlay');
+  const ackVesselEl = document.getElementById('ack-modal-vessel');
+  const ackStatusEl = document.getElementById('ack-status');
+  const ackEtaEl = document.getElementById('ack-eta');
+  const ackNoteEl = document.getElementById('ack-note');
+  const ackConfirmBtn = document.getElementById('ack-btn-confirm');
+
+  function closeAckModal() {
+    if (ackOverlay) ackOverlay.hidden = true;
+  }
+
+  function openAckModal() {
+    if (!ackOverlay) return;
+    const label = currentDrawerData
+      ? (currentDrawerData.desc || currentDrawerData.vesselId || 'Distress call')
+      : 'Distress call';
+    if (ackVesselEl) ackVesselEl.textContent = label;
+    ackOverlay.hidden = false;
+    if (ackEtaEl) ackEtaEl.focus();
+  }
+
+  // Quick picks and the free-entry field stay in step with each other.
+  const ackQuick = document.getElementById('ack-eta-quick');
+  if (ackQuick) {
+    ackQuick.addEventListener('click', function (event) {
+      const chip = event.target.closest('.ack-eta-chip');
+      if (!chip) return;
+      ackQuick.querySelectorAll('.ack-eta-chip').forEach(function (b) {
+        b.classList.remove('is-selected');
       });
-      if (idx !== -1) { alertData[idx].status = 'acknowledged'; renderAlerts(); }
-    }
+      chip.classList.add('is-selected');
+      if (ackEtaEl) ackEtaEl.value = chip.dataset.eta;
+    });
+  }
+  if (ackEtaEl) {
+    ackEtaEl.addEventListener('input', function () {
+      if (!ackQuick) return;
+      ackQuick.querySelectorAll('.ack-eta-chip').forEach(function (b) {
+        b.classList.toggle('is-selected', b.dataset.eta === ackEtaEl.value);
+      });
+    });
+  }
+
+  ['ack-modal-close', 'ack-btn-cancel'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', closeAckModal);
   });
+  if (ackOverlay) {
+    ackOverlay.addEventListener('click', function (event) {
+      if (event.target === ackOverlay) closeAckModal();
+    });
+  }
+
+  sosBtnAcknowledge.addEventListener('click', openAckModal);
+
+  if (ackConfirmBtn) {
+    ackConfirmBtn.addEventListener('click', function () {
+      const etaMinutes = Math.max(1, Math.min(720, parseInt(ackEtaEl && ackEtaEl.value, 10) || 20));
+      const status = parseInt(ackStatusEl && ackStatusEl.value, 10) || 1;
+      const note = (ackNoteEl && ackNoteEl.value.trim()) || null;
+      const eventId = currentDrawerData && currentDrawerData.sosEventId;
+
+      ackConfirmBtn.disabled = true;
+
+      // Optimistic: the dispatcher sees the incident acknowledged immediately.
+      // A distress console should never appear frozen while a request is in
+      // flight, and a failure is surfaced below rather than blocking the UI.
+      sosBtnAcknowledge.disabled = true;
+      sosBtnAcknowledge.textContent = 'Acknowledged';
+      if (currentDrawerData) {
+        currentDrawerData.etaAt = new Date(Date.now() + etaMinutes * 60000).toISOString();
+        currentDrawerData.responderStatus = status;
+
+        // Match on the event id when there is one. The old positional match on
+        // vesselId-or-coordinates could acknowledge the wrong row when two
+        // alerts shared a vessel, and could not address a live event at all.
+        const row = allAlerts().find(function (a) {
+          if (eventId) return a.sosEventId === eventId;
+          return a.vesselId === currentDrawerData.vesselId ||
+                 (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
+        });
+        if (row) {
+          row.status = 'acknowledged';
+          row.etaAt = currentDrawerData.etaAt;
+          syncAlertIndicators();
+        }
+      }
+      closeAckModal();
+
+      // Only reaches the backend for incidents that came from it. Demo rows in
+      // alertData have no sosEventId and stay local.
+      if (eventId) {
+        authFetch('/api/sos/' + encodeURIComponent(eventId) + '/acknowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eta_minutes: etaMinutes,
+            responder_status: status,
+            responder_note: note
+          })
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            if (currentDrawerData) currentDrawerData.etaAt = data.eta_at;
+          })
+          .catch(function (err) {
+            console.warn('[AqOne] Acknowledgement not delivered:', err.message);
+            showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
+          })
+          .finally(function () {
+            ackConfirmBtn.disabled = false;
+          });
+      } else {
+        ackConfirmBtn.disabled = false;
+      }
+    });
+  }
+
+  // Live countdown on acknowledged incidents. Never renders a negative number:
+  // once the promised time passes it says the rescue is delayed, because a
+  // countdown expiring into silence reads as "nobody is coming".
+  function formatEta(etaAt) {
+    if (!etaAt) return '';
+    var remainingMs = new Date(etaAt).getTime() - Date.now();
+    if (remainingMs <= 0) return 'delayed — still en route';
+    var mins = Math.floor(remainingMs / 60000);
+    var secs = Math.floor((remainingMs % 60000) / 1000);
+    return 'ETA ' + mins + ':' + String(secs).padStart(2, '0');
+  }
+
+  setInterval(function () {
+    document.querySelectorAll('[data-eta-at]').forEach(function (el) {
+      var text = formatEta(el.dataset.etaAt);
+      el.textContent = text;
+      el.classList.toggle('is-overdue', text.indexOf('delayed') === 0);
+    });
+  }, 1000);
 
   sosBtnResolve.addEventListener('click', function () {
     console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' resolved');
-    if (currentDrawerMarker) incidentLayer.removeLayer(currentDrawerMarker);
+    const eventId = currentDrawerData && currentDrawerData.sosEventId;
+    if (currentDrawerMarker) {
+      incidentLayer.removeLayer(currentDrawerMarker);
+      liveSosLayer.removeLayer(currentDrawerMarker);
+    }
     if (currentDrawerData) {
-      const idx = alertData.findIndex(function (a) {
+      const row = allAlerts().find(function (a) {
+        if (eventId) return a.sosEventId === eventId;
         return a.vesselId === currentDrawerData.vesselId ||
                (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
       });
-      if (idx !== -1) { alertData[idx].status = 'resolved'; renderAlerts(); }
+      if (row) { row.status = 'resolved'; syncAlertIndicators(); }
     }
     closeSOSDrawer();
+    if (eventId) {
+      authFetch('/api/sos/' + encodeURIComponent(eventId) + '/resolve', {
+        method: 'POST'
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return loadActiveSos();
+        })
+        .catch(function (err) {
+          console.warn('[AqOne] Resolve not delivered:', err.message);
+          showToast('Not delivered', 'The incident may reappear until the backend is updated.', true);
+        });
+    }
   });
 
   sosBtnBroadcast.addEventListener('click', function () {
@@ -1457,23 +2137,31 @@
   // ===== INCIDENT FEED =====
   function renderIncidentFeed() {
     var el = document.getElementById('incident-feed-list');
-    var active = alertData.filter(function (a) { return a.status !== 'resolved'; });
+    if (!el) return;
+    var active = allAlerts().filter(function (a) { return a.status !== 'resolved'; });
     if (active.length === 0) {
       el.innerHTML = '<p class="panel-stub-text">No active incidents</p>';
       return;
     }
-    el.innerHTML = active.slice(0, 4).map(function (a, i) {
-      return '<div class="incident-feed-row" data-idx="' + i + '">' +
+    var shown = active.slice(0, 4);
+    el.innerHTML = shown.map(function (a, i) {
+      return '<div class="incident-feed-row' + (a.isLive ? ' incident-feed-live' : '') +
+        '" data-idx="' + i + '">' +
         alertIcon(a.type) +
         '<div class="incident-feed-info">' +
-          '<div class="incident-feed-desc">' + a.desc + '</div>' +
+          '<div class="incident-feed-desc">' +
+            (a.isLive ? '<span class="alert-live-badge">LIVE</span>' : '') + a.desc + '</div>' +
           '<div class="incident-feed-meta">' + a.time + '</div>' +
         '</div>' +
       '</div>';
     }).join('');
     el.querySelectorAll('.incident-feed-row').forEach(function (row) {
       row.addEventListener('click', function () {
-        var a = alertData[row.dataset.idx];
+        // Indexes into the filtered list that was actually rendered. This
+        // previously indexed the unfiltered array, so a click could pan to a
+        // different incident than the one clicked.
+        var a = shown[row.dataset.idx];
+        if (!a || a.lat == null || a.lng == null) return;
         map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
       });
     });
@@ -1503,11 +2191,11 @@
 
   var buoyOnlineCount = buoyMonitorData.filter(function (b) { return b.status === 'online'; }).length;
   var buoyTotal = buoyMonitorData.length;
-  buoyRailBadge.textContent = buoyOnlineCount + '/' + buoyTotal;
-  buoyDrawerBadge.textContent = buoyOnlineCount + '/' + buoyTotal + ' Online';
+  if (buoyRailBadge) buoyRailBadge.textContent = buoyOnlineCount + '/' + buoyTotal;
+  if (buoyDrawerBadge) buoyDrawerBadge.textContent = buoyOnlineCount + '/' + buoyTotal + ' Online';
   if (buoyOnlineCount < buoyTotal) {
-    buoyRailBadge.classList.add('badge-amber');
-    buoyDrawerBadge.classList.add('badge-amber');
+    if (buoyRailBadge) buoyRailBadge.classList.add('badge-amber');
+    if (buoyDrawerBadge) buoyDrawerBadge.classList.add('badge-amber');
   }
 
   function renderBuoyList() {
@@ -1738,16 +2426,10 @@
     updateAiMapKey();
   }
 
-  // The drift map key describes contour and squall-polygon colours. Showing it
-  // while nothing is drawn advertises layers that are not on the map, so it
-  // tracks the actual layer state.
   function updateAiMapKey() {
     var key = document.getElementById('ai-map-key');
     if (!key) return;
-    var hasLayers =
-      (aiContoursLayer && aiContoursLayer.getLayers().length > 0) ||
-      (aiSquallLayer && aiSquallLayer.getLayers().length > 0);
-    key.style.display = hasLayers ? '' : 'none';
+    key.style.display = 'none';
   }
 
   // Banner count and header badge follow the live squall feed. The cutoff is
@@ -1783,14 +2465,28 @@
     var incident = payload && payload.incident;
     var track = (payload && payload.ground_truth_track) || [];
     var metaEl = document.getElementById('ai-drift-meta');
-    if (!prediction || !prediction.contours || !prediction.contours.length) {
+
+    // The response carries two contour sets. `prediction.contours` is the raw
+    // Monte Carlo output - the prior, which never changes. `payload.contours`
+    // is computed from the posterior grid and therefore reflects any sectors
+    // already searched and eliminated.
+    //
+    // We previously drew the prior, which meant a dispatcher could report "we
+    // searched here, nothing found", the posterior would correctly update in
+    // the database, and the map would carry on showing the original search
+    // area. The whole point of Bayesian re-tasking was invisible.
+    var contours = (payload && payload.contours && payload.contours.length)
+      ? payload.contours
+      : (prediction && prediction.contours);
+
+    if (!contours || !contours.length) {
       if (metaEl) metaEl.textContent = 'No drift contours available for the selected incident.';
       return;
     }
 
     var contourBounds = L.latLngBounds([]);
 
-    prediction.contours.forEach(function (feature) {
+    contours.forEach(function (feature) {
       var mass = feature.properties && feature.properties.mass;
       var contourLabel = mass >= 0.9 ? '95% search area' : (mass >= 0.7 ? '75% search area' : '50% search area');
       var color = mass >= 0.9 ? aiColors.contour95 : (mass >= 0.7 ? aiColors.contour75 : aiColors.contour50);
@@ -1807,11 +2503,18 @@
           };
         },
         onEachFeature: function (feat, lyr) {
-          lyr.bindTooltip(contourLabel, {
-            sticky: true,
-            direction: 'center',
-            className: 'drift-incident-label'
-          });
+          // The incident id is named in the tooltip so a large red polygon can
+          // never be mistaken for a live emergency. These are replayed
+          // synthetic incidents; the map should say so where someone hovers.
+          lyr.bindTooltip(
+            contourLabel +
+            (incident ? ' · replayed incident #' + incident.id + (incident.is_synthetic ? ' (synthetic)' : '') : ''),
+            {
+              sticky: true,
+              direction: 'center',
+              className: 'drift-incident-label'
+            }
+          );
         }
       });
       layer.addTo(aiContoursLayer);
@@ -1838,15 +2541,92 @@
       contourBounds.extend(trackLine.getBounds());
     }
 
+    // Sectors already searched, drawn as hatched grey boxes. Seeing where has
+    // been eliminated is half the value of a probability map - otherwise the
+    // dispatcher cannot tell which part of the remaining area is new.
+    //
+    // Sector bounds arrive in metres relative to the posterior grid's origin,
+    // so they are converted back on the same local tangent plane the backend
+    // used (see KM_PER_DEG_LAT in backend/app/ai/drift.py).
+    var grid = payload && payload.posterior_grid;
+    var origin = grid && grid.origin;
+    var sectors = (payload && payload.search_sectors) || [];
+    if (origin && sectors.length) {
+      var mPerDegLat = 110574.0;
+      var mPerDegLon = 111320.0 * Math.cos(origin.lat * Math.PI / 180);
+      sectors.forEach(function (sector) {
+        var south = origin.lat + sector.y_min_m / mPerDegLat;
+        var north = origin.lat + sector.y_max_m / mPerDegLat;
+        var west = origin.lon + sector.x_min_m / mPerDegLon;
+        var east = origin.lon + sector.x_max_m / mPerDegLon;
+        var box = L.rectangle([[south, west], [north, east]], {
+          pane: 'aiContoursPane',
+          color: '#94a3b8',
+          weight: 1.5,
+          opacity: 0.9,
+          fillColor: '#64748b',
+          fillOpacity: 0.22,
+          dashArray: '4 4'
+        }).addTo(aiContoursLayer);
+        var pod = typeof sector.detection_probability === 'number'
+          ? Math.round(sector.detection_probability * 100) + '% detection probability'
+          : 'searched';
+        box.bindTooltip('Searched — ' + pod, {
+          sticky: true,
+          direction: 'center',
+          className: 'drift-incident-label'
+        });
+      });
+    }
+
     if (contourBounds.isValid()) {
       map.fitBounds(contourBounds.pad(0.12), { animate: true, duration: 0.9, maxZoom: 14 });
     }
 
     if (metaEl && incident) {
       var incidentTime = incident.last_contact_at ? new Date(incident.last_contact_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+
+      // These four came down the wire on every request and were thrown away.
+      // They are what turns a coloured blob into a forecast a dispatcher can
+      // reason about - and, in the case of the current source, they are how we
+      // stay honest on stage about which parts are real.
+      var bits = [];
+
+      if (prediction && prediction.object_class) {
+        bits.push('Drift class: <strong>' + _escHtml(String(prediction.object_class).replace(/_/g, ' ')) + '</strong>');
+      }
+
+      // Share of particles whose current came from real buoy observations
+      // rather than the synthetic fallback field. 0% is not a failure - it is
+      // the truthful state until buoys are in the water - so it is labelled
+      // rather than hidden.
+      if (typeof payload.observation_fraction === 'number') {
+        var pct = Math.round(payload.observation_fraction * 100);
+        bits.push(
+          pct > 0
+            ? 'Currents: <strong>' + pct + '% from buoy observations</strong>'
+            : 'Currents: <strong>simulated</strong> (no buoy observations yet)'
+        );
+      }
+
+      if (prediction && prediction.wind_source) {
+        bits.push('Wind: ' + _escHtml(prediction.wind_source) +
+          (prediction.degraded ? ' <span class="drift-degraded">(degraded — live wind unavailable)</span>' : ''));
+      }
+
+      var searched = (payload && payload.search_sectors) || [];
+      if (searched.length) {
+        bits.push('<strong>' + searched.length + '</strong> sector' + (searched.length === 1 ? '' : 's') +
+          ' searched — contours show the updated posterior');
+      }
+
       metaEl.innerHTML =
+        (incident.is_synthetic
+          ? '<span class="drift-replay-badge">REPLAY — SYNTHETIC INCIDENT</span><br>'
+          : '') +
         '<strong>Incident #' + incident.id + '</strong> · Vessel ' + _escHtml(incident.vessel_id) + '<br>' +
         'Last contact: ' + incidentTime + ' · ' + _escHtml(incident.abnormal_reason || 'unknown') + '<br>' +
+        (bits.length ? bits.join(' · ') + '<br>' : '') +
         'Track labeled as ground truth for synthetic evaluation.';
     }
 
@@ -1996,6 +2776,14 @@
     legend.innerHTML = traceSeries.map(function (series) {
       return '<div class="ai-trace-legend-item"><span class="ai-trace-swatch" style="background:' + series.color + '"></span><span>' + _escHtml(series.label) + '</span></div>';
     }).join('');
+    updateSquallLegendVisibility();
+  }
+
+  function updateSquallLegendVisibility() {
+    var legend = document.getElementById('ai-trace-legend');
+    if (!legend) return;
+    var hasContent = legend.children.length > 0;
+    legend.style.display = hasContent ? '' : 'none';
   }
 
   function renderSquallWatch(payload, traceSeries) {
@@ -2148,9 +2936,10 @@
       }
 
       if (squallResult.status === 'fulfilled') {
-        return loadSquallTrace(squallResult.value || { detections: [] });
+        return loadSquallTrace(squallResult.value || { detections: [] }).then(updateSquallLegendVisibility);
       }
       renderSquallWatch({ detections: [] }, []);
+      updateSquallLegendVisibility();
       return incidentPromise;
     }).catch(function () {
       renderRiskFeed([]);
@@ -2158,12 +2947,13 @@
       clearAiDriftLayers();
       clearAiSquallLayers();
       renderSquallWatch({ detections: [] }, []);
+      updateSquallLegendVisibility();
     });
 
     if (aiRefreshTimer) clearInterval(aiRefreshTimer);
     aiRefreshTimer = setInterval(function () {
       aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function () { renderRiskFeed([]); });
-      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).catch(function () { clearAiSquallLayers(); renderSquallWatch({ detections: [] }, []); });
+      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).then(updateSquallLegendVisibility).catch(function () { clearAiSquallLayers(); renderSquallWatch({ detections: [] }, []); updateSquallLegendVisibility(); });
       var currentSelect = document.getElementById('ai-drift-select');
       if (currentSelect && currentSelect.value) loadDriftIncidentDetail(currentSelect.value);
     }, 60000);
@@ -2187,9 +2977,52 @@
     });
   }
 
+  // ===== EXPORT =====
+  const btnExport = document.getElementById('btn-export');
+  if (btnExport) {
+    btnExport.addEventListener('click', function () {
+      const data = {
+        center: map.getCenter(),
+        zoom: map.getZoom(),
+        facilities: facilities.length,
+        buoys: initialBuoys.length,
+        incidents: incidents.length,
+        timestamp: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aqone-dashboard-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // ===== EXIT LOADING =====
+  function hideLoadingOverlay() {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(hideLoadingOverlay, 300);
+  } else {
+    window.addEventListener('load', function () {
+      setTimeout(hideLoadingOverlay, 300);
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(hideLoadingOverlay, 300);
+    });
+  }
+  setTimeout(hideLoadingOverlay, 1500);
+
   // ===== THEME TOGGLE (shared with profile.html) =====
+  // Reads BOTH storage keys used by profile.js ('aqone_dark_mode') and
+  // the dashboard's own key ('aqone-theme') so dark mode persists across pages.
   (function () {
     var STORAGE_KEY = 'aqone-theme';
+    var PROFILE_KEY = 'aqone_dark_mode';
     var root = document.documentElement;
 
     function applyTheme(theme) {
@@ -2202,8 +3035,23 @@
       if (darkToggle) darkToggle.checked = theme === 'dark';
     }
 
-    var savedTheme = localStorage.getItem(STORAGE_KEY) || 'light';
-    applyTheme(savedTheme);
+    function resolveTheme() {
+      var ownKey = localStorage.getItem(STORAGE_KEY);
+      if (ownKey) return ownKey;
+      var profileDark = localStorage.getItem(PROFILE_KEY);
+      if (profileDark === 'true') return 'dark';
+      return 'light';
+    }
+
+    applyTheme(resolveTheme());
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === PROFILE_KEY) {
+        var next = e.newValue === 'true' ? 'dark' : 'light';
+        applyTheme(next);
+        localStorage.setItem(STORAGE_KEY, next);
+      }
+    });
 
     var themeBtn = document.getElementById('btn-theme');
     if (themeBtn) {
@@ -2223,6 +3071,204 @@
         localStorage.setItem(STORAGE_KEY, next);
       });
     }
+  })();
+
+  // ===== LANGUAGE TRANSLATIONS (EN / AKL) =====
+  (function () {
+    var DASHBOARD_TRANSLATIONS = {
+      en: {
+        subTitle: "Maritime Intelligence — Aklan LGU",
+        layerStreets: "Streets",
+        layerSatellite: "Satellite",
+        layerHybrid: "Hybrid",
+        searchPlaceholder: "Search vessels, zones, coordinates...",
+        userName: "Kalibo, Aklan<br>LGU Administrator",
+        railLayers: "Layers",
+        railPan: "Pan",
+        railPin: "Pin",
+        railMeasure: "Measure",
+        railBuoys: "BUOYS",
+        railEmergency: "EMERGENCY",
+        railAdvisories: "Advisories",
+        lblIncidents: "Incident Reports",
+        lblBuoyStations: "Buoy Stations",
+        lblUserPins: "User Pins",
+        lblCoverage: "Buoy Coverage Zones",
+        lblMesh: "Mesh Network",
+        btnExport: "Export View Data",
+        btnCenterAklan: "Center on Aklan",
+        measureHint: "Click the map to add points. Double-click to finish.",
+        btnFinish: "Finish",
+        btnClear: "Clear",
+        hdrBuoyMonitor: "Buoy Health Monitor",
+        hdrAdvisories: "Maritime Advisories",
+        subAdvisories: "Create and manage official government advisories.",
+        btnCreateAdv: "Create Advisory",
+        filterAll: "All",
+        filterInCoverage: "In Coverage",
+        filterOutOfCoverage: "Out of Coverage",
+        filterOverdue: "Overdue",
+        wcTitle: "Current Conditions",
+        hdrSeaStatus: "Sea Condition Status",
+        btnSeaSafe: "Safe to Go Out",
+        btnSeaCaution: "Caution — Check Advisories",
+        btnSeaDanger: "Not Advised",
+        lblReason: "Reason (optional)",
+        phReason: "e.g. Small craft advisory in effect...",
+        btnSetStatus: "Set Status",
+        hdrForecast: "7-Day Forecast",
+        stubForecast: "Forecast data coming soon",
+        hdrRainfall: "Rainfall Timeline",
+        stubRainfall: "Rainfall data coming soon",
+        emTitle: "Emergency Contacts",
+        emSubtitle: "Quick access for MDRRMO responders",
+      },
+      akl: {
+        subTitle: "Intelihensiya sa Baybayon — LGU Aklan",
+        layerStreets: "Mga Dalan",
+        layerSatellite: "Satélite",
+        layerHybrid: "Pagsagol",
+        searchPlaceholder: "Mag-sapsap it sakayan, rehiyon, coordinates...",
+        userName: "Kalibo, Aklan<br>Tagadumala sa LGU",
+        railLayers: "Mga Han-ay",
+        railPan: "I-duhol",
+        railPin: "Tandaan",
+        railMeasure: "Sukdon",
+        railBuoys: "MGA BUOYS",
+        railEmergency: "EMERHENSIYA",
+        railAdvisories: "Mga Pasidaan",
+        lblIncidents: "Ulat it Insidente",
+        lblBuoyStations: "Estasyon it Buoy",
+        lblUserPins: "Mga Tanda sang Tawo",
+        lblCoverage: "Rehiyon sang Sakop it Buoy",
+        lblMesh: "Network sa Mesh",
+        btnExport: "I-export ang Datos",
+        btnCenterAklan: "I-sentro sa Aklan",
+        measureHint: "I-klick ang mapa para magdugang it punto. Double-click para matapos.",
+        btnFinish: "Tapuson",
+        btnClear: "Panason",
+        hdrBuoyMonitor: "Kauswagan sang Buoy",
+        hdrAdvisories: "Mga Pasidaan sa Baybayon",
+        subAdvisories: "Maghimo ag magdumala sang opisyal nga mga pasidaan sang gobyerno.",
+        btnCreateAdv: "Maghimo it Pasidaan",
+        filterAll: "Tanan",
+        filterInCoverage: "Yara sa Sakop",
+        filterOutOfCoverage: "Gwa sa Sakop",
+        filterOverdue: "Lampas sa Oras",
+        wcTitle: "Kasamtangan nga Panahon",
+        hdrSeaStatus: "Sitwasyon sa Baybayon",
+        btnSeaSafe: "Ewas nga Maglayag",
+        btnSeaCaution: "Maghalong — Basaha ang Pasidaan",
+        btnSeaDanger: "Indi Ginarekomendar",
+        lblReason: "Rason (opsyonal)",
+        phReason: "hal. Pasidaan sa gamay nga sakayan...",
+        btnSetStatus: "I-set ang Sitwasyon",
+        hdrForecast: "Pasidaan sa 7-Ka Adlaw",
+        stubForecast: "Maga-abot pa ang datos sa panahon",
+        hdrRainfall: "Oras sang Ulan",
+        stubRainfall: "Maga-abot pa ang datos sang ulan",
+        emTitle: "Mga Kontaktuhon sa Emerhensiya",
+        emSubtitle: "Mabilis nga pagkuha para sa mga tagatubag sang MDRRMO",
+      }
+    };
+
+    function applyLanguage(lang) {
+      if (lang !== 'akl') lang = 'en';
+      localStorage.setItem('aqone_lang', lang);
+      var dict = DASHBOARD_TRANSLATIONS[lang];
+
+      var btnEn = document.getElementById('dash-lang-en');
+      var btnAkl = document.getElementById('dash-lang-akl');
+      if (btnEn && btnAkl) {
+        if (lang === 'akl') {
+          btnEn.classList.remove('active');
+          btnAkl.classList.add('active');
+        } else {
+          btnAkl.classList.remove('active');
+          btnEn.classList.add('active');
+        }
+      }
+
+      var setText = function (selector, key) {
+        var el = document.querySelector(selector);
+        if (el && dict[key]) el.innerHTML = dict[key];
+      };
+
+      setText('.top-subtitle', 'subTitle');
+      setText('[data-layer="streets"] span', 'layerStreets');
+      setText('[data-layer="satellite"] span', 'layerSatellite');
+      setText('[data-layer="hybrid"] span', 'layerHybrid');
+
+      var searchInput = document.querySelector('.search-input');
+      if (searchInput && dict.searchPlaceholder) searchInput.placeholder = dict.searchPlaceholder;
+
+      setText('.user-name', 'userName');
+      setText('#rail-btn-layers .rail-label', 'railLayers');
+      setText('#rail-btn-pan .rail-label', 'railPan');
+      setText('#rail-btn-pin .rail-label', 'railPin');
+      setText('#rail-btn-measure .rail-label', 'railMeasure');
+      setText('#rail-btn-buoy .rail-label', 'railBuoys');
+      setText('#btn-emergency .rail-label', 'railEmergency');
+      setText('#rail-btn-advisories .rail-label', 'railAdvisories');
+
+      setText('#toggle-incidents + .toggle-label', 'lblIncidents');
+      setText('#toggle-buoys + .toggle-label', 'lblBuoyStations');
+      setText('#toggle-pins + .toggle-label', 'lblUserPins');
+      setText('#toggle-coverage + .toggle-label', 'lblCoverage');
+      setText('#toggle-mesh + .toggle-label', 'lblMesh');
+
+      setText('#btn-export', 'btnExport');
+      setText('#btn-center-aklan', 'btnCenterAklan');
+      setText('.measure-hint', 'measureHint');
+      setText('#btn-measure-finish', 'btnFinish');
+      setText('#btn-measure-clear', 'btnClear');
+
+      setText('.buoy-drawer-title', 'hdrBuoyMonitor');
+      setText('.advisory-drawer-title', 'hdrAdvisories');
+      setText('.advisory-drawer-desc', 'subAdvisories');
+      setText('#btn-create-advisory', 'btnCreateAdv');
+
+      setText('.vessel-filter[data-filter="all"]', 'filterAll');
+      setText('.vessel-filter[data-filter="in-coverage"]', 'filterInCoverage');
+      setText('.vessel-filter[data-filter="out-of-coverage"]', 'filterOutOfCoverage');
+      setText('.vessel-filter[data-filter="overdue"]', 'filterOverdue');
+
+      setText('.wc-title', 'wcTitle');
+      setText('#sea-condition-card .panel-card-header span', 'hdrSeaStatus');
+      setText('.sea-condition-btn.btn-safe', 'btnSeaSafe');
+      setText('.sea-condition-btn.btn-caution', 'btnSeaCaution');
+      setText('.sea-condition-btn.btn-danger', 'btnSeaDanger');
+      setText('label[for="sea-condition-reason"]', 'lblReason');
+      var seaInput = document.getElementById('sea-condition-reason');
+      if (seaInput && dict.phReason) seaInput.placeholder = dict.phReason;
+      setText('#sea-condition-set-btn', 'btnSetStatus');
+
+      setText('#forecast-card .panel-card-header span', 'hdrForecast');
+      setText('#forecast-body .panel-stub-text', 'stubForecast');
+      setText('#rainfall-card .panel-card-header span', 'hdrRainfall');
+      setText('#rainfall-body .panel-stub-text', 'stubRainfall');
+      setText('.emergency-modal-title', 'emTitle');
+      setText('.emergency-modal-subtitle', 'emSubtitle');
+    }
+
+    var btnEn = document.getElementById('dash-lang-en');
+    var btnAkl = document.getElementById('dash-lang-akl');
+    if (btnEn) btnEn.addEventListener('click', function () { applyLanguage('en'); });
+    if (btnAkl) btnAkl.addEventListener('click', function () { applyLanguage('akl'); });
+
+    var prefLangSelect = document.getElementById('pref-lang-select');
+    if (prefLangSelect) {
+      prefLangSelect.addEventListener('change', function (e) {
+        applyLanguage(e.target.value);
+      });
+    }
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'aqone_lang') applyLanguage(e.newValue);
+    });
+
+    var savedLang = localStorage.getItem('aqone_lang') || 'en';
+    applyLanguage(savedLang);
   })();
 
   // ===== PROFILE PAGE: TABS, SAVE HANDLERS, LOGOUT (from profile.html) =====
@@ -2355,7 +3401,8 @@
 
   // ===== WEATHER =====
   var wcBody = document.getElementById('wc-body');
-  const WConditions_INTERVAL_MS = 600000;
+  const WConditions_INTERVAL_MS = 300000;
+  const WEATHER_CACHE_KEY = 'aqone-live-weather-new-washington-v2';
 
   var SAFETY_THRESHOLDS = {
     safe:     { windMax: 20, waveMax: 1.0 },
@@ -2364,10 +3411,10 @@
   };
 
   var SAFETY_TIERS = {
-    safe:     { label: 'SAFE TO SAIL',         cls: 'wc-safety-safe',     color: '#2ecc71' },
-    caution:  { label: 'CAUTION',               cls: 'wc-safety-caution',  color: '#f1c40f' },
-    advisory: { label: 'SMALL CRAFT ADVISORY',  cls: 'wc-safety-advisory', color: '#e67e22' },
-    danger:   { label: 'DO NOT SAIL',           cls: 'wc-safety-danger',   color: '#e74c3c' },
+    safe:     { label: 'MODEL: LOWER RISK',          cls: 'wc-safety-safe',     color: '#2ecc71' },
+    caution:  { label: 'MODEL: CAUTION',             cls: 'wc-safety-caution',  color: '#f1c40f' },
+    advisory: { label: 'MODEL: SMALL CRAFT CAUTION', cls: 'wc-safety-advisory', color: '#e67e22' },
+    danger:   { label: 'MODEL: HIGH MARINE RISK',    cls: 'wc-safety-danger',   color: '#e74c3c' },
     unknown:  { label: 'CONDITIONS UNKNOWN',     cls: 'wc-safety-unknown',  color: '#7f8c8d' }
   };
 
@@ -2449,42 +3496,64 @@
     '</div>';
   }
 
-  function renderWeatherCard(data, waveM) {
-    var code = data.current.weather_code;
+  function renderWeatherCard(data, marineData, meta) {
+    var current = data.current || {};
+    var marineCurrent = marineData && marineData.current ? marineData.current : {};
+    var code = current.weather_code;
     var icon = wmoIcon(code);
-    var temp = Math.round(data.current.temperature_2m);
-    var windKmh = data.current.wind_speed_10m;
-    var windDir = degToCompass(data.current.wind_direction_10m || 0);
+    var temp = Math.round(current.temperature_2m);
+    var feelsLike = Math.round(current.apparent_temperature);
+    var windKmh = Number(current.wind_speed_10m);
+    var gustKmh = Number(current.wind_gusts_10m);
+    var windDir = degToCompass(current.wind_direction_10m || 0);
+    var waveM = Number.isFinite(Number(marineCurrent.wave_height)) ? Number(marineCurrent.wave_height) : null;
+    var wavePeriod = Number.isFinite(Number(marineCurrent.wave_period)) ? Number(marineCurrent.wave_period) : null;
+    var pressure = Number.isFinite(Number(current.pressure_msl)) ? Number(current.pressure_msl) : null;
+    var seaLevel = Number.isFinite(Number(marineCurrent.sea_level_height_msl)) ? Number(marineCurrent.sea_level_height_msl) : null;
     var condText = WMO_MAP[code] ? WMO_MAP[code].label : 'Unknown';
-
-    var safety = classifySafety(windKmh, waveM);
+    var safety = classifySafety(Math.max(windKmh || 0, gustKmh || 0), waveM);
+    var monitorAlerts = meta && Array.isArray(meta.alerts) ? meta.alerts : [];
+    var stale = Boolean(meta && meta.stale);
+    var monitorClass = monitorAlerts.length ? 'wc-monitor-danger' : stale ? 'wc-monitor-stale' : 'wc-monitor-safe';
+    var monitorText = monitorAlerts.length ?
+      monitorAlerts.length + ' incoming severe-weather risk' + (monitorAlerts.length === 1 ? '' : 's') + ' detected' :
+      stale ? 'Live monitor paused \u00b7 showing last-known conditions' : '72-hour monitor \u00b7 no severe thresholds detected';
+    var observedAt = current.time ? new Date(current.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
 
     wcBody.innerHTML =
       safetyBadgeHTML(safety) +
+      '<div class="wc-live-strip"><span class="wc-live-dot ' + (stale ? 'is-stale' : '') + '"></span>' +
+        (stale ? 'LAST KNOWN' : 'LIVE MODEL') + ' \u00b7 Updated ' + observedAt + '</div>' +
       '<div class="wc-main">' +
         '<div class="wc-icon ' + icon.cls + '">' + icon.svg + '</div>' +
         '<div class="wc-temp-group">' +
           '<div class="wc-temp">' + temp + '&deg;C</div>' +
-          '<div class="wc-condition">' + condText + '</div>' +
+          '<div class="wc-condition">' + condText + ' \u00b7 Feels ' + feelsLike + '&deg;</div>' +
         '</div>' +
       '</div>' +
       '<div class="wc-details">' +
         '<div class="wc-detail">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>' +
-          '<span class="wc-detail-val">' + windKmh + ' km/h</span>' +
-          '<span>' + windDir + '</span>' +
+          '<span>Wind</span><span class="wc-detail-val">' + windKmh.toFixed(1) + ' / ' + gustKmh.toFixed(1) + ' km/h ' + windDir + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c1.5-2 3.5-3 5.5-3s4 1 5.5 3 3.5 3 5.5 3 4-1 5.5-3"/></svg>' +
-          '<span class="wc-detail-val">' + (waveM !== null ? waveM.toFixed(1) + ' m' : '\u2014') + '</span>' +
-          '<span>Waves</span>' +
+          '<span>Waves</span><span class="wc-detail-val">' + (waveM !== null ? waveM.toFixed(2) + ' m / ' + wavePeriod.toFixed(1) + ' s' : '\u2014') + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>' +
-          '<span class="wc-detail-val">' + data.current.relative_humidity_2m + '%</span>' +
-          '<span>Humidity</span>' +
+          '<span>Humidity</span><span class="wc-detail-val">' + current.relative_humidity_2m + '%</span>' +
         '</div>' +
-      '</div>';
+        '<div class="wc-detail">' +
+          '<span>Pressure</span><span class="wc-detail-val">' + (pressure !== null ? pressure.toFixed(0) + ' hPa' : '\u2014') + '</span>' +
+        '</div>' +
+        '<div class="wc-detail">' +
+          '<span>Sea level</span><span class="wc-detail-val">' + (seaLevel !== null ? seaLevel.toFixed(2) + ' m MSL' : '\u2014') + '</span>' +
+        '</div>' +
+        '<div class="wc-detail">' +
+          '<span>Rain now</span><span class="wc-detail-val">' + Number(current.precipitation || 0).toFixed(1) + ' mm</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="wc-forecast-monitor ' + monitorClass + '">' + monitorText + '</div>' +
+      '<div class="wc-source-row"><span>Open-Meteo weather + marine</span>' +
+        '<a href="https://www.pagasa.dost.gov.ph/tropical-cyclone/severe-weather-bulletin" target="_blank" rel="noopener">Verify PAGASA</a></div>';
   }
 
   function renderForecast(daily) {
@@ -2533,39 +3602,168 @@
     body.innerHTML = html;
   }
 
-  function fetchWeatherData() {
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude=11.65159&longitude=122.43286' +
-      '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m' +
-      '&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&forecast_days=7&timezone=auto';
-    var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=11.65159&longitude=122.43286' +
-      '&current=wave_height&timezone=auto';
+  function fetchLiveJson(url) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 25000);
+    return fetch(url, { signal: controller.signal })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .finally(function () { clearTimeout(timeout); });
+  }
 
-    Promise.all([
-      fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch(marineUrl).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function () { return null; })
-    ])
-    .then(function (results) {
-      var weatherData = results[0];
-      var marineData  = results[1];
-      var waveM = null;
-      if (marineData && marineData.current && typeof marineData.current.wave_height === 'number') {
-        waveM = marineData.current.wave_height;
+  function readWeatherCache() {
+    try {
+      var cached = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY));
+      return cached && cached.weather ? cached : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeWeatherCache(snapshot) {
+    try {
+      localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+      console.warn('[AqOne] Could not cache live weather conditions');
+    }
+  }
+
+  function forecastTimeLabel(value) {
+    var time = new Date(value);
+    return time.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function buildForecastAlerts(weatherData, marineData) {
+    var weather = weatherData.hourly || {};
+    var marine = marineData && marineData.hourly ? marineData.hourly : {};
+    var marineIndexes = {};
+    (marine.time || []).forEach(function (time, index) { marineIndexes[time] = index; });
+    var stormCandidate = null;
+    var surgeCandidate = null;
+
+    (weather.time || []).slice(0, 72).some(function (time, index) {
+      var gust = Number(weather.wind_gusts_10m[index] || 0);
+      var wind = Number(weather.wind_speed_10m[index] || 0);
+      var direction = Number(weather.wind_direction_10m[index] || 0);
+      var rain = Number(weather.precipitation[index] || 0);
+      var pressure = Number(weather.pressure_msl[index] || 1013);
+      var code = Number(weather.weather_code[index] || 0);
+      var marineIndex = marineIndexes[time];
+      var wave = marineIndex == null ? 0 : Number(marine.wave_height[marineIndex] || 0);
+      var seaLevel = marineIndex == null ? 0 : Number(marine.sea_level_height_msl[marineIndex] || 0);
+      var invertedBarometer = marineIndex == null ? 0 : Number(marine.invert_barometer_height[marineIndex] || 0);
+      var onshoreWind = direction >= 315 || direction <= 90;
+
+      if (!stormCandidate && (gust >= 89 || (gust >= 63 && pressure <= 1000) || (code >= 95 && gust >= 40))) {
+        stormCandidate = { time: time, gust: gust, wind: wind, rain: rain, pressure: pressure, code: code };
       }
-      renderWeatherCard(weatherData, waveM);
-      if (weatherData.daily) {
-        renderForecast(weatherData.daily);
-        renderRainfall(weatherData.daily);
+      if (!surgeCandidate && onshoreWind && wave >= 1.8 && gust >= 40 &&
+          (seaLevel >= 0.55 || invertedBarometer >= 0.12 || pressure <= 1000)) {
+        surgeCandidate = { time: time, gust: gust, wave: wave, seaLevel: seaLevel, pressure: pressure };
       }
-    })
-    .catch(function () {
-      wcBody.innerHTML = '<div class="wc-error">Weather data unavailable</div>';
-      document.getElementById('forecast-body').innerHTML = '<p class="panel-stub-text">Forecast data unavailable</p>';
-      document.getElementById('rainfall-body').innerHTML = '<p class="panel-stub-text">Rainfall data unavailable</p>';
+      return Boolean(stormCandidate && surgeCandidate);
     });
+
+    var alerts = [];
+    if (stormCandidate) {
+      alerts.push({
+        type: 'forecast-storm',
+        desc: 'Forecast model flag: possible incoming tropical-cyclone or severe-storm conditions. Gusts ' +
+          stormCandidate.gust.toFixed(0) + ' km/h, pressure ' + stormCandidate.pressure.toFixed(0) +
+          ' hPa. Verify the latest PAGASA bulletin.',
+        time: 'Forecast ' + forecastTimeLabel(stormCandidate.time),
+        lat: 11.6845,
+        lng: 122.4475,
+        status: 'active',
+        vesselId: null,
+        source: 'forecast-monitor'
+      });
+    }
+    if (surgeCandidate) {
+      alerts.push({
+        type: 'storm-surge',
+        desc: 'Forecast model flag: possible storm-surge risk near New Washington. Sea level ' +
+          surgeCandidate.seaLevel.toFixed(2) + ' m MSL, waves ' + surgeCandidate.wave.toFixed(1) +
+          ' m, gusts ' + surgeCandidate.gust.toFixed(0) + ' km/h. Verify PAGASA storm-surge warnings.',
+        time: 'Forecast ' + forecastTimeLabel(surgeCandidate.time),
+        lat: 11.6845,
+        lng: 122.4475,
+        status: 'active',
+        vesselId: null,
+        source: 'forecast-monitor'
+      });
+    }
+    return alerts;
+  }
+
+  function replaceForecastAlerts(forecastAlerts) {
+    for (var index = alertData.length - 1; index >= 0; index--) {
+      if (alertData[index].source === 'forecast-monitor') alertData.splice(index, 1);
+    }
+    for (var alertIndex = forecastAlerts.length - 1; alertIndex >= 0; alertIndex--) {
+      alertData.unshift(forecastAlerts[alertIndex]);
+    }
+    syncAlertIndicators();
+
+    var signature = forecastAlerts.map(function (alert) { return alert.type + ':' + alert.time; }).join('|');
+    var previousSignature = localStorage.getItem('aqone-forecast-alert-signature') || '';
+    if (signature && signature !== previousSignature && typeof showToast === 'function') {
+      showToast('Proactive Weather Alert', forecastAlerts[0].desc, true);
+    }
+    localStorage.setItem('aqone-forecast-alert-signature', signature);
+  }
+
+  function displayWeatherSnapshot(snapshot, stale, alerts) {
+    renderWeatherCard(snapshot.weather, snapshot.marine, { stale: stale, alerts: alerts || [] });
+    if (snapshot.weather.daily) {
+      renderForecast(snapshot.weather.daily);
+      renderRainfall(snapshot.weather.daily);
+    }
+  }
+
+  function fetchWeatherData() {
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=11.6845&longitude=122.4475' +
+      '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+      '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,weather_code,pressure_msl' +
+      '&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&forecast_days=7&forecast_hours=72&timezone=Asia%2FManila';
+    var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=11.6845&longitude=122.4475' +
+      '&current=wave_height,wave_period,sea_level_height_msl' +
+      '&hourly=wave_height,wave_period,sea_level_height_msl,invert_barometer_height&forecast_hours=72&timezone=Asia%2FManila';
+
+    Promise.allSettled([fetchLiveJson(url), fetchLiveJson(marineUrl)])
+      .then(function (results) {
+        if (results[0].status !== 'fulfilled') throw results[0].reason;
+        var snapshot = {
+          weather: results[0].value,
+          marine: results[1].status === 'fulfilled' ? results[1].value : null,
+          fetchedAt: new Date().toISOString()
+        };
+        var forecastAlerts = buildForecastAlerts(snapshot.weather, snapshot.marine);
+        writeWeatherCache(snapshot);
+        replaceForecastAlerts(forecastAlerts);
+        displayWeatherSnapshot(snapshot, false, forecastAlerts);
+      })
+      .catch(function (error) {
+        var cached = readWeatherCache();
+        if (cached) {
+          var existingAlerts = alertData.filter(function (alert) { return alert.source === 'forecast-monitor'; });
+          displayWeatherSnapshot(cached, true, existingAlerts);
+        } else {
+          wcBody.innerHTML = '<div class="wc-error">Live weather unavailable. Check connection and PAGASA advisories.</div>';
+          document.getElementById('forecast-body').innerHTML = '<p class="panel-stub-text">Forecast data unavailable</p>';
+          document.getElementById('rainfall-body').innerHTML = '<p class="panel-stub-text">Rainfall data unavailable</p>';
+        }
+        console.warn('[AqOne] Live weather monitor unavailable:', error.message);
+      });
   }
 
   fetchWeatherData();
   setInterval(fetchWeatherData, WConditions_INTERVAL_MS);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) fetchWeatherData();
+  });
 
   // ===== EMERGENCY CONTACTS MODAL =====
   const emergencyOverlay = document.getElementById('emergency-modal-overlay');
@@ -2673,7 +3871,7 @@
     advPublishDateInput.value = new Date().toISOString().slice(0, 10);
     advExpirationDateInput.value = '';
     advCoverImageInput.value = '';
-    advStatusSelect.value = 'Draft';
+    advStatusSelect.value = 'Published';
     clearAdvisoryErrors();
   }
 
@@ -2802,10 +4000,12 @@
     });
   }
 
+  // Delegates to the shared, DOM-free implementation
+  // (web/js/dashboard-utils.js) so there is exactly one escaping function in
+  // this codebase, not two that can silently drift apart. Kept under its
+  // original name because ~15 call sites already use it.
   function _escHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+    return escapeHtml(str);
   }
 
   function closeDeleteModal() {
@@ -2938,13 +4138,13 @@
 
    fetchSeaCondition();
 
-   // ===== BANNER "LAST UPDATED" TICKER =====
-   var bannerElapsed = 0;
-   setInterval(function () {
-     bannerElapsed += 30;
-     var el = document.querySelector('.banner-time');
-     if (el) el.textContent = bannerElapsed + 's ago';
-   }, 30000);
+   // The banner's "Last updated" ticker used to be an independent counter
+   // here, incrementing every 30s regardless of whether anything had
+   // actually refreshed - a second copy of the fake-freshness problem
+   // updateSyncStatus() above now fixes for the header pill. Removed rather
+   // than kept in sync by hand: updateSyncStatus() already writes
+   // .banner-time every second from the one real timestamp
+   // (lastSosSuccessMs), so a second writer here could only drift from it.
 
    // ===== TOAST =====
    function showToast(title, msg, isError) {
@@ -2952,7 +4152,9 @@
      var toast = document.createElement('div');
      toast.className = 'toast';
      if (isError) toast.classList.add('toast-error');
-     toast.innerHTML = '<div class="toast-title">' + title + '</div><div class="toast-msg">' + msg + '</div>';
+     // title/msg can carry server-provided SOS text (boat name, position) -
+     // see the loadActiveSos() call site - so both must be escaped.
+     toast.innerHTML = '<div class="toast-title">' + escapeHtml(title) + '</div><div class="toast-msg">' + escapeHtml(msg) + '</div>';
      container.appendChild(toast);
      setTimeout(function () {
        toast.classList.add('toast-leave');

@@ -483,7 +483,12 @@ def _build_squall_events(
     days: int,
     start_at: datetime,
 ) -> list[dict[str, Any]]:
-    count = int(rng.integers(6, 11))
+    # Squalls are frequent in Philippine waters, and 6-10 events over 14 days
+    # left so few positive examples that a train/test split had almost nothing
+    # to score against - precision and recall both came out at zero. Two to
+    # three events per day is both realistic for the tropics and enough to
+    # train and evaluate on.
+    count = int(rng.integers(28, 45))
     rows: list[dict[str, Any]] = []
     for index in range(count):
         started_at = start_at + timedelta(

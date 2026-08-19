@@ -1,3 +1,4 @@
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/sea_condition.dart';
@@ -74,7 +75,7 @@ class SeaConditionBanner extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  status.headline,
+                  status.headline(AppLocalizations.of(context)),
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -87,7 +88,7 @@ class SeaConditionBanner extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            value.subtitle,
+            value.subtitle(AppLocalizations.of(context)),
             style: TextStyle(
               fontSize: 13,
               height: 1.35,

@@ -40,6 +40,10 @@ class Advisory {
     this.category,
     this.publishDate,
     this.expirationDate,
+    this.imageUrl,
+    this.imageAsset,
+    this.isOfficial = true,
+    this.byline,
   });
 
   final String title;
@@ -49,6 +53,30 @@ class Advisory {
   final String? category;
   final DateTime? publishDate;
   final DateTime? expirationDate;
+
+  /// Photo attached by whoever published the advisory - a damaged pier, a
+  /// posted bulletin. Network URL, so it needs a graceful failure: the reader
+  /// is frequently offshore with no signal and the text must survive without
+  /// it.
+  final String? imageUrl;
+
+  /// Bundled asset instead of a URL. Only for advisories the app itself
+  /// carries, which is why the wire format has no equivalent - a backend
+  /// cannot reference an image inside the APK.
+  final String? imageAsset;
+
+  /// False for anything AqOne generated rather than the MDRRMO or LGU.
+  ///
+  /// This screen is where a fisherman reads official instructions, so
+  /// anything that is not one must not be able to pass as one. §3.3 of the
+  /// system design keeps human authority explicit; an app that quietly speaks
+  /// in the LGU's voice erodes exactly the trust the safety features depend
+  /// on. Drives a visibly different card, not a footnote.
+  final bool isOfficial;
+
+  /// Who published it, when that is not a municipality. Shown in place of
+  /// [municipality] for unofficial notices.
+  final String? byline;
 
   /// Whether this advisory is still in force.
   ///
@@ -89,7 +117,16 @@ class Advisory {
           : null,
       publishDate: _date(value['publish_date']),
       expirationDate: _date(value['expiration_date']),
+      imageUrl: _text(value['image_url']),
     );
+  }
+
+  static String? _text(Object? value) {
+    if (value is! String) {
+      return null;
+    }
+    final String trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   static DateTime? _date(Object? value) {

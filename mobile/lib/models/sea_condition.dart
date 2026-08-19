@@ -1,3 +1,4 @@
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
 /// The official go/no-go call, set by the MDRRMO.
@@ -6,47 +7,19 @@ import 'package:flutter/material.dart';
 /// Venture is a rough client-side check; this is a human decision by the
 /// people responsible for the response, and it outranks anything the handset
 /// works out for itself.
+///
+/// Display text lives in [SeaStatusL10n] rather than on the enum - const enum
+/// fields cannot see a BuildContext. See §4.1 of
+/// `docs/22_LOCALIZATION_PLAN.md`.
 enum SeaStatus {
-  safe(
-    'safe',
-    'Safe to Go Out',
-    'Sea conditions are favorable.',
-    Color(0xFF16A34A),
-    Icons.check_circle_rounded,
-  ),
-  caution(
-    'caution',
-    'Caution - Check Advisories',
-    'Exercise caution before heading out.',
-    Color(0xFFD97706),
-    Icons.warning_amber_rounded,
-  ),
-  notAdvised(
-    'not_advised',
-    'Not Advised to Go Out',
-    'Stay ashore - conditions are dangerous.',
-    Color(0xFFDC2626),
-    Icons.dangerous_rounded,
-  ),
-  unknown(
-    'unknown',
-    'Status Not Yet Set',
-    'Check advisories before heading out.',
-    Color(0xFF6B7280),
-    Icons.help_outline_rounded,
-  );
+  safe('safe', Color(0xFF16A34A), Icons.check_circle_rounded),
+  caution('caution', Color(0xFFD97706), Icons.warning_amber_rounded),
+  notAdvised('not_advised', Color(0xFFDC2626), Icons.dangerous_rounded),
+  unknown('unknown', Color(0xFF6B7280), Icons.help_outline_rounded);
 
-  const SeaStatus(
-    this.wire,
-    this.headline,
-    this.defaultSubtitle,
-    this.color,
-    this.icon,
-  );
+  const SeaStatus(this.wire, this.color, this.icon);
 
   final String wire;
-  final String headline;
-  final String defaultSubtitle;
   final Color color;
 
   /// Paired with [color] so the state is never conveyed by colour alone -
@@ -62,6 +35,25 @@ enum SeaStatus {
     }
     return SeaStatus.unknown;
   }
+}
+
+extension SeaStatusL10n on SeaStatus {
+  /// The go/no-go headline. Safety critical in every language - see the
+  /// review rules in `lib/l10n/README.md`.
+  String headline(AppLocalizations t) => switch (this) {
+        SeaStatus.safe => t.seaStatusSafeHeadline,
+        SeaStatus.caution => t.seaStatusCautionHeadline,
+        SeaStatus.notAdvised => t.seaStatusNotAdvisedHeadline,
+        SeaStatus.unknown => t.seaStatusUnknownHeadline,
+      };
+
+  /// Used only when the MDRRMO supplied no reason of their own.
+  String defaultSubtitle(AppLocalizations t) => switch (this) {
+        SeaStatus.safe => t.seaStatusSafeSubtitle,
+        SeaStatus.caution => t.seaStatusCautionSubtitle,
+        SeaStatus.notAdvised => t.seaStatusNotAdvisedSubtitle,
+        SeaStatus.unknown => t.seaStatusUnknownSubtitle,
+      };
 }
 
 class SeaCondition {
@@ -86,10 +78,17 @@ class SeaCondition {
   /// When this handset last successfully read the value.
   final DateTime? fetchedAt;
 
-  String get subtitle {
+  /// Free text from the MDRRMO when they gave one, otherwise the translated
+  /// default for the status.
+  ///
+  /// [reason] is passed through verbatim and is deliberately NOT translated:
+  /// a human at the MDRRMO wrote it about today's specific conditions, and
+  /// machine-mangling an official safety notice would be worse than leaving
+  /// it in whatever language they typed it in.
+  String subtitle(AppLocalizations t) {
     final trimmed = reason?.trim();
     return trimmed == null || trimmed.isEmpty
-        ? status.defaultSubtitle
+        ? status.defaultSubtitle(t)
         : trimmed;
   }
 

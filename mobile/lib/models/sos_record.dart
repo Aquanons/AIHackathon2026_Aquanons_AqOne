@@ -25,6 +25,11 @@ class SosRecord {
     this.deliveredAt,
     this.acknowledgedAt,
     this.ackedBy,
+    this.remoteId,
+    this.etaAt,
+    this.responderStatus,
+    this.responderNote,
+    this.fisherReply,
   });
 
   final String localId;
@@ -42,7 +47,10 @@ class SosRecord {
   final double? lat;
   final double? lon;
   final String? note;
-  final int? buoyId;
+
+  /// The firmware's `BUOY_ID` string (e.g. `"BUOY01"`), not a numeric id -
+  /// see docs/21_WEEK1_CONTRACT_FIXTURES.md and BuoyAck.buoyId.
+  final String? buoyId;
   final int? srcId;
   final int? seq;
   final int? serverTs;
@@ -53,7 +61,41 @@ class SosRecord {
   final int? acknowledgedAt;
   final String? ackedBy;
 
+  /// The backend's id for this incident, learned when the responder answers.
+  /// Needed to post the fisher's reply against the right event.
+  final String? remoteId;
+
+  /// Absolute arrival time as an ISO string, not a duration. A duration decays
+  /// in transit; a timestamp stays correct however slow delivery was.
+  final String? etaAt;
+
+  /// 1 RECEIVED, 2 DISPATCHED, 3 COAST_GUARD, 4 NEAREST_VESSEL, 5 DELAYED.
+  final int? responderStatus;
+  final String? responderNote;
+
+  /// 1 STILL_IN_DANGER, 2 SAFE_NOW.
+  final int? fisherReply;
+
+  /// Parsed ETA, or null when none has arrived.
+  DateTime? get etaTime => etaAt == null ? null : DateTime.tryParse(etaAt!)?.toLocal();
+
+  /// True once the promised arrival time has passed with no resolution.
+  ///
+  /// The UI must switch to "delayed - still en route" here rather than showing
+  /// 00:00. A countdown that expires into silence reads as "the rescue failed",
+  /// which is both untrue and dangerous for someone deciding whether to swim.
+  bool get etaOverdue {
+    final eta = etaTime;
+    return eta != null && DateTime.now().isAfter(eta);
+  }
+
   bool get hasFix => lat != null && lon != null;
+
+  /// The fisher stood this SOS down themselves (reply 2 = "safe now"),
+  /// raised either through the responder-acknowledgement flow or the
+  /// post-dispatch "slide to stand down" control. The dashboard treats both
+  /// the same way - resolved, off the active queue - so the app does too.
+  bool get isStoodDown => fisherReply == 2;
 
   bool get awaitsRelay => state == DeliveryState.saved;
 
@@ -65,7 +107,7 @@ class SosRecord {
 
   SosRecord copyWith({
     DeliveryState? state,
-    int? buoyId,
+    String? buoyId,
     int? srcId,
     int? seq,
     int? serverTs,
@@ -98,6 +140,15 @@ class SosRecord {
       deliveredAt: deliveredAt ?? this.deliveredAt,
       acknowledgedAt: acknowledgedAt ?? this.acknowledgedAt,
       ackedBy: ackedBy ?? this.ackedBy,
+      // Carried through unchanged. copyWith feeds save(), and dropping these
+      // would blank a live ETA in memory every time the delivery state moved.
+      // toRow() deliberately does not write them, so saveResponder stays the
+      // single writer of responder data.
+      remoteId: remoteId,
+      etaAt: etaAt,
+      responderStatus: responderStatus,
+      responderNote: responderNote,
+      fisherReply: fisherReply,
     );
   }
 
@@ -133,7 +184,11 @@ class SosRecord {
         lat: (row['lat'] as num?)?.toDouble(),
         lon: (row['lon'] as num?)?.toDouble(),
         note: row['note'] as String?,
-        buoyId: (row['buoy_id'] as num?)?.toInt(),
+        // toString() rather than a hard cast: pre-Phase-1 rows may still
+        // carry an INTEGER-affinity value from before buoy_id became a
+        // string (see app_database.dart schema note), and this keeps old
+        // outbox rows readable instead of crashing on upgrade.
+        buoyId: row['buoy_id']?.toString(),
         srcId: (row['src_id'] as num?)?.toInt(),
         seq: (row['seq'] as num?)?.toInt(),
         serverTs: (row['server_ts'] as num?)?.toInt(),
@@ -143,6 +198,11 @@ class SosRecord {
         deliveredAt: (row['delivered_at'] as num?)?.toInt(),
         acknowledgedAt: (row['acknowledged_at'] as num?)?.toInt(),
         ackedBy: row['acked_by'] as String?,
+        remoteId: row['remote_id'] as String?,
+        etaAt: row['eta_at'] as String?,
+        responderStatus: (row['responder_status'] as num?)?.toInt(),
+        responderNote: row['responder_note'] as String?,
+        fisherReply: (row['fisher_reply'] as num?)?.toInt(),
       );
 
   Map<String, Object?> toBuoyPayload() {

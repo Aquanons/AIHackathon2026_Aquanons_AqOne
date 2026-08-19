@@ -36,8 +36,18 @@ steps. If you are unsure whether a step is done, ask.
 ## Deliberately NOT building (do not implement)
 
 These are scoped-out decisions, not gaps. See `docs/07_SCOPE_OUT.md` for the
-full list. Short version: no AI model, no catch logging, no advisories, no
-photos, no float-plan, no BFAR/LGU regulator roles.
+full list and for the items that have since been amended into scope.
+
+Still out: no photos, no fisheries-enforcement or surveillance features, no
+LoRa downlink to the handset. Catch logging was cut for the original build but
+is back in scope - see `docs/07_SCOPE_OUT.md`'s "Amended — now in scope".
+
+**Do not treat this file as the scope of record.** The canonical scope is
+`Aqone_PRD (2).md` (v3.0); unbuilt sections there are tagged
+`[Roadmap — not implemented]`. Advisories, accounts, "did not return" detection
+and three AI models were once listed here as out of scope and now exist — an
+outside audit read the stale version and reported the project as having built
+neither AI nor a backend.
 
 ## Shared contracts (do not diverge from these)
 
@@ -51,6 +61,7 @@ change, update the doc first and tell the affected owners.
 | Gateway → backend HTTPS | `docs/04_INGEST_API.md` | gateway (Arnold), backend (Lenard) |
 | Public REST + SSE | `docs/05_PUBLIC_API.md` | backend (Lenard), dashboard (Jade) |
 | Delivery states | `docs/06_DELIVERY_STATES.md` | all — the four states are the product language |
+| Mobile UI strings | `docs/22_LOCALIZATION_PLAN.md` | mobile (Jade/Doreen Kay) |
 
 ## Repository layout
 
@@ -63,6 +74,7 @@ gateway/     LoRa gateway node code (Arnold)
 firmware/
   buoy/      ESP32-S3 + SX1262 firmware, PlatformIO (Daniel)
 mobile/      Flutter app (Jade, Doreen Kay)
+  lib/l10n/  ARB translation files, en/fil/akl. Read its README first.
 docs/        numbered specs; 00 is the brief, 08 is the status table
 ```
 
@@ -75,6 +87,30 @@ docs/        numbered specs; 00 is the brief, 08 is the status table
 - [ ] Repo public, no secrets, README with setup instructions
 - [ ] Screencast recorded
 - [ ] `docs/08_DEMO_AND_STATUS.md` status table reflects reality
+
+## Mobile UI strings are localized (en / fil / akl)
+
+The handset app ships English, Tagalog and Aklanon. Full plan and phase order
+in `docs/22_LOCALIZATION_PLAN.md`. Three rules that will cost you a debugging
+session if you miss them:
+
+- **New user-facing text goes in `mobile/lib/l10n/app_en.arb`** with an
+  `@key` description, then is read via
+  `AppLocalizations.of(context).yourKey`. Do not add bare `Text('...')`
+  literals to `mobile/lib/`. Log messages, SQL, and wire values stay as
+  literals — those are not UI.
+- **Never put display text on an enum.** Const enum fields cannot see a
+  `BuildContext`, so they can never be translated. `DeliveryState`,
+  `SeaStatus` and `RiskLevel` keep only wire values, ordering and colours;
+  their text lives in a `…L10n` extension that takes an `AppLocalizations`.
+  Copy that pattern. `WeatherCondition` still carries English labels and has
+  not been converted yet — it is the last one left.
+- **The Tagalog locale code is `fil`, not `tl`,** and Aklanon (`akl`) has no
+  Flutter localizations at all — `mobile/lib/core/l10n_fallback.dart` handles
+  the second problem and its delegates must stay last in the list.
+
+Translations in `app_fil.arb` and `app_akl.arb` are unreviewed drafts. Do not
+treat them as correct; see `mobile/lib/l10n/README.md`.
 
 ## Conventions
 

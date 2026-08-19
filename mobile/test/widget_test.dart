@@ -1,27 +1,43 @@
+import 'package:aqone/core/l10n_fallback.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/models/buoy_contact.dart';
 import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/sos_record.dart';
 import 'package:aqone/ui/widgets/buoy_status_card.dart';
 import 'package:aqone/ui/widgets/delivery_state_tile.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _host(Widget child) {
+/// Widgets under test now read their copy from AppLocalizations, so the host
+/// has to carry the delegates. Defaults to English: these tests assert the
+/// documented English sentences. Cross-locale coverage lives in
+/// test/localization_test.dart.
+Widget _host(Widget child, {Locale locale = const Locale('en')}) {
   return MaterialApp(
+    locale: locale,
+    supportedLocales: kSupportedLocales,
+    localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      ...kFallbackDelegates,
+    ],
     home: Scaffold(body: SingleChildScrollView(child: child)),
   );
 }
 
 BuoyStatus _status({
-  MeshHealth mesh = MeshHealth.ok,
-  int battery = 86,
-  int queued = 0,
+  bool uplink = true,
+  int queueDepth = 0,
+  int clients = 1,
 }) {
   return BuoyStatus(
-    buoyId: 1001,
-    battery: battery,
-    mesh: mesh,
-    queued: queued,
+    buoyId: 'BUOY01',
+    uplink: uplink,
+    queueDepth: queueDepth,
+    clients: clients,
     observedAt: DateTime.utc(2026, 8, 4, 9, 15),
   );
 }
@@ -42,7 +58,7 @@ SosRecord _record({
     lat: lat,
     lon: lon,
     seq: seq,
-    buoyId: seq == null ? null : 1001,
+    buoyId: seq == null ? null : 'BUOY01',
     ackedBy: ackedBy,
   );
 }
@@ -59,31 +75,40 @@ void main() {
       );
     });
 
-    testWidgets('shows buoy id, battery and mesh state when connected',
+    testWidgets('shows buoy id and an honest uplink message when connected',
         (tester) async {
       await tester.pumpWidget(_host(BuoyStatusCard(status: _status())));
 
-      expect(find.text('Buoy 1001'), findsOneWidget);
-      expect(find.text('86%'), findsOneWidget);
-      expect(find.text(MeshHealth.ok.description), findsOneWidget);
+      expect(find.text('Buoy BUOY01'), findsOneWidget);
+      expect(
+        find.text(
+          'Link to shore is up. Your SOS will reach the rescue centre now.',
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('surfaces a degraded mesh and queue depth', (tester) async {
+    testWidgets('surfaces a down uplink and queue depth honestly',
+        (tester) async {
       await tester.pumpWidget(
         _host(
-          BuoyStatusCard(status: _status(mesh: MeshHealth.degraded, queued: 3)),
+          BuoyStatusCard(status: _status(uplink: false, queueDepth: 3)),
         ),
       );
 
-      expect(find.text(MeshHealth.degraded.description), findsOneWidget);
+      expect(
+        find.text(
+          'Link to shore is down. This buoy will hold your SOS and deliver '
+          'it automatically once the link returns.',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('3 message(s) waiting on this buoy'), findsOneWidget);
     });
 
-    testWidgets('hides battery when the buoy reports an unknown value',
+    testWidgets('never shows a battery reading - the firmware sends none',
         (tester) async {
-      await tester.pumpWidget(
-        _host(BuoyStatusCard(status: _status(battery: -1))),
-      );
+      await tester.pumpWidget(_host(BuoyStatusCard(status: _status())));
 
       expect(find.textContaining('%'), findsNothing);
     });
@@ -92,13 +117,15 @@ void main() {
   group('DeliveryStateTile', () {
     testWidgets('renders the documented sentence for every state',
         (tester) async {
+      final t = await AppLocalizations.delegate.load(const Locale('en'));
+
       for (final state in DeliveryState.values) {
         await tester.pumpWidget(
           _host(DeliveryStateTile(record: _record(state: state))),
         );
 
-        expect(find.text(state.title), findsOneWidget);
-        expect(find.text(state.description), findsOneWidget);
+        expect(find.text(state.title(t)), findsOneWidget);
+        expect(find.text(state.description(t)), findsOneWidget);
       }
     });
 
@@ -120,7 +147,7 @@ void main() {
       );
 
       expect(find.text('11.60500, 122.31250'), findsOneWidget);
-      expect(find.text('buoy 1001 · seq 42'), findsOneWidget);
+      expect(find.text('buoy BUOY01 · seq 42'), findsOneWidget);
     });
 
     testWidgets('names the responder once acknowledged', (tester) async {

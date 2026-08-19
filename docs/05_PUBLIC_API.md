@@ -13,11 +13,98 @@ Out of scope: ingest (`docs/04_INGEST_API.md`) and the radio hops.
 
 ## Transport
 
-- HTTPS. Base URL is `https://aqone-backend.up.railway.app`.
+- HTTPS. Base URL is `https://incredible-liberation-production-aad7.up.railway.app`.
 - Dashboard requests are authenticated by API key (`X-Api-Key`); the mobile
-  app may use unauthenticated read endpoints while the app has no login (role
-  `fisherman` only sees its own vessel status client-side).
+  app's safety feeds remain unauthenticated, but per-vessel normal-operation
+  reads and writes now require a vessel-device bearer token issued by the
+  backend. SOS ingest itself stays unauthenticated.
 - JSON bodies; `charset=utf-8`.
+
+## Vessel-device credential flow (Option A)
+
+Routine per-vessel reads and writes are no longer authorized by a client-
+supplied `vessel_id` alone. The backend now issues a revocable handset
+credential that is bound to one vessel.
+
+### `POST /api/vessel-auth/pairing-codes`
+
+Operator-authenticated (`mdrrmo` / `lgu` / `admin`). Issues a short-lived
+pairing code for one vessel. Body:
+
+```json
+{
+  "vessel_id": "NW-001",
+  "boat": "NW-001"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "vessel_id": "NW-001",
+  "pairing_code": "K7Q4M9PX",
+  "expires_at": "2026-08-16T05:15:00Z"
+}
+```
+
+Rules:
+
+- The code is one-time use.
+- The code expires after 15 minutes.
+- A lost/replaced handset gets a new code; old devices are revoked.
+
+### `POST /api/vessel-auth/enroll`
+
+Consumes the one-time code and returns a vessel-device bearer token. Body:
+
+```json
+{
+  "vessel_id": "NW-001",
+  "pairing_code": "K7Q4M9PX",
+  "device_label": "Jade's Android"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "token": "eyJ...",
+  "expires_at": "2026-08-17T05:00:00Z",
+  "device": {
+    "id": 12,
+    "vessel_id": "NW-001",
+    "label": "Jade's Android",
+    "paired_at": "2026-08-16T05:00:00Z"
+  }
+}
+```
+
+Rules:
+
+- Token lifetime is 24 hours.
+- The token binds one device record to one vessel.
+- The backend treats the token's vessel as authoritative. A body/path
+  `vessel_id` may be checked for consistency, but never trusted as ownership.
+
+### `POST /api/vessel-auth/refresh`
+
+Requires the current vessel-device bearer token. Returns a fresh token for the
+same device/vessel pair and the new expiry time.
+
+### `POST /api/vessel-auth/devices/{device_id}/revoke`
+
+Operator-authenticated. Revokes a lost or replaced handset. Body:
+
+```json
+{
+  "reason": "lost device"
+}
+```
+
+Once revoked, the device token must no longer authorize any per-vessel read or
+write. SOS ingest remains available without it.
 
 ## Endpoints
 
@@ -117,17 +204,191 @@ data: {"event": "acknowledged", "sos": { ... }}
 The phone learns nothing beyond its buoy (`docs/03_PHONE_BUOY_WIFI.md`) unless
 it has internet. If it does, it can reconcile its outbox:
 
-### `GET /api/v1/vessels/{vessel_id}/sos`
+### `GET /api/sos/vessel/{vessel_id}`
 
 Returns that vessel's SOS rows, newest first. The app matches by
-`(vessel_id, seq)` to mark a message `acknowledged` when an MDRRMO responder
-has acked it. No auth for MVP; the id is an unguessable UUID.
+`(local_id, seq)` to mark a message `acknowledged` when an MDRRMO responder
+has acked it.
+
+Requires a vessel-device bearer token. The token's vessel must match the path
+vessel id; the backend queries by the verified token vessel, not by trusting
+the path as ownership.
+
+### `POST /api/sos/{event_id}/reply`
+
+The fisher's reply to a responder acknowledgement.
+
+```json
+{
+  "reply": 1
+}
+```
+
+- `1` = still in danger
+- `2` = safe now
+
+Requires a vessel-device bearer token. The backend updates the event only when
+it belongs to that token's vessel.
+
+### `POST /api/catch-logs`
+
+Creates or deduplicates one catch log upload from the handset.
+
+Requires a vessel-device bearer token. The backend derives the owning vessel
+from the token and rejects a mismatched body `vessel_id`.
+
+### `POST /api/catch-logs/{catch_log_id}/confirm-weight`
+
+Confirms the real reweighed catch figure.
+
+Requires a vessel-device bearer token. The backend updates the row only when it
+belongs to that token's vessel.
+
+## Daily outlook for the app — **contract agreed, not yet implemented**
+
+### `GET /api/public/forecast`
+
+The fused seven-day outlook behind Home's forecast strip: buoy sensor
+telemetry combined with a weather provider, scored server-side.
+
+**This endpoint does not exist yet.** The contract is fixed here first so the
+handset and the backend can be built against it independently. Until it
+answers, the app falls back to Open-Meteo plus its own heuristic
+(`mobile/lib/services/forecast_provider.dart`), so switching it on is a
+backend-only deploy — no handset release.
+
+| Query | Default | Meaning |
+|---|---|---|
+| `lat` | — | Position to forecast for. |
+| `lon` | — | Position to forecast for. |
+| `days` | 7 | Days requested (≤ 7 is what the strip renders). |
+
+Response `200`:
+
+```json
+{
+  "source": "aqone-fusion",
+  "generated_at": "2026-08-16T04:00:00Z",
+  "days": [
+    {
+      "date": "2026-08-16",
+      "weather_code": 95,
+      "temp_max": 31.2,
+      "temp_min": 25.8,
+      "wind_kph": 24,
+      "gust_kph": 41,
+      "precip_mm": 18.4,
+      "wave_m": 2.1,
+      "risk": {
+        "level": "danger",
+        "score": 0.81,
+        "reason": "Gusts 41 km/h, 2.1 m swell at Buoy B",
+        "inputs": ["buoy:buoy-b", "open-meteo"]
+      }
+    }
+  ]
+}
+```
+
+Field notes, all of them load-bearing:
+
+- `weather_code` is **WMO 4677**, the same vocabulary Open-Meteo uses, so one
+  icon mapping on the handset serves every provider.
+- `wave_m` is significant wave height in metres, and is **nullable**. Null
+  means unknown. It must never be sent as `0.0` to mean "we didn't measure" —
+  that reads as flat calm and paints a dangerous day green.
+- `risk` is **optional**. Omit it (or send `null`) and the handset scores the
+  day itself and labels the verdict as device-derived. This is what lets the
+  backend serve weather before the fusion model is ready.
+- `risk.level` is one of `safe` \| `caution` \| `danger` \| `unknown`.
+- `risk.inputs` is how the app knows whether sea state was considered. An
+  entry starting `buoy:` or the literal `wave` counts as sea state; without
+  one, the card tells the user the verdict came from wind and rain only.
+- `risk.score` is 0–1, most dangerous at 1. Advisory, for future tuning — the
+  UI buckets on `level`.
+
+Parsing and every one of these rules is pinned by
+`mobile/test/daily_outlook_test.dart`.
+
+## Fish hotspots — **contract agreed, not yet implemented**
+
+### `GET /api/public/hotspots`
+
+The modelled hotspot surface (§6.2): consented catch logs joined with
+seasonal and environmental indicators, scored server-side.
+
+**This endpoint does not exist yet** — it is Phase 3 in the delivery plan.
+The handset polls it and draws nothing when it 404s. There is deliberately no
+client-side fallback: a hotspot needs other fishers' consented data joined
+with environmental history, and a handset has neither, so the honest answer
+until the model exists is an empty map.
+
+Response `200`:
+
+```json
+{
+  "generated_at": "2026-08-16T02:00:00Z",
+  "model_version": "hotspot-v0.1",
+  "min_reporters": 5,
+  "cells": [
+    {
+      "center_lat": 11.72,
+      "center_lon": 122.36,
+      "cell_size_degrees": 0.05,
+      "score": 0.82,
+      "observations": 34
+    }
+  ]
+}
+```
+
+Rules the shape enforces, all of them deliberate:
+
+- **Cells, never points.** §6.2 requires binning that protects an
+  individual's exact productive location. There is no field in which a
+  precise coordinate could be expressed, so the privacy property belongs to
+  the contract rather than to whatever renders it.
+- `score` is relative suitability 0–1, **not** a probability of catching
+  anything. §6.2 forbids implying guaranteed catch, and the client renders it
+  as opacity of a single hue — never a red-to-green ramp, which reads as a
+  safety verdict.
+- `observations` and `min_reporters` are shown in the map legend. §6.3's
+  minimum-reporter rule stops one prolific fisher becoming "the model", and a
+  cell resting on two reports must not look like one resting on two hundred.
+- `generated_at` drives a visible staleness label, per §3.4.
+- Cells should be withheld server-side when they fall below the reporter
+  threshold. The client cannot tell a withheld cell from an empty sea, which
+  is the intended asymmetry.
+
+Parsing is pinned by `mobile/test/hotspot_cell_test.dart`.
+
+### `POST /api/spots` — **deprecated, no callers**
+
+Manual pin-drop fishing spots. Removed from the handset. It published exact
+coordinates, attributed to a vessel, to every other handset, with no consent
+gate — the direct opposite of §6.2's binning requirement and §6.1's separate
+opt-in. The dashboard's `fetchHotspots()` that once read it no longer exists
+either.
+
+Endpoint and tables are left in place so anything a handset had already
+queued still uploads. Nothing writes new spots. Delete both once the
+outstanding queues are known to be drained.
+
+### PAGASA
+
+When a data-sharing agreement exists, PAGASA replaces the **atmospheric half
+only**. Their TenDay API is keyed by municipality rather than coordinates and
+carries no sea state, so wave height keeps coming from the marine model or
+from our own buoys. The call should live behind this endpoint rather than in
+the handset, so attribution and rate terms are honoured in one place and no
+credential ships on a phone.
 
 ## Roles
 
 - `mdrrmo` and `admin` may list and ack. `admin` may also register devices and
   revoke API keys (back-office, not in this doc).
-- `fisherman` reads only through the app; no auth required for MVP.
+- `fisherman` reads safety feeds without auth, but per-vessel status / reply /
+  catch routes now require a paired vessel-device credential.
 
 ## Conventions
 

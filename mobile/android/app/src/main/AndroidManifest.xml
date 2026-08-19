@@ -1,7 +1,39 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Flutter injects INTERNET into the debug and profile manifests only, so a
+         release APK built without this line has no network access at all - it
+         works over `flutter run` and fails on a real device. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- geolocator needs these. Without them requestPermission() returns denied
+         without ever showing the system dialog, so the Venture "my location"
+         button silently fails and an SOS goes out with no position. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <!-- Used to tell whether the phone is attached to a buoy's SoftAP. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+
+    <!-- image_picker: taking a profile photo with the camera. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
+    <!-- SOS alarm: vibration when a distress call is raised. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
+    <!-- Venture compass. No permission is needed to read the magnetometer;
+         these are declared not-required so Play does not hide the app from
+         handsets without a compass - the map still works, the dial just
+         renders in its unavailable state. -->
+    <uses-feature android:name="android.hardware.sensor.compass" android:required="false"/>
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false"/>
+
     <application
         android:label="aqone"
         android:name="${applicationName}"
+        android:allowBackup="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

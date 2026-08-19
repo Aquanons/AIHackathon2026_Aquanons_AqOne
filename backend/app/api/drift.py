@@ -6,7 +6,9 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.ai.current_field import create_current_field_factory
 from app.ai.drift import ObjectClass, predict_drift
+from app.ai.search import contours_from_grid, update_posterior
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/ai/drift', tags=['drift'])
@@ -22,14 +24,49 @@ class DriftPredictRequest(BaseModel):
     step_minutes: int = Field(10, ge=1, le=60)
 
 
+class SearchSectorRequest(BaseModel):
+    x_min_m: float
+    x_max_m: float
+    y_min_m: float
+    y_max_m: float
+    detection_probability: float = Field(..., gt=0.0, le=1.0)
+
+
 def _incident_class(abnormal_reason: str) -> ObjectClass:
     if abnormal_reason in {'capsize', 'adverse_weather'}:
         return ObjectClass.swamped_banca
     return ObjectClass.intact_hull_adrift
 
 
+async def _get_or_compute_prior(
+    pool, incident_id: int, row, current_fn, forecast_hours: float,
+) -> dict:
+    """Return the prior grid dict, loading from DB or computing fresh."""
+    prior_grid = row['prior_grid']
+    if prior_grid is not None:
+        return json.loads(prior_grid) if isinstance(prior_grid, str) else prior_grid
+
+    result = predict_drift(
+        last_lat=float(row['last_contact_lat']),
+        last_lon=float(row['last_contact_lon']),
+        observed_at=row['last_contact_at'],
+        object_class=_incident_class(str(row['abnormal_reason'])),
+        forecast_hours=forecast_hours,
+        current_vector_fn=current_fn,
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'UPDATE incidents SET prior_grid = $1, posterior_grid = $1 WHERE id = $2',
+            json.dumps(result.grid),
+            incident_id,
+        )
+    return result.grid
+
+
 @router.post('/predict')
 async def predict(body: DriftPredictRequest) -> dict[str, object]:
+    pool = get_pool()
+    current_fn = await create_current_field_factory(pool)
     result = predict_drift(
         last_lat=body.last_lat,
         last_lon=body.last_lon,
@@ -38,8 +75,13 @@ async def predict(body: DriftPredictRequest) -> dict[str, object]:
         forecast_hours=body.forecast_hours,
         particle_count=body.particle_count,
         step_minutes=body.step_minutes,
+        current_vector_fn=current_fn,
     )
-    return result.to_dict()
+    response = result.to_dict()
+    obs_frac = getattr(current_fn, 'observation_fraction', None)
+    if obs_frac is not None:
+        response['observation_fraction'] = round(obs_frac, 4)
+    return response
 
 
 @router.get('/incidents')
@@ -71,11 +113,13 @@ async def incidents() -> list[dict[str, object]]:
 @router.get('/incident/{incident_id}')
 async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) -> dict[str, object]:
     pool = get_pool()
+    current_fn = await create_current_field_factory(pool)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
             SELECT id, vessel_id, last_contact_at, last_contact_lat, last_contact_lon,
-                   abnormal_reason, true_track, is_synthetic
+                   abnormal_reason, true_track, is_synthetic,
+                   prior_grid, posterior_grid
             FROM incidents
             WHERE id = $1
             ''',
@@ -94,8 +138,33 @@ async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) ->
         observed_at=row['last_contact_at'],
         object_class=_incident_class(str(row['abnormal_reason'])),
         forecast_hours=forecast_hours,
+        current_vector_fn=current_fn,
     )
-    return {
+
+    posterior_grid = row['posterior_grid']
+    if posterior_grid is not None:
+        posterior_grid = json.loads(posterior_grid) if isinstance(posterior_grid, str) else posterior_grid
+    else:
+        posterior_grid = result.grid
+
+    sectors = []
+    async with pool.acquire() as conn:
+        sector_rows = await conn.fetch(
+            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at '
+            'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at',
+            incident_id,
+        )
+    for sr in sector_rows:
+        sectors.append({
+            'x_min_m': float(sr['x_min_m']),
+            'x_max_m': float(sr['x_max_m']),
+            'y_min_m': float(sr['y_min_m']),
+            'y_max_m': float(sr['y_max_m']),
+            'detection_probability': float(sr['detection_probability']),
+            'searched_at': sr['searched_at'].isoformat(),
+        })
+
+    response = {
         'incident': {
             'id': row['id'],
             'vessel_id': row['vessel_id'],
@@ -107,4 +176,99 @@ async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) ->
         },
         'prediction': result.to_dict(),
         'ground_truth_track': true_track,
+        'posterior_grid': posterior_grid,
+        'contours': contours_from_grid(posterior_grid),
+        'search_sectors': sectors,
+    }
+    obs_frac = getattr(current_fn, 'observation_fraction', None)
+    if obs_frac is not None:
+        response['observation_fraction'] = round(obs_frac, 4)
+    return response
+
+
+@router.post('/incident/{incident_id}/searched')
+async def record_searched_sector(
+    incident_id: int, body: SearchSectorRequest,
+) -> dict[str, object]:
+    pool = get_pool()
+    current_fn = await create_current_field_factory(pool)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            '''
+            SELECT id, last_contact_at, last_contact_lat, last_contact_lon,
+                   abnormal_reason, prior_grid, posterior_grid
+            FROM incidents
+            WHERE id = $1
+            ''',
+            incident_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail='incident not found')
+
+    prior_grid = row['prior_grid']
+    if prior_grid is not None:
+        prior_grid = json.loads(prior_grid) if isinstance(prior_grid, str) else prior_grid
+    else:
+        prior_grid = await _get_or_compute_prior(
+            pool, incident_id, row, current_fn, 24.0,
+        )
+
+    posterior_grid = row['posterior_grid']
+    if posterior_grid is not None:
+        posterior_grid = json.loads(posterior_grid) if isinstance(posterior_grid, str) else posterior_grid
+    else:
+        posterior_grid = prior_grid
+
+    sector = {
+        'x_min_m': body.x_min_m,
+        'x_max_m': body.x_max_m,
+        'y_min_m': body.y_min_m,
+        'y_max_m': body.y_max_m,
+        'detection_probability': body.detection_probability,
+    }
+    updated_grid = update_posterior(posterior_grid, [sector])
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'UPDATE incidents SET posterior_grid = $1 WHERE id = $2',
+            json.dumps(updated_grid),
+            incident_id,
+        )
+        await conn.execute(
+            '''
+            INSERT INTO search_sectors
+                (incident_id, x_min_m, x_max_m, y_min_m, y_max_m, detection_probability)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ''',
+            incident_id,
+            body.x_min_m,
+            body.x_max_m,
+            body.y_min_m,
+            body.y_max_m,
+            body.detection_probability,
+        )
+
+    updated_contours = contours_from_grid(updated_grid)
+
+    all_sectors = []
+    async with pool.acquire() as conn:
+        sector_rows = await conn.fetch(
+            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at '
+            'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at',
+            incident_id,
+        )
+    for sr in sector_rows:
+        all_sectors.append({
+            'x_min_m': float(sr['x_min_m']),
+            'x_max_m': float(sr['x_max_m']),
+            'y_min_m': float(sr['y_min_m']),
+            'y_max_m': float(sr['y_max_m']),
+            'detection_probability': float(sr['detection_probability']),
+            'searched_at': sr['searched_at'].isoformat(),
+        })
+
+    return {
+        'posterior_grid': updated_grid,
+        'contours': updated_contours,
+        'search_sectors': all_sectors,
     }

@@ -1,12 +1,27 @@
+import 'dart:async';
+
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
+import '../core/config.dart';
+import '../core/locale_controller.dart';
+import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
+import '../models/delivery_state.dart';
+import '../models/sos_record.dart';
+import '../models/squall_watch.dart';
+import '../services/catch_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
+import '../services/squall_alarm.dart';
 import '../services/venture_feeds.dart';
 import 'advisories_page.dart';
 import 'home_page.dart';
+import 'profile_page.dart';
+import 'squall_alert_page.dart';
 import 'venture_page.dart';
+import 'widgets/responder_eta_dialog.dart';
+
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _accentDark = Color(0xFF38BDF8);
@@ -25,14 +40,38 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.identity,
     required this.sos,
+    required this.catches,
+    required this.checklist,
     required this.feeds,
     required this.location,
+    required this.identityStore,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+    this.localeController,
+    required this.onLogout,
+    required this.onIdentityUpdated,
   });
 
   final VesselIdentity identity;
   final SosService sos;
+  final CatchService catches;
+  final ChecklistStore checklist;
   final VentureFeeds feeds;
   final LocationService location;
+
+  // Profile needs the store to save edits, and the theme handles so its
+  // light/dark switch can reach MaterialApp at the app root.
+  final IdentityStore identityStore;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+
+  // Passed straight through to Profile, which owns the language row. Held at
+  // the app root for the same reason as themeMode: changing it has to rebuild
+  // MaterialApp, not just this subtree.
+  final LocaleController? localeController;
+
+  final VoidCallback onLogout;
+  final ValueChanged<VesselIdentity> onIdentityUpdated;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -40,6 +79,175 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+
+  // ---- Responder acknowledgement watcher -----------------------------------
+  //
+  // The dispatcher's ETA reached the local database and nothing ever read it,
+  // so a fisher was never told help was coming. It is watched here, at the
+  // shell, rather than on any one page: an acknowledgement must surface
+  // wherever the fisher happens to be looking.
+
+  StreamSubscription<void>? _sosChanges;
+
+  /// localIds already announced, so switching tabs or a routine outbox poll
+  /// does not re-open the dialog for an acknowledgement already seen.
+  final Set<String> _announced = <String>{};
+
+  bool _dialogOpen = false;
+
+  /// True from the moment a check starts until it has either found nothing
+  /// or committed to opening a dialog.
+  ///
+  /// [_dialogOpen] alone is not enough to prevent duplicates: it is only set
+  /// true *after* `await widget.sos.history()` below, so a burst of
+  /// `sos.changes` events (routine during an ack/outbox flush) can start
+  /// several overlapping calls that all pass the `_dialogOpen` check before
+  /// any of them sets it, each independently scheduling its own dialog for
+  /// the same acknowledgement. This flag closes that window by being set
+  /// synchronously, before the first `await`.
+  bool _checkingAcknowledgement = false;
+
+  // ---- Squall nowcast -------------------------------------------------------
+  //
+  // Polled here rather than on Home, for the same reason as the
+  // acknowledgement watcher above: at sea the fisher is looking at the map,
+  // not at Home, and a RETURN NOW that only fires on one tab is a warning
+  // that does not reach the person it is for.
+
+  SquallWatch _squall = SquallWatch.unavailable;
+  Timer? _squallTimer;
+  final SquallAlarm _squallAlarm = SquallAlarm();
+
+  /// True while the full-screen alert is up, so a poll landing every minute
+  /// cannot stack a second copy on top of it.
+  bool _squallAlertOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sosChanges = widget.sos.changes.listen((_) => _checkForAcknowledgement());
+    _checkForAcknowledgement();
+    _loadSquall();
+    _squallTimer = Timer.periodic(
+      AqOneConfig.squallPollInterval,
+      (_) => _loadSquall(),
+    );
+  }
+
+  /// Polls the nowcast and drives both the alarm and the full-screen alert.
+  ///
+  /// A failed request yields SquallLevel.unknown, never clear - the app must
+  /// not imply calm weather because it could not reach the model. An already
+  /// ringing alarm is left alone on a failed poll for the same reason: losing
+  /// signal is not evidence the squall has passed.
+  Future<void> _loadSquall() async {
+    final SquallWatch squall = await widget.feeds.squall();
+    if (!mounted) {
+      return;
+    }
+
+    if (squall.returnNow) {
+      _squallAlarm.start(squall.identity);
+    } else if (squall.level != SquallLevel.unknown) {
+      // Only a definite non-alarm reading from the backend clears it.
+      _squallAlarm.clear();
+    }
+
+    setState(() {
+      if (squall.level != SquallLevel.unknown || !_squall.shouldDisplay) {
+        _squall = squall;
+      }
+    });
+
+    // Take the whole screen only for RETURN NOW, and only while the fisher
+    // has not already acknowledged this particular squall.
+    if (squall.returnNow &&
+        !_squallAlarm.isAcknowledged(squall.identity) &&
+        !_squallAlertOpen) {
+      _showSquallAlert(squall);
+    }
+  }
+
+  Future<void> _showSquallAlert(SquallWatch squall) async {
+    _squallAlertOpen = true;
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (BuildContext ctx) => SquallAlertPage(
+          watch: squall,
+          onAcknowledge: () {
+            _acknowledgeSquall();
+            Navigator.of(ctx).pop();
+          },
+        ),
+      ),
+    );
+    _squallAlertOpen = false;
+  }
+
+  void _acknowledgeSquall() {
+    _squallAlarm.acknowledge();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _sosChanges?.cancel();
+    _squallTimer?.cancel();
+    _squallAlarm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkForAcknowledgement() async {
+    if (!mounted || _dialogOpen || _checkingAcknowledgement) {
+      return;
+    }
+    _checkingAcknowledgement = true;
+
+    try {
+      final records = await widget.sos.history();
+      if (!mounted) {
+        return;
+      }
+
+      SosRecord? pending;
+      for (final record in records) {
+        final acknowledged = record.state == DeliveryState.acknowledged ||
+            record.etaAt != null;
+        if (acknowledged && !_announced.contains(record.localId)) {
+          pending = record;
+          break;
+        }
+      }
+
+      if (pending == null) {
+        return;
+      }
+
+      _announced.add(pending.localId);
+      _dialogOpen = true;
+
+      // Scheduled after the current frame so this can safely fire from a
+      // stream callback during a build without tripping a
+      // setState-during-build error.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) {
+          _dialogOpen = false;
+          return;
+        }
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => ResponderEtaDialog(record: pending!),
+        );
+        _dialogOpen = false;
+      });
+    } finally {
+      _checkingAcknowledgement = false;
+    }
+  }
 
   /// Venture is not built until the user first opens it, so entering the app
   /// does not immediately prompt for GPS or start polling.
@@ -51,8 +259,16 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildVenture(double bottomInset) {
     return VenturePage(
+      // Venture is the screen a fisher is actually looking at offshore, so the
+      // watch-level banner belongs here too. RETURN NOW takes the whole
+      // screen from the shell regardless of the tab.
+      squall: _squall,
+      squallAcknowledged: _squallAlarm.isAcknowledged(_squall.identity),
+      onAcknowledgeSquall: _acknowledgeSquall,
       identity: widget.identity,
       sos: widget.sos,
+      catches: widget.catches,
+      checklist: widget.checklist,
       feeds: widget.feeds,
       location: widget.location,
       bottomInset: bottomInset,
@@ -91,10 +307,25 @@ class _AppShellState extends State<AppShell> {
           location: widget.location,
           bottomInset: inset,
           onOpenAdvisories: () => _select(2),
+          onOpenProfile: () => _select(3),
+          squall: _squall,
+          squallAcknowledged: _squallAlarm.isAcknowledged(_squall.identity),
+          onAcknowledgeSquall: _acknowledgeSquall,
         ),
         // Only built once the user has actually opened Venture.
         _ventureOpened ? _buildVenture(inset) : const SizedBox.shrink(),
         AdvisoriesPage(feeds: widget.feeds, bottomInset: inset),
+        ProfilePage(
+          identityStore: widget.identityStore,
+          identity: widget.identity,
+          themeMode: widget.themeMode,
+          onThemeModeChanged: widget.onThemeModeChanged,
+          localeController: widget.localeController,
+          onLogout: widget.onLogout,
+          onIdentityUpdated: widget.onIdentityUpdated,
+          onOpenHome: () => _select(0),
+          bottomInset: inset,
+        ),
       ],
     );
 
@@ -164,24 +395,31 @@ class _Sidebar extends StatelessWidget {
             const SizedBox(height: 28),
             _SidebarItem(
               icon: Icons.home_rounded,
-              label: 'Home',
+              label: AppLocalizations.of(context).navHome,
               isActive: index == 0,
               isDark: isDark,
               onTap: () => onSelect(0),
             ),
             _SidebarItem(
               icon: Icons.explore_rounded,
-              label: 'Venture mode',
+              label: AppLocalizations.of(context).navVenture,
               isActive: index == 1,
               isDark: isDark,
               onTap: () => onSelect(1),
             ),
             _SidebarItem(
               icon: Icons.campaign_rounded,
-              label: 'Advisories',
+              label: AppLocalizations.of(context).navAdvisories,
               isActive: index == 2,
               isDark: isDark,
               onTap: () => onSelect(2),
+            ),
+            _SidebarItem(
+              icon: Icons.person_rounded,
+              label: AppLocalizations.of(context).navProfile,
+              isActive: index == 3,
+              isDark: isDark,
+              onTap: () => onSelect(3),
             ),
             const Spacer(),
           ],
@@ -248,7 +486,7 @@ class _SidebarItem extends StatelessWidget {
   }
 }
 
-/// Mobile dock with the Venture button raised above it, as in the mockups.
+/// Mobile dock with the Venture button raised above it.
 class _MobileDock extends StatelessWidget {
   const _MobileDock({
     required this.index,
@@ -269,17 +507,11 @@ class _MobileDock extends StatelessWidget {
   static const double buttonSize = 66;
 
   /// Total space the dock occupies, including the home-indicator inset.
-  ///
-  /// Both the dock and the pages beneath it derive their geometry from this,
-  /// so the bar cannot end up shorter than the thing drawn inside it.
   static double heightFor(BuildContext context) =>
       barHeight + MediaQuery.of(context).viewPadding.bottom + overhang;
 
   @override
   Widget build(BuildContext context) {
-    // Padded explicitly rather than with SafeArea: a SafeArea inside a
-    // fixed-height box adds inset to the content without growing the box,
-    // which is what overflowed the dock on phones with a home indicator.
     final systemInset = MediaQuery.of(context).viewPadding.bottom;
     final fullBarHeight = barHeight + systemInset;
 
@@ -306,34 +538,40 @@ class _MobileDock extends StatelessWidget {
               ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: <Widget>[
-                _DockItem(
-                  icon: Icons.home_rounded,
-                  label: 'Home',
-                  isActive: index == 0,
-                  isDark: isDark,
-                  onTap: () => onSelect(0),
+                Expanded(
+                  child: Center(
+                    child: _DockItem(
+                      icon: Icons.home_rounded,
+                      label: AppLocalizations.of(context).navHome,
+                      isActive: index == 0,
+                      isDark: isDark,
+                      onTap: () => onSelect(0),
+                    ),
+                  ),
                 ),
                 // Reserved gap for the raised Venture button.
                 const SizedBox(width: 72),
-                _DockItem(
-                  icon: Icons.campaign_rounded,
-                  label: 'Advisories',
-                  isActive: index == 2,
-                  isDark: isDark,
-                  onTap: () => onSelect(2),
+                Expanded(
+                  child: Center(
+                    child: _DockItem(
+                      icon: Icons.campaign_rounded,
+                      label: AppLocalizations.of(context).navAdvisories,
+                      isActive: index == 2,
+                      isDark: isDark,
+                      onTap: () => onSelect(2),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           Positioned(
-            // Sits centred on the bar's top edge, so its top lands exactly on
-            // the stack's top rather than spilling past it.
             bottom: fullBarHeight - overhang,
             child: Semantics(
               button: true,
-              label: 'Venture mode',
+              label: AppLocalizations.of(context).navVenture,
               child: GestureDetector(
                 onTap: () => onSelect(1),
                 child: Container(

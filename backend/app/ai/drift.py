@@ -375,6 +375,24 @@ def predict_drift(
     rng: np.random.Generator | None = None,
     initial_spread_m: float = 250.0,
     diffusivity_m2_s: float = 0.75,
+    # Per-particle uncertainty in the forecast current and in the object's
+    # windage. Turbulent diffusion alone spreads the ensemble only a few hundred
+    # metres over a full day, while the dominant real error is that the forecast
+    # current is wrong by some roughly constant amount for the whole drift.
+    # Operational SAR ensembles (SAROPS) perturb the current and wind fields the
+    # same way.
+    #
+    # Calibrated against 19 synthetic incidents across three seeds. The 95%
+    # contour should contain the true position about 95% of the time - no more,
+    # no less. Too tight and the search area is confidently wrong; too wide and
+    # it is larger than simply drawing a circle at maximum drift speed:
+    #
+    #   sigma   containment   area vs naive baseline
+    #   0.04        89.5%          4.14x   under-covers
+    #   0.06        94.7%          1.92x   <- calibrated
+    #   0.10       100.0%          0.81x   worse than the baseline
+    current_bias_sigma_ms: float = 0.06,
+    leeway_scale_sigma: float = 0.25,
     grid_resolution_m: float = 500.0,
 ) -> DriftResult:
     start = perf_counter()
@@ -391,6 +409,14 @@ def predict_drift(
     y = rng.normal(0.0, initial_spread_m, size=particle_count)
     cross_sign = rng.choice(np.array([-1.0, 1.0]), size=particle_count)
     diffusion_sigma = math.sqrt(2.0 * diffusivity_m2_s * dt_seconds)
+
+    # Drawn once per particle and held for the whole run: each ensemble member
+    # represents one plausible version of "what the current actually was" and
+    # "how much windage this object really had", rather than resampling the
+    # error every step, which would average it away.
+    current_bias_u = rng.normal(0.0, current_bias_sigma_ms, size=particle_count)
+    current_bias_v = rng.normal(0.0, current_bias_sigma_ms, size=particle_count)
+    leeway_scale = np.clip(rng.normal(1.0, leeway_scale_sigma, size=particle_count), 0.3, 2.0)
     centroid_track: list[dict[str, object]] = []
 
     for step in range(horizon_steps + 1):
@@ -411,12 +437,16 @@ def predict_drift(
         else:
             wind_perp_u = -wind_v
             wind_perp_v = wind_u
-        leeway_u = spec.downwind * wind_u + cross_sign * spec.crosswind * wind_perp_u
-        leeway_v = spec.downwind * wind_v + cross_sign * spec.crosswind * wind_perp_v
+        leeway_u = leeway_scale * (
+            spec.downwind * wind_u + cross_sign * spec.crosswind * wind_perp_u
+        )
+        leeway_v = leeway_scale * (
+            spec.downwind * wind_v + cross_sign * spec.crosswind * wind_perp_v
+        )
         diffusion_u = rng.normal(0.0, diffusion_sigma, size=particle_count)
         diffusion_v = rng.normal(0.0, diffusion_sigma, size=particle_count)
-        x += (current_u + leeway_u) * dt_seconds + diffusion_u
-        y += (current_v + leeway_v) * dt_seconds + diffusion_v
+        x += (current_u + current_bias_u + leeway_u) * dt_seconds + diffusion_u
+        y += (current_v + current_bias_v + leeway_v) * dt_seconds + diffusion_v
 
     x_min = float(np.min(x)) - grid_resolution_m
     x_max = float(np.max(x)) + grid_resolution_m

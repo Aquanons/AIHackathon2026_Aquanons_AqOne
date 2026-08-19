@@ -21,10 +21,86 @@ async def _applied_migrations(conn: asyncpg.Connection) -> set[str]:
     return {row['filename'] for row in rows}
 
 
-async def _apply_sql(conn: asyncpg.Connection, sql: str) -> None:
-    statements = [part.strip() for part in sql.split(';') if part.strip()]
-    for statement in statements:
-        await conn.execute(statement)
+def _split_statements(sql: str) -> list[str]:
+    """Split a migration into statements on semicolons that actually end one.
+
+    A plain sql.split(';') breaks on semicolons inside comments and string
+    literals. A comment reading "-- direct-path only; will not fit in a frame"
+    was cut in half, leaving "will not fit in a frame." to be executed as SQL -
+    a syntax error that aborted the migration, which in turn stopped the
+    container before uvicorn started and showed up only as a failed healthcheck.
+
+    Tracks single-quoted strings and -- line comments, and splits only outside
+    both.
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    in_string = False
+    in_comment = False
+    index = 0
+
+    while index < len(sql):
+        char = sql[index]
+        nxt = sql[index + 1] if index + 1 < len(sql) else ''
+
+        if in_comment:
+            current.append(char)
+            if char == '\n':
+                in_comment = False
+        elif in_string:
+            current.append(char)
+            if char == "'":
+                # '' is an escaped quote inside a string, not a terminator.
+                if nxt == "'":
+                    current.append(nxt)
+                    index += 1
+                else:
+                    in_string = False
+        elif char == '-' and nxt == '-':
+            in_comment = True
+            current.append(char)
+        elif char == "'":
+            in_string = True
+            current.append(char)
+        elif char == ';':
+            statements.append(''.join(current))
+            current = []
+        else:
+            current.append(char)
+        index += 1
+
+    tail = ''.join(current).strip()
+    if tail:
+        statements.append(tail)
+    return [s.strip() for s in statements if s.strip()]
+
+
+async def _apply_sql(conn: asyncpg.Connection, sql: str, filename: str) -> None:
+    """Run a migration file statement by statement.
+
+    Reports which statement failed. A migration error aborts the container
+    before uvicorn starts, so the deploy dies with nothing but a red healthcheck
+    unless the offending SQL is named here.
+    """
+    statements = _split_statements(sql)
+    for index, statement in enumerate(statements, 1):
+        # A fragment that is only a comment is not worth sending to the server.
+        if all(
+            not line.strip() or line.strip().startswith('--')
+            for line in statement.splitlines()
+        ):
+            continue
+        try:
+            await conn.execute(statement)
+        except Exception as error:
+            preview = ' '.join(statement.split())[:200]
+            print(
+                f'MIGRATION FAILED: {filename} statement {index}/{len(statements)}\n'
+                f'  error: {type(error).__name__}: {error}\n'
+                f'  sql  : {preview}',
+                flush=True,
+            )
+            raise
 
 
 async def main() -> None:
@@ -44,12 +120,14 @@ async def main() -> None:
             if path.name in applied:
                 continue
             sql = path.read_text(encoding='utf-8')
+            print(f'applying migration {path.name}', flush=True)
             async with conn.transaction():
-                await _apply_sql(conn, sql)
+                await _apply_sql(conn, sql, path.name)
                 await conn.execute(
                     'INSERT INTO schema_migrations (filename) VALUES ($1)',
                     path.name,
                 )
+            print(f'applied  migration {path.name}', flush=True)
     finally:
         await conn.close()
 

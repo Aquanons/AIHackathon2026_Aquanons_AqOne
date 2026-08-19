@@ -9,13 +9,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  http: ^1.2.2
-  sqflite: ^2.3.3
-  sqflite_common_ffi_web: any
-  path: ^1.9.0
+
+  # Localization (en / fil / akl). See docs/22_LOCALIZATION_PLAN.md.
+  # Locale code is `fil`, not `tl`: flutter_localizations ships
+  # GlobalMaterialLocalizations for fil only, and an unsupported locale in
+  # supportedLocales throws "No MaterialLocalizations found" at runtime.
   flutter_localizations:
     sdk: flutter
-  intl: any
+  # Pinned, not `any`. gen-l10n's generated code imports intl, so an
+  # unconstrained resolve can swap it under the localisations and break the
+  # build for one person and nobody else. flutter_localizations already
+  # narrows this hard - 0.20.2 is what it resolves to today.
+  intl: ^0.20.2
+
+  http: ^1.2.2
+  sqflite: ^2.3.3
+  # Web-only sqflite backend. Pinned for the same reason as intl: `any` makes
+  # the build depend on when you last resolved.
+  sqflite_common_ffi_web: ^1.1.2
+  path: ^1.9.0
 
   # Bumped from ^13.0.1 to match the version the Venture code is proven
   # against. LocationService already uses the modern locationSettings API,
@@ -35,13 +47,73 @@ dependencies:
   shared_preferences: ^2.3.2
   network_info_plus: ^8.2.1
 
+  # Profile picture upload (camera / gallery).
+  image_picker: ^1.1.2
+  path_provider: ^2.1.5
+
+  # Venture compass. sensors_plus rather than flutter_compass: the latter is
+  # unmaintained and declares no Android namespace, so it will not build under
+  # AGP 8. Heading is derived from the magnetometer + accelerometer in
+  # services/compass_service.dart.
+  #
+  # 7.1.0 or newer is required, not merely preferred: 6.x applies the Kotlin
+  # Gradle Plugin itself, which Flutter now warns about and will later refuse
+  # to build. 7.1.0 added Built-in Kotlin support. Its 7.0.0 floor (AGP
+  # 8.12.1+, Gradle 8.13+, Kotlin 2.2.0) is already met by this project -
+  # android/settings.gradle.kts pins AGP 9.0.1 and Kotlin 2.3.20 on Gradle
+  # 9.1.0.
+  sensors_plus: ^7.1.0
+
+  # Phase 5 security: the vessel device credential and the field-encryption
+  # key live in Android Keystore / iOS Keychain, never in SharedPreferences or
+  # SQLite. See docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md.
+  #
+  # Held at 10.x deliberately. Version 11.0.0 raised its compileSdk to 37,
+  # an Android SDK so new that Gradle here could not resolve it even after
+  # the platform installed - the build failed with
+  # "Failed to find target with hash string 'android-37'". 10.3.1 builds
+  # against SDK 36, which this project already uses.
+  #
+  # The code needs no change between the two: SecureCredentialStore uses
+  # default options, and it is version 10 that rewrote Android off the
+  # deprecated Jetpack Security library onto Keystore-backed custom ciphers.
+  # So 10.x gives the same protection without a canary SDK.
+  #
+  # Revisit when Android SDK 37 is generally available and Flutter's default
+  # compileSdk has caught up.
+  flutter_secure_storage: ^10.3.1
+
+  # AES-GCM for individual sensitive columns. Pure Dart - no native config, no
+  # Gradle surface - which is why it was chosen over a SQLCipher-backed
+  # database along with the availability argument in core/field_cipher.dart.
+  cryptography: ^2.7.0
+
+  # SOS alarm: looping vibration + alarm tone when a distress call is raised.
+  vibration: ^3.1.3
+  audioplayers: ^6.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+  # Test-only: runs the real SQLite schema in-memory, so the Phase 5 tests can
+  # assert what is actually written to disk rather than what the store API
+  # returns. The plan is explicit that "the library was added" is not proof of
+  # encrypted local data. Already resolved transitively via
+  # sqflite_common_ffi_web; declared here because tests import it directly.
+  sqflite_common_ffi: ^2.4.2
+
 flutter:
   uses-material-design: true
 
+  # Runs gen-l10n on `flutter pub get`, driven by l10n.yaml.
+  generate: true
+
   assets:
     - assets/images/aqone_logo.png
+    - assets/images/aqoneLogo1.png
+    - assets/images/aqoneLogo2.png
+    - assets/audio/sos_alarm.wav
+    # Team photo on the in-app welcome notice (see WelcomeAdvisory).
+    - assets/images/team_aquanons.jpg

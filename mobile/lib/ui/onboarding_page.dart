@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
 
+import '../core/locale_controller.dart';
+import '../core/tokens.dart';
 import '../core/validators.dart';
 import '../data/identity_store.dart';
 import '../models/license_type.dart';
 import '../models/trust_tier.dart';
 import 'info_page.dart';
+import 'widgets/language_picker.dart';
 
-const Color _brandDeep = Color(0xFF0958A6);
 const Color _brandPrimary = Color(0xFF0F69C9);
-const Color _authText = Color(0xFF2C4960);
-const Color _authLabel = Color(0xFF4A6B82);
-const Color _authHint = Color(0xFF7A97AC);
-const Color _authFill = Color(0xFFCFE8F9);
-const Color _noticeBg = Color(0xFFFFF4E0);
-const Color _noticeFg = Color(0xFF8A5A12);
+const Color _brandDeepLight = Color(0xFF0958A6);
+const Color _brandDeepDark = Color(0xFFBFE3FF);
+const Color _authTextLight = Color(0xFF2C4960);
+const Color _authTextDark = Color(0xFFF0F4F8);
+const Color _authLabelLight = Color(0xFF4A6B82);
+const Color _authLabelDark = Color(0xFFB9CBD8);
+const Color _authHintLight = Color(0xFF7A97AC);
+const Color _authHintDark = Color(0xFF8CA3B5);
+const Color _authFillLight = Color(0xFFCFE8F9);
+const Color _authFillDark = Color(0xFF334155);
+const Color _noticeBgLight = Color(0xFFFFF4E0);
+const Color _noticeBgDark = Color(0xFF3A2E12);
+const Color _noticeFgLight = Color(0xFF8A5A12);
+const Color _noticeFgDark = Color(0xFFF2C572);
 
 /// Registration for a vessel.
 ///
@@ -32,11 +42,17 @@ class OnboardingPage extends StatefulWidget {
     required this.identity,
     required this.onReady,
     this.initialIdentity,
+    this.localeController,
   });
 
   final IdentityStore identity;
   final VoidCallback onReady;
   final VesselIdentity? initialIdentity;
+
+  /// Shown as a segmented picker above the form. This is the first screen a
+  /// new user ever sees, so it is the only place the language choice is
+  /// offered before any other text has to be understood.
+  final LocaleController? localeController;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
@@ -52,6 +68,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   LicenseType _licenseType = LicenseType.none;
   bool _saving = false;
   String? _error;
+  bool _rememberMe = true;
 
   bool get _isReturning {
     final boat = widget.initialIdentity?.boat;
@@ -69,6 +86,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
       _phone.text = existing.phone;
       _licenseType = existing.licenseType;
     }
+    _loadRememberMe();
+  }
+
+  Future<void> _loadRememberMe() async {
+    final remembered = await widget.identity.getRememberMe();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _rememberMe = remembered);
   }
 
   @override
@@ -99,6 +125,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         licenseNumber: _license.text,
         phone: _phone.text,
       );
+      await widget.identity.setRememberMe(_rememberMe);
       if (!mounted) {
         return;
       }
@@ -130,29 +157,54 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final mediaQuery = MediaQuery.of(context);
     final isWide = mediaQuery.size.width > 600;
     final tier = widget.initialIdentity?.trustTier;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final palette = AqPalette.of(context);
+    final brandDeep = isDark ? _brandDeepDark : _brandDeepLight;
+    final authText = isDark ? _authTextDark : _authTextLight;
+    final authLabel = isDark ? _authLabelDark : _authLabelLight;
+    final authHint = isDark ? _authHintDark : _authHintLight;
+    final authFill = isDark ? _authFillDark : _authFillLight;
 
     return Scaffold(
+      backgroundColor: palette.canvas,
       body: Stack(
         children: <Widget>[
           Positioned.fill(
             child: Image.asset(
               'assets/images/background.png',
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const DecoratedBox(
+              errorBuilder: (_, __, ___) => DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: <Color>[
-                      Color(0xFFE8F8FF),
-                      Color(0xFFF4F8FA),
-                      Color(0xFFCFE8F9),
-                    ],
+                    colors: isDark
+                        ? const <Color>[
+                            Color(0xFF0F172A),
+                            Color(0xFF1E293B),
+                            Color(0xFF0F172A),
+                          ]
+                        : const <Color>[
+                            Color(0xFFE8F8FF),
+                            Color(0xFFF4F8FA),
+                            Color(0xFFCFE8F9),
+                          ],
                   ),
                 ),
               ),
             ),
           ),
+          // A dark scrim keeps the (light-themed) background photo legible
+          // behind the form when the app is in dark mode, without needing a
+          // second image asset.
+          if (isDark)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                ),
+              ),
+            ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -167,15 +219,28 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        _Branding(isWide: isWide, mediaQuery: mediaQuery),
+                        _Branding(
+                          isWide: isWide,
+                          mediaQuery: mediaQuery,
+                          isDark: isDark,
+                          brandDeep: brandDeep,
+                        ),
+                        if (widget.localeController != null) ...<Widget>[
+                          const SizedBox(height: 16),
+                          Center(
+                            child: LanguageSegmentedPicker(
+                              controller: widget.localeController!,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         Text(
                           _isReturning ? 'Welcome back' : 'Register your boat',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
-                            color: _brandDeep,
+                            color: brandDeep,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -186,15 +251,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
                               : 'No password. These details travel with your '
                                   'SOS so the MDRRMO knows who to look for.',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: _authLabel,
+                            color: authLabel,
                             height: 1.4,
                           ),
                         ),
                         const SizedBox(height: 18),
                         if (tier != null) ...<Widget>[
-                          _TierChip(tier: tier),
+                          _TierChip(tier: tier, isDark: isDark),
                           const SizedBox(height: 14),
                         ],
                         TextFormField(
@@ -202,13 +267,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           maxLength: 64,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
-                          style: const TextStyle(
-                            color: _authText,
+                          style: TextStyle(
+                            color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
                             'Full name',
                             Icons.person_outline_rounded,
+                            isDark: isDark,
+                            authHint: authHint,
+                            authFill: authFill,
+                            authLabel: authLabel,
                           ),
                           validator: Validators.skipperName,
                         ),
@@ -218,27 +287,35 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           maxLength: 32,
                           textCapitalization: TextCapitalization.characters,
                           textInputAction: TextInputAction.next,
-                          style: const TextStyle(
-                            color: _authText,
+                          style: TextStyle(
+                            color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
                             'Boat name or registration',
                             Icons.sailing_outlined,
+                            isDark: isDark,
+                            authHint: authHint,
+                            authFill: authFill,
+                            authLabel: authLabel,
                           ),
                           validator: Validators.boatName,
                         ),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<LicenseType>(
-                          value: _licenseType,
+                          initialValue: _licenseType,
                           isExpanded: true,
-                          style: const TextStyle(
-                            color: _authText,
+                          style: TextStyle(
+                            color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
                             'Registration type',
                             Icons.badge_outlined,
+                            isDark: isDark,
+                            authHint: authHint,
+                            authFill: authFill,
+                            authLabel: authLabel,
                           ),
                           items: <DropdownMenuItem<LicenseType>>[
                             for (final type in LicenseType.values)
@@ -268,9 +345,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           padding: const EdgeInsets.only(top: 6, left: 4),
                           child: Text(
                             _licenseType.hint,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
-                              color: _authLabel,
+                              color: authLabel,
                               height: 1.3,
                             ),
                           ),
@@ -285,13 +362,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             keyboardType: _licenseType == LicenseType.fishr
                                 ? TextInputType.number
                                 : TextInputType.text,
-                            style: const TextStyle(
-                              color: _authText,
+                            style: TextStyle(
+                              color: authText,
                               fontSize: 15,
                             ),
                             decoration: _decoration(
                               '${_licenseType.label} number',
                               Icons.confirmation_number_outlined,
+                              isDark: isDark,
+                              authHint: authHint,
+                              authFill: authFill,
+                              authLabel: authLabel,
                             ),
                             validator: (value) =>
                                 Validators.license(value, _licenseType),
@@ -304,18 +385,29 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _submit(),
-                          style: const TextStyle(
-                            color: _authText,
+                          style: TextStyle(
+                            color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
                             'Mobile number',
                             Icons.phone_iphone_rounded,
+                            isDark: isDark,
+                            authHint: authHint,
+                            authFill: authFill,
+                            authLabel: authLabel,
                           ),
                           validator: Validators.phone,
                         ),
                         const SizedBox(height: 16),
-                        const _UnverifiedNotice(),
+                        _UnverifiedNotice(isDark: isDark),
+                        const SizedBox(height: 4),
+                        _RememberMeRow(
+                          value: _rememberMe,
+                          authText: authText,
+                          onChanged: (value) =>
+                              setState(() => _rememberMe = value),
+                        ),
                         if (_error != null) ...<Widget>[
                           const SizedBox(height: 12),
                           Text(
@@ -366,6 +458,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                               children: <Widget>[
                                 _FooterIcon(
                                   icon: Icons.help_outline_rounded,
+                                  isDark: isDark,
                                   onTap: () => _openInfo(
                                     'Help & Support',
                                     InfoCopy.help,
@@ -374,6 +467,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                 const SizedBox(width: 10),
                                 _FooterIcon(
                                   icon: Icons.info_outline_rounded,
+                                  isDark: isDark,
                                   onTap: () => _openInfo(
                                     'About AqOne',
                                     InfoCopy.about,
@@ -401,11 +495,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         const SizedBox(height: 18),
                         Column(
                           children: <Widget>[
-                            const Text(
+                            Text(
                               'By continuing you agree to the',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: _authLabel,
+                                color: authLabel,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -427,11 +521,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                     ),
                                   ),
                                 ),
-                                const Text(
+                                Text(
                                   ' and ',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: _authLabel,
+                                    color: authLabel,
                                   ),
                                 ),
                                 GestureDetector(
@@ -464,22 +558,31 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  InputDecoration _decoration(String hint, IconData icon) {
+  InputDecoration _decoration(
+    String hint,
+    IconData icon, {
+    required bool isDark,
+    required Color authHint,
+    required Color authFill,
+    required Color authLabel,
+  }) {
     return InputDecoration(
       hintText: hint,
       counterText: '',
-      hintStyle: const TextStyle(color: _authHint, fontSize: 14),
+      hintStyle: TextStyle(color: authHint, fontSize: 14),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 14,
       ),
       filled: true,
-      fillColor: _authFill.withValues(alpha: 0.55),
-      prefixIcon: Icon(icon, color: _authLabel, size: 20),
+      fillColor: authFill.withValues(alpha: isDark ? 0.7 : 0.55),
+      prefixIcon: Icon(icon, color: authLabel, size: 20),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(
-          color: Colors.white.withValues(alpha: 0.6),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.6),
         ),
       ),
       focusedBorder: OutlineInputBorder(
@@ -498,28 +601,80 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 }
 
+/// "Remember me" toggle: when on, a returning skipper is dropped straight
+/// into the app on next launch instead of re-confirming their details.
+class _RememberMeRow extends StatelessWidget {
+  const _RememberMeRow({
+    required this.value,
+    required this.authText,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final Color authText;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: <Widget>[
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: Checkbox(
+                value: value,
+                onChanged: (v) => onChanged(v ?? true),
+                activeColor: _brandPrimary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Remember me on this device',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: authText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Says out loud that nothing typed here is checked.
 ///
 /// Deliberate: claiming "verified fishermen only" would be false, and the
 /// first responder to trust that claim would be misled at exactly the wrong
 /// moment.
 class _UnverifiedNotice extends StatelessWidget {
-  const _UnverifiedNotice();
+  const _UnverifiedNotice({required this.isDark});
+
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final noticeBg = isDark ? _noticeBgDark : _noticeBgLight;
+    final noticeFg = isDark ? _noticeFgDark : _noticeFgLight;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: _noticeBg,
+        color: noticeBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _noticeFg.withValues(alpha: 0.25)),
+        border: Border.all(color: noticeFg.withValues(alpha: 0.25)),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(Icons.privacy_tip_outlined, size: 18, color: _noticeFg),
-          SizedBox(width: 10),
+          Icon(Icons.privacy_tip_outlined, size: 18, color: noticeFg),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'AqOne cannot check these details against BFAR or your LGU. '
@@ -528,7 +683,7 @@ class _UnverifiedNotice extends StatelessWidget {
               'offence.',
               style: TextStyle(
                 fontSize: 11.5,
-                color: _noticeFg,
+                color: noticeFg,
                 height: 1.35,
               ),
             ),
@@ -541,18 +696,22 @@ class _UnverifiedNotice extends StatelessWidget {
 
 /// Shows the current tier so the skipper knows where they stand.
 class _TierChip extends StatelessWidget {
-  const _TierChip({required this.tier});
+  const _TierChip({required this.tier, required this.isDark});
 
   final TrustTier tier;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
     final confirmed = tier == TrustTier.confirmedByResponder;
-    final color = confirmed ? const Color(0xFF1B7F4B) : _authLabel;
+    final authLabel = isDark ? _authLabelDark : _authLabelLight;
+    final color = confirmed ? const Color(0xFF1B7F4B) : authLabel;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.75),
+        color: isDark
+            ? const Color(0xFF1E293B).withValues(alpha: 0.85)
+            : Colors.white.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
@@ -582,48 +741,40 @@ class _TierChip extends StatelessWidget {
 }
 
 class _Branding extends StatelessWidget {
-  const _Branding({required this.isWide, required this.mediaQuery});
+  const _Branding({
+    required this.isWide,
+    required this.mediaQuery,
+    required this.isDark,
+    required this.brandDeep,
+  });
 
   final bool isWide;
   final MediaQueryData mediaQuery;
+  final bool isDark;
+  final Color brandDeep;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
         Image.asset(
-          'assets/icons/aqoneLogo2.png',
-          height: isWide ? 120 : mediaQuery.size.height * 0.12,
+          'assets/images/aqone_logo.png',
+          height: isWide ? 140 : mediaQuery.size.height * 0.18,
           fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => Icon(
             Icons.waves_rounded,
             size: isWide ? 96 : mediaQuery.size.height * 0.10,
-            color: _brandPrimary,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Image.asset(
-          'assets/icons/aqoneLogo3.png',
-          height: isWide ? 45 : mediaQuery.size.height * 0.045,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const Text(
-            'AqOne',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: _brandDeep,
-              letterSpacing: -0.5,
-            ),
+            color: isDark ? AqColors.skyAccent : _brandPrimary,
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Gabay sa Bawat Alon,\nKonektado sa Bawat Layon',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
-            color: _brandDeep,
+            color: brandDeep,
             height: 1.25,
           ),
         ),
@@ -633,10 +784,15 @@ class _Branding extends StatelessWidget {
 }
 
 class _FooterIcon extends StatelessWidget {
-  const _FooterIcon({required this.icon, required this.onTap});
+  const _FooterIcon({
+    required this.icon,
+    required this.onTap,
+    required this.isDark,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
@@ -645,10 +801,10 @@ class _FooterIcon extends StatelessWidget {
       child: Container(
         width: 28,
         height: 28,
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           shape: BoxShape.circle,
-          boxShadow: <BoxShadow>[
+          boxShadow: const <BoxShadow>[
             BoxShadow(
               color: Colors.black12,
               blurRadius: 4,

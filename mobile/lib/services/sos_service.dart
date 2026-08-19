@@ -104,39 +104,192 @@ class SosService {
     }
   }
 
+  /// Deliver one SOS by every route available, and stop once any succeeds.
+  ///
+  /// Three layers, in the order they can be relied on:
+  ///
+  ///   1. local   the record is already in the outbox before this runs, so the
+  ///              SOS survives a dead battery, a crash or a reinstall
+  ///   2. buoy    phone -> WiFi -> LoRa mesh -> gateway -> backend, the route
+  ///              that works with no cellular signal at all
+  ///   3. direct  phone -> HTTPS -> backend, when the handset has internet
+  ///
+  /// Both transports are attempted, not one as a fallback for the other. For a
+  /// distress call redundancy beats tidiness: the buoy may be out of range and
+  /// the cell signal may be marginal, and there is no way to know in advance
+  /// which will get through. The backend de-duplicates on
+  /// (vessel_id, client_ts), so two successful deliveries are still one
+  /// incident on the dispatcher's screen.
   Future<bool> _attemptRelay(String localId, {bool notify = true}) async {
     final record = await _outbox.byLocalId(localId);
     if (record == null || !record.awaitsRelay) {
       return true;
     }
 
-    try {
-      final ack = await _buoy.handoff(record);
+    // Fired together rather than sequentially - waiting for a 6-second buoy
+    // timeout before trying the internet would delay a distress call for no
+    // reason. Each attempt captures its own failure so one route going down
+    // never cancels the other.
+    Future<Object?> tryBuoy() async {
+      try {
+        return await _buoy.handoff(record);
+      } catch (error) {
+        return error;
+      }
+    }
+
+    Future<bool> tryDirect() async {
+      try {
+        return await _backend.postSos(record);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    final buoyFuture = tryBuoy();
+    final directFuture = tryDirect();
+    final buoyResult = await buoyFuture;
+    final directOk = await directFuture;
+
+    if (buoyResult is BuoyAck) {
       await _outbox.advance(
         localId,
         DeliveryState.relayed,
-        buoyId: ack.buoyId,
-        srcId: ack.srcId,
-        seq: ack.seq,
-        serverTs: ack.serverTs,
+        buoyId: buoyResult.buoyId,
+        // The firmware's POST /v1/sos response has no src_id field (see
+        // docs/21_WEEK1_CONTRACT_FIXTURES.md) - it was never sent, so this is
+        // left unpopulated rather than fabricated.
+        seq: buoyResult.seq,
+        serverTs: buoyResult.serverTs,
       );
       if (notify) {
         _changes.add(null);
       }
       return true;
-    } on BuoyRejected catch (error) {
-      await _outbox.recordFailure(localId, error.reason);
+    }
+
+    if (directOk) {
+      // The backend has it. No buoy metadata to record, because this copy
+      // never touched the mesh.
+      await _outbox.advance(localId, DeliveryState.delivered);
       if (notify) {
         _changes.add(null);
       }
-      return false;
-    } on BuoyUnreachable catch (error) {
-      await _outbox.recordFailure(localId, error.reason);
-      if (notify) {
-        _changes.add(null);
-      }
+      return true;
+    }
+
+    // Neither route worked. Report both reasons rather than only the buoy's.
+    //
+    // Previously this preferred the buoy's message unconditionally, so a phone
+    // with perfectly good internet and a misconfigured backend URL displayed a
+    // buoy timeout - pointing every debugging effort at the mesh while the
+    // actual fault was the internet path. Whatever is shown here is the only
+    // diagnostic a field tester gets.
+    //
+    // BuoyUnreachable specifically gets a fixed, plain-language headline -
+    // "Not connected to the buoy" - rather than surfacing which flavor of
+    // transport exception caused it. This is what shows on the SOS log's
+    // "Last attempt" line (ui/widgets/delivery_state_tile.dart) on the home
+    // page, and it is also the single most common failure at sea: no buoy
+    // in range is expected, ordinary behaviour, not something worth
+    // describing like a bug.
+    final buoyReason = buoyResult is BuoyRejected
+        ? buoyResult.reason
+        : buoyResult is BuoyUnreachable
+            ? 'Not connected to the buoy'
+            : buoyResult is BuoyInvalidResponse
+                ? buoyResult.reason
+                : 'no buoy in range';
+    final directReason = _backend.lastDirectError ?? 'internet path failed';
+    final reason = '$buoyReason · $directReason';
+    await _outbox.recordFailure(localId, reason);
+    if (notify) {
+      _changes.add(null);
+    }
+    return false;
+  }
+
+  /// Send the fisher's one-tap answer to a responder acknowledgement.
+  ///
+  /// 1 = still in danger, 2 = safe now. Saved locally first so the button
+  /// reflects what the fisher pressed even if the network call fails - being
+  /// told "your reply failed" while waiting for rescue is worse than useless,
+  /// and the record is retried by the normal reconcile cycle.
+  Future<bool> replyToSos(String localId, int reply) async {
+    final record = await _outbox.byLocalId(localId);
+    if (record == null) {
       return false;
     }
+    await _outbox.saveFisherReply(localId, reply);
+    _changes.add(null);
+
+    final remoteId = record.remoteId;
+    if (remoteId == null) {
+      // The backend has not told us its id for this incident yet, so there is
+      // nothing to attach the reply to. The next reconcile will bring it.
+      return false;
+    }
+    return _backend.replyToSos(int.tryParse(remoteId) ?? -1, reply);
+  }
+
+  /// Attaches (or fills in) the note on an SOS already dispatched.
+  ///
+  /// The initial `raiseSos()` call is deliberately sent with no note, so
+  /// choosing an emergency type never delays the alert itself. This is what
+  /// the fisher's "what's wrong?" follow-up calls once they pick one.
+  ///
+  /// Best-effort: the note is saved locally immediately (so the app's own
+  /// history always shows it), and a single attempt is made to push it to
+  /// the backend right away over whichever transport is reachable. The
+  /// backend's ingest is idempotent on (vessel_id, client_ts) and only fills
+  /// a note that is still empty, so re-posting the same SOS is always safe -
+  /// it can never overwrite a note that was already recorded. If neither
+  /// transport is reachable at that moment, the note stays local-only for
+  /// this version rather than being retried indefinitely in the background.
+  Future<SosRecord> amendNote(String localId, String note) async {
+    await _outbox.updateNote(localId, note);
+    final updated = await _outbox.byLocalId(localId);
+    _changes.add(null);
+    if (updated == null) {
+      throw StateError('amendNote called for an SOS that no longer exists');
+    }
+
+    unawaited(() async {
+      try {
+        await _buoy.handoff(updated);
+      } catch (_) {}
+      try {
+        await _backend.postSos(updated);
+      } catch (_) {}
+    }());
+
+    return updated;
+  }
+
+  /// The fisher standing down their own SOS - "false alarm, disregard" -
+  /// from the post-dispatch follow-up screen rather than waiting for a
+  /// responder to acknowledge first.
+  ///
+  /// Reuses the same reply=2 ("safe now") signal the acknowledgement flow
+  /// sends, since that is the only thing on the backend that resolves an
+  /// incident and takes it off the MDRRMO's active queue - there is no
+  /// separate cancel endpoint. The reply requires a backend event id, which
+  /// an SOS only gets once it has actually reached the backend. If that
+  /// has not happened yet, the stand-down is saved locally and
+  /// [_applyRemote] sends it the moment reconcile learns the event id -
+  /// see the fisherReply check there.
+  Future<void> standDown(String localId) async {
+    await _outbox.saveFisherReply(localId, 2);
+    _changes.add(null);
+
+    final record = await _outbox.byLocalId(localId);
+    final remoteId = record?.remoteId;
+    if (remoteId == null) {
+      // Nothing more to do now - reconcile() will flush this once the
+      // event id arrives.
+      return;
+    }
+    await _backend.replyToSos(int.tryParse(remoteId) ?? -1, 2);
   }
 
   Future<BuoyStatus?> pollBuoy() async {
@@ -147,6 +300,18 @@ class SosService {
     }
   }
 
+  /// Reconciles pending SOS records against whichever source can currently
+  /// answer for them.
+  ///
+  /// The direct internet path is preferred when it is up - it is the
+  /// backend's own data, not a relay of it. But a handset with no cellular
+  /// signal is exactly the case this whole app exists for, and it is
+  /// precisely when the backend's `/healthz` check will fail. Previously
+  /// reconcile() simply gave up at that point: an offline fisher who had
+  /// already been acknowledged and given an ETA would never find out, even
+  /// though the buoy in range of the phone had that answer cached
+  /// (`GET /v1/sos/status`, which the firmware fills in by polling the
+  /// backend on the handset's behalf - docs/21_WEEK1_CONTRACT_FIXTURES.md).
   Future<void> reconcile() async {
     if (_reconcileRunning) {
       return;
@@ -157,40 +322,31 @@ class SosService {
       if (pending.isEmpty) {
         return;
       }
-      if (!await _backend.isReachable()) {
-        return;
-      }
 
       final vesselIds = pending.map((record) => record.vesselId).toSet();
       var changed = false;
+      final cloudUp =
+          _backend.hasVesselCredential && await _backend.isReachable();
 
       for (final vesselId in vesselIds) {
-        final remote = await _backend.vesselSos(vesselId);
-        if (remote.isEmpty) {
-          continue;
+        final records = pending.where((r) => r.vesselId == vesselId).toList();
+        List<RemoteSos> remote;
+        if (cloudUp) {
+          remote = await _backend.vesselSos(vesselId);
+        } else {
+          try {
+            remote = await _buoy.sosStatus(vesselId);
+          } catch (_) {
+            // Buoy unreachable, rejected the query, or sent an unreadable
+            // body. Skip this vessel this tick - the record stays exactly as
+            // it was (no regression) and the next reconcile tick tries
+            // again. One bad vessel/buoy must not stop the others in
+            // [vesselIds] from being checked.
+            continue;
+          }
         }
-        final bySeq = <int, RemoteSos>{
-          for (final row in remote)
-            if (row.seq != null) row.seq!: row,
-        };
-
-        for (final record in pending.where((r) => r.vesselId == vesselId)) {
-          final seq = record.seq;
-          if (seq == null) {
-            continue;
-          }
-          final match = bySeq[seq];
-          if (match == null) {
-            continue;
-          }
-          final advanced = await _outbox.advance(
-            record.localId,
-            match.deliveryState,
-            ackedBy: match.ackedBy,
-          );
-          if (advanced != null && advanced.state != record.state) {
-            changed = true;
-          }
+        if (await _applyRemote(records, remote)) {
+          changed = true;
         }
       }
 
@@ -202,6 +358,78 @@ class SosService {
     } finally {
       _reconcileRunning = false;
     }
+  }
+
+  /// Matches this vessel's pending outbox records against a set of remote
+  /// events (from either the backend directly or the buoy's cached proxy of
+  /// it) and applies whatever is new. Returns true if anything changed.
+  Future<bool> _applyRemote(
+    List<SosRecord> records,
+    List<RemoteSos> remote,
+  ) async {
+    if (remote.isEmpty) {
+      return false;
+    }
+    var changed = false;
+
+    final bySeq = <int, RemoteSos>{
+      for (final row in remote)
+        if (row.seq != null) row.seq!: row,
+    };
+
+    // Match on local_id first, seq only as a fallback.
+    //
+    // seq is assigned by the buoy ack, so an SOS that reached the backend
+    // over the direct path never has one. Matching on seq alone meant those
+    // records could never be reconciled and the fisher never learned they
+    // had been acknowledged - which, now that the direct path exists, is
+    // the common case rather than the edge case.
+    final byLocalId = <String, RemoteSos>{
+      for (final row in remote)
+        if (row.localId != null && row.localId!.isNotEmpty) row.localId!: row,
+    };
+
+    for (final record in records) {
+      final seq = record.seq;
+      final match = byLocalId[record.localId] ?? (seq == null ? null : bySeq[seq]);
+      if (match == null) {
+        continue;
+      }
+      // _outbox.advance() merges state forward only (DeliveryState.merge),
+      // so a stale or partial answer from either source can never regress an
+      // already-confirmed state - see docs/06_DELIVERY_STATES.md.
+      final advanced = await _outbox.advance(
+        record.localId,
+        match.deliveryState,
+        ackedBy: match.ackedBy,
+      );
+      if (advanced != null && advanced.state != record.state) {
+        changed = true;
+      }
+      // Responder details live alongside the delivery state: the ETA and
+      // status are what the fisher is actually waiting to see.
+      final stored = await _outbox.saveResponder(
+        record.localId,
+        remoteId: match.id,
+        etaAt: match.etaAt,
+        responderStatus: match.responderStatus,
+        responderNote: match.responderNote ?? match.responderStatusLabel,
+      );
+      if (stored) {
+        changed = true;
+      }
+
+      // Any fisher reply saved locally before the backend had assigned this SOS
+      // an event id - or while the vessel credential was absent/revoked - can
+      // be flushed once reconcile knows the backend id and a token is present.
+      if (record.fisherReply != null && match.id.isNotEmpty) {
+        unawaited(
+          _backend.replyToSos(int.tryParse(match.id) ?? -1, record.fisherReply!),
+        );
+      }
+
+    }
+    return changed;
   }
 
   static String? _clampNote(String? note) {

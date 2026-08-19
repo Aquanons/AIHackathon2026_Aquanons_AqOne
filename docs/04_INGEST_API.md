@@ -17,7 +17,7 @@ public read surface (`docs/05_PUBLIC_API.md`).
 
 - `HTTPS` only. Plain HTTP is refused by the backend.
 - Base URL is a platform env var on the gateway, e.g.
-  `https://aqone-backend.up.railway.app`.
+  `https://incredible-liberation-production-aad7.up.railway.app`.
 - Auth: header `X-Api-Key: <gateway api key>` on every request. Keys are
   issued per gateway and revoked in the backend admin console.
 

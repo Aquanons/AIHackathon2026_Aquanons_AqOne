@@ -110,9 +110,15 @@ works.
 
 ## What we are deliberately not building
 
-See `AGENTS.md` for the full list. Short version: no AI model, no catch
-logging, no advisories, no photos, no float-plan. These are documented as
-scoped-out decisions, not gaps — and are presented that way in Q&A.
+See `docs/07_SCOPE_OUT.md` for the full list, including which items have since
+been amended into scope. Short version of what is **still** out: no catch
+logging, no photos, no fisheries-enforcement or surveillance features, and no
+LoRa downlink to the handset.
+
+AI models, advisories, accounts and "did not return" detection were originally
+scoped out and have since been built — `docs/07_SCOPE_OUT.md` records where each
+now lives. The canonical scope is `Aqone_PRD (2).md` (v3.0), where anything not
+yet built is tagged `[Roadmap — not implemented]`.
 
 ## Time budget
 

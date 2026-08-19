@@ -6,6 +6,7 @@ import os
 
 import asyncpg
 
+from app.ai.current_field import create_current_field_factory
 from app.ai.drift import (
     ObjectClass,
     _synthetic_wind_series,
@@ -51,21 +52,43 @@ async def main() -> None:
         print('prediction_runtime_ms: 0.000')
         return
 
+    try:
+        pool = await asyncpg.create_pool(database_url)
+    except Exception:
+        pool = None
+
+    current_fn = None
+    if pool is not None:
+        try:
+            current_fn = await create_current_field_factory(pool)
+        except Exception:
+            current_fn = None
+
     contained = 0
     area_factors: list[float] = []
     runtimes: list[float] = []
+    observation_fractions: list[float] = []
     for row in incidents:
         track = row['true_track']
         if isinstance(track, str):
             track = json.loads(track)
-        prediction = predict_drift(
+        if len(track) < 2:
+            continue
+
+        forecast_hours = (len(track) - 1) * 0.5
+
+        predict_kwargs: dict[str, object] = dict(
             last_lat=float(row['last_contact_lat']),
             last_lon=float(row['last_contact_lon']),
             observed_at=row['last_contact_at'],
             object_class=_incident_class(str(row['abnormal_reason'])),
-            forecast_hours=24.0,
+            forecast_hours=forecast_hours,
             wind_provider=_synthetic_wind_series,
         )
+        if current_fn is not None:
+            predict_kwargs['current_vector_fn'] = current_fn
+
+        prediction = predict_drift(**predict_kwargs)  # type: ignore[arg-type]
         runtimes.append(prediction.runtime_ms)
         true_point = track[-1]
         if contour_contains(prediction.contours[-1], float(true_point['lat']), float(true_point['lon'])):
@@ -77,13 +100,20 @@ async def main() -> None:
                 float(row['last_contact_lon']),
             )
         )
+        if current_fn is not None:
+            observation_fractions.append(getattr(current_fn, 'observation_fraction', 0.0))
+
+    if pool is not None:
+        await pool.close()
 
     containment_rate = contained / len(incidents)
     reduction_factor = sum(area_factors) / len(area_factors)
     runtime_ms = sum(runtimes) / len(runtimes)
+    avg_obs_fraction = sum(observation_fractions) / len(observation_fractions) if observation_fractions else 0.0
     print(f'containment_rate: {containment_rate:.3%}')
     print(f'search_area_reduction_factor: {reduction_factor:.2f}x')
     print(f'prediction_runtime_ms: {runtime_ms:.3f}')
+    print(f'observation_fraction: {avg_obs_fraction:.3%}')
     write_section(
         'drift',
         {
@@ -91,6 +121,7 @@ async def main() -> None:
             'search_area_reduction_factor': reduction_factor,
             'prediction_runtime_ms': runtime_ms,
             'incidents_evaluated': len(incidents),
+            'observation_fraction': avg_obs_fraction,
         },
     )
 

@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../core/config.dart';
 import '../core/tokens.dart';
+import '../data/forecast_cache.dart';
 import '../data/identity_store.dart';
 import '../models/advisory.dart';
+import '../models/daily_outlook.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
 import '../models/sos_record.dart';
+import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
@@ -17,6 +22,7 @@ import 'widgets/advisory_card.dart';
 import 'widgets/buoy_status_card.dart';
 import 'widgets/delivery_state_tile.dart';
 import 'widgets/sea_condition_banner.dart';
+import 'widgets/squall_banner.dart';
 import 'widgets/weather_card.dart';
 
 class HomePage extends StatefulWidget {
@@ -28,6 +34,10 @@ class HomePage extends StatefulWidget {
     required this.location,
     this.bottomInset = 0,
     this.onOpenAdvisories,
+    this.onOpenProfile,
+    this.squall = SquallWatch.unavailable,
+    this.squallAcknowledged = false,
+    this.onAcknowledgeSquall,
   });
 
   final SosService service;
@@ -42,6 +52,13 @@ class HomePage extends StatefulWidget {
   /// Opens the full advisories list. Null hides the "View all" action rather
   /// than leaving a control that navigates nowhere.
   final VoidCallback? onOpenAdvisories;
+  final VoidCallback? onOpenProfile;
+
+  /// Polled by AppShell, not here. A squall must reach the fisher wherever he
+  /// is looking, and two pollers would mean two alarms for one squall.
+  final SquallWatch squall;
+  final bool squallAcknowledged;
+  final VoidCallback? onAcknowledgeSquall;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -63,6 +80,17 @@ class _HomePageState extends State<HomePage> {
   /// Whether the current reading is for the device position or the fallback.
   bool _weatherAtDevice = false;
 
+  // Seven-day outlook. Refreshed far less often than the buoy or sea polls:
+  // daily data does not change minute to minute and the battery has to last
+  // a trip.
+  List<DailyOutlook> _forecast = const <DailyOutlook>[];
+  Timer? _forecastTimer;
+  static const ForecastCache _forecastCache = ForecastCache();
+
+  /// Set only while the strip on screen came from the offline cache, so it
+  /// can be stamped with when it was actually fetched.
+  DateTime? _forecastFetchedAt;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +101,10 @@ class _HomePageState extends State<HomePage> {
     _loadSea();
     _loadAdvisories();
     _loadWeather();
+    // Cache first so there is something on screen immediately, including with
+    // no signal at all; the live fetch overwrites it when it lands.
+    _restoreCachedForecast();
+    _loadForecast();
     _buoyTimer = Timer.periodic(
       AqOneConfig.buoyPollInterval,
       (_) => _pollBuoy(),
@@ -81,19 +113,21 @@ class _HomePageState extends State<HomePage> {
       AqOneConfig.seaConditionInterval,
       (_) => _loadSea(),
     );
+    _forecastTimer = Timer.periodic(
+      AqOneConfig.forecastRefreshInterval,
+      (_) => _loadForecast(),
+    );
   }
 
   @override
   void dispose() {
     _buoyTimer?.cancel();
     _seaTimer?.cancel();
+    _forecastTimer?.cancel();
     _changes?.cancel();
     super.dispose();
   }
 
-  /// A failed refresh keeps the last known value on screen. The banner marks
-  /// it as possibly outdated rather than blanking - during bad weather, an
-  /// old "not advised" is far more useful than no reading at all.
   Future<void> _loadSea() async {
     final sea = await widget.feeds.seaCondition();
     if (!mounted) {
@@ -115,18 +149,6 @@ class _HomePageState extends State<HomePage> {
     setState(() => _advisories = advisories);
   }
 
-  /// Weather for wherever the boat actually is.
-  ///
-  /// Uses the device position when location permission is already granted -
-  /// showing port conditions to someone who is already out at sea would be
-  /// worse than useless. Falls back to the municipal position otherwise, and
-  /// the card says which one is being shown so the reading is never
-  /// ambiguous.
-  ///
-  /// Deliberately does not request permission here: Home is the first screen
-  /// after registration, and a location prompt with no explanation is how
-  /// people end up denying it permanently. Venture asks properly, in context,
-  /// and from then on Home follows the device.
   Future<void> _loadWeather() async {
     if (mounted) {
       setState(() => _weatherLoading = true);
@@ -149,6 +171,48 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Paints the last stored strip before any network call returns.
+  ///
+  /// Skipped entirely if a live fetch has already landed, so a fast network
+  /// never gets overwritten by older cached days.
+  Future<void> _restoreCachedForecast() async {
+    final CachedForecast? cached = await _forecastCache.load();
+    if (!mounted || cached == null || _forecast.isNotEmpty) {
+      return;
+    }
+    setState(() {
+      _forecast = cached.days;
+      _forecastFetchedAt = cached.fetchedAt;
+    });
+  }
+
+  /// The card's Retry button. Current conditions and the outlook come from
+  /// different endpoints, and if one is down the other usually is too, so the
+  /// one button retries both.
+  void _retryWeather() {
+    unawaited(_loadWeather());
+    unawaited(_loadForecast());
+  }
+
+  Future<void> _loadForecast() async {
+    final fix = await widget.location.cachedFixIfPermitted();
+    final List<DailyOutlook>? days = await widget.feeds.forecast(
+      lat: fix?.lat ?? AqOneConfig.aklanLat,
+      lon: fix?.lon ?? AqOneConfig.aklanLon,
+    );
+    if (!mounted || days == null || days.isEmpty) {
+      // Failure leaves whatever is on screen alone. A dropped poll at sea is
+      // routine and must not blank the outlook.
+      return;
+    }
+    setState(() {
+      _forecast = days;
+      // Live data, so drop the "as of" stamp the cached strip was carrying.
+      _forecastFetchedAt = null;
+    });
+    unawaited(_forecastCache.save(days, DateTime.now()));
+  }
+
   Future<void> _loadRecords() async {
     final records = await widget.service.history();
     if (!mounted) {
@@ -165,14 +229,21 @@ class _HomePageState extends State<HomePage> {
     setState(() => _buoy = status);
   }
 
+  void _openWiFiSelection() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => const _WiFiSelectionScreen(),
+      ),
+    );
+    _pollBuoy();
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
-        // bottomInset already covers the system inset, so letting SafeArea
-        // add it again would double-pad the bottom of the list.
         bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
@@ -180,6 +251,7 @@ class _HomePageState extends State<HomePage> {
             await _loadSea();
             await _loadAdvisories();
             await _loadWeather();
+            await _loadForecast();
             await widget.service.retryPending();
             await widget.service.reconcile();
             await _loadRecords();
@@ -192,31 +264,116 @@ class _HomePageState extends State<HomePage> {
               AqSpace.xl + widget.bottomInset,
             ),
             children: <Widget>[
-              Text(
-                widget.identity.boat,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                  color: palette.primaryText,
-                ),
-              ),
-              const SizedBox(height: AqSpace.xs),
-              Text(
-                'AqOne distress beacon',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: palette.secondaryText,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        Image.asset(
+                          'assets/images/aqoneLogo1.png',
+                          height: 38,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.waves_rounded,
+                            size: 38,
+                            color: palette.primaryText,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Image.asset(
+                          'assets/images/aqoneLogo2.png',
+                          height: 24,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Text(
+                            'AqOne',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: palette.primaryText,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AqSpace.base),
+                  Semantics(
+                    button: true,
+                    label: 'Open fisherman profile',
+                    child: InkWell(
+                      onTap: widget.onOpenProfile,
+                      customBorder: const CircleBorder(),
+                      // The photo is inset inside the ring rather than
+                      // clipped flush to it. Filling the whole circle painted
+                      // the image straight over the 1px border, so the avatar
+                      // read as a photo with a hard edge and no frame at all.
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        padding: const EdgeInsets.all(2.5),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: palette.surface,
+                          border: Border.all(color: palette.border, width: 1.5),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(child: _buildAvatar(palette)),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: AqSpace.lg),
-              // The official call sits above everything else on the screen.
+              // Squall nowcast sits ABOVE the sea condition. The MDRRMO's
+              // declaration is a standing judgement about the day; a squall is
+              // happening now and has minutes of lead time, so it must be the
+              // first thing seen. Renders nothing when there is no squall.
+              if (widget.squall.shouldDisplay) ...<Widget>[
+                SquallBanner(
+                  watch: widget.squall,
+                  acknowledged: widget.squallAcknowledged,
+                  onAcknowledge: widget.onAcknowledgeSquall,
+                ),
+                const SizedBox(height: AqSpace.base),
+              ],
+              if (widget.squall.level == SquallLevel.returnNow &&
+                  !widget.squallAcknowledged) ...<Widget>[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: widget.onAcknowledgeSquall,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text(
+                      "I'm heading back",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AqSpace.base),
+              ],
               SeaConditionBanner(condition: _sea, isLoading: _seaLoading),
               const SizedBox(height: AqSpace.base),
               WeatherCard(
                 snapshot: _weather,
                 isLoading: _weatherLoading,
-                onRetry: _loadWeather,
+                onRetry: _retryWeather,
+                forecast: _forecast,
+                forecastAge: _forecastFetchedAt,
                 locationLabel:
                     _weatherAtDevice ? 'your position' : 'Aklan (default)',
               ),
@@ -225,11 +382,18 @@ class _HomePageState extends State<HomePage> {
                 AdvisoryCard(
                   advisory: _advisories.first,
                   remaining: _advisories.length - 1,
+                  // Preview only: the full card, photo and all, is on the
+                  // Advisories page.
+                  showImage: false,
                   onViewAll: widget.onOpenAdvisories,
                 ),
               ],
               const SizedBox(height: AqSpace.base),
-              BuoyStatusCard(status: _buoy),
+              GestureDetector(
+                onTap: _openWiFiSelection,
+                behavior: HitTestBehavior.opaque,
+                child: BuoyStatusCard(status: _buoy),
+              ),
               const SizedBox(height: AqSpace.screen),
               Text(
                 'Your messages',
@@ -258,5 +422,269 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  /// The header avatar. Mirrors the profile page: the user's uploaded photo
+  /// when there is one, the shared empty-profile asset otherwise, and a plain
+  /// icon if either fails to decode (e.g. the file was deleted underneath us).
+  Widget _buildAvatar(AqPalette palette) {
+    final path = widget.identity.avatarPath;
+    final hasCustomAvatar =
+        !kIsWeb && path != null && path.isNotEmpty && File(path).existsSync();
+
+    // 43, not 48: the ring is 48 across with 2.5 of padding on each side.
+    // Sizing the image to the outer circle would push it back under the
+    // border, which is the bug this replaces.
+    const double inner = 43;
+
+    if (hasCustomAvatar) {
+      return Image.file(
+        File(path),
+        width: inner,
+        height: inner,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _avatarFallback(palette),
+      );
+    }
+    return Image.asset(
+      'icons/emptyProfile.png',
+      width: inner,
+      height: inner,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _avatarFallback(palette),
+    );
+  }
+
+  Widget _avatarFallback(AqPalette palette) {
+    return Icon(
+      Icons.person_rounded,
+      color: palette.secondaryText,
+      size: 28,
+    );
+  }
 }
 
+// ==========================================
+// BUOY WIFI SELECTION PAGE
+// ==========================================
+
+class _BuoyNetworkItem {
+  final String ssid;
+  final int signalStrength;
+  /// Mutated as the user connects and disconnects; never supplied by a
+  /// caller, so it is initialised here rather than taking a constructor
+  /// parameter nobody passes.
+  bool isConnected = false;
+
+  _BuoyNetworkItem({
+    required this.ssid,
+    required this.signalStrength,
+  });
+}
+
+class _WiFiSelectionScreen extends StatefulWidget {
+  const _WiFiSelectionScreen();
+
+  @override
+  State<_WiFiSelectionScreen> createState() => _WiFiSelectionScreenState();
+}
+
+class _WiFiSelectionScreenState extends State<_WiFiSelectionScreen> {
+  bool _isScanning = false;
+  String? _connectingSsid;
+
+  final List<_BuoyNetworkItem> _networks = [
+    _BuoyNetworkItem(ssid: 'AqOne-Buoy-Alpha-01', signalStrength: 88),
+    _BuoyNetworkItem(ssid: 'AqOne-Buoy-Bravo-04', signalStrength: 65),
+    _BuoyNetworkItem(ssid: 'AqOne-Buoy-CoastGuard-02', signalStrength: 42),
+  ];
+
+  void _scan() async {
+    setState(() => _isScanning = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    setState(() => _isScanning = false);
+  }
+
+  void _toggleConnect(_BuoyNetworkItem item) async {
+    if (item.isConnected) {
+      setState(() => item.isConnected = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Disconnected from ${item.ssid}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else {
+      setState(() => _connectingSsid = item.ssid);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      setState(() {
+        for (final net in _networks) {
+          net.isConnected = false;
+        }
+        item.isConnected = true;
+        _connectingSsid = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connected to ${item.ssid}'),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  IconData _wifiIcon(int signal) {
+    if (signal > 75) return Icons.wifi_rounded;
+    if (signal > 40) return Icons.wifi_2_bar_rounded;
+    return Icons.wifi_1_bar_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AqPalette.of(context);
+
+    return Scaffold(
+      backgroundColor: palette.canvas,
+      appBar: AppBar(
+        backgroundColor: palette.canvas,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: Text(
+          'Buoy Wi-Fi Networks',
+          style: TextStyle(
+            color: palette.primaryText,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: palette.primaryText),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          IconButton(
+            icon: _isScanning
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.primaryText,
+                    ),
+                  )
+                : Icon(Icons.refresh_rounded, color: palette.primaryText),
+            onPressed: _isScanning ? null : _scan,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AqSpace.screen,
+            vertical: AqSpace.md,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Available nearby buoys',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: palette.secondaryText,
+                ),
+              ),
+              const SizedBox(height: AqSpace.md),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _networks.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: AqSpace.sm),
+                  itemBuilder: (context, index) {
+                    final item = _networks[index];
+                    final isBusy = _connectingSsid == item.ssid;
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: palette.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: item.isConnected
+                              ? Colors.green.shade400
+                              : palette.border,
+                          width: item.isConnected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: AqSpace.lg,
+                          vertical: AqSpace.xs,
+                        ),
+                        leading: Icon(
+                          _wifiIcon(item.signalStrength),
+                          color: item.isConnected
+                              ? Colors.green.shade400
+                              : palette.primaryText,
+                          size: 28,
+                        ),
+                        title: Text(
+                          item.ssid,
+                          style: TextStyle(
+                            color: palette.primaryText,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Text(
+                          item.isConnected
+                              ? 'Connected'
+                              : 'Signal strength: ${item.signalStrength}%',
+                          style: TextStyle(
+                            color: item.isConnected
+                                ? Colors.green.shade400
+                                : palette.secondaryText,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: isBusy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(
+                                    color: item.isConnected
+                                        ? Colors.red.shade400
+                                        : palette.border,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: _connectingSsid != null
+                                    ? null
+                                    : () => _toggleConnect(item),
+                                child: Text(
+                                  item.isConnected ? 'Disconnect' : 'Connect',
+                                  style: TextStyle(
+                                    color: item.isConnected
+                                        ? Colors.red.shade400
+                                        : palette.primaryText,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

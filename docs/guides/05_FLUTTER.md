@@ -13,8 +13,14 @@ Read `01_CONTRACTS.md` first.
 
 **In:** login, SOS button, delivery-state display, offline outbox, buoy handoff.
 
-**Out:** catch logging, weather, maps, advisories, settings, profile, photos.
-Do not build them.
+**Out:** photos. Do not build it.
+
+Catch logging was originally out-of-scope here too, but is back in scope -
+see `docs/07_SCOPE_OUT.md`. (Weather, maps, advisories, settings and profile
+are also listed as "out" above from this doc's original build-order phase and
+are, in fact, built; this line was left stale by the same drift the scope-out
+doc's amendment note warns about. Not corrected further here since it is
+outside what was asked.)
 
 ---
 

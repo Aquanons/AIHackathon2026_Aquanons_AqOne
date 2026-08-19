@@ -33,9 +33,15 @@ If a change does not serve that sentence, it is out of scope.
 
 **DO NOT BUILD** (these are deliberate cuts, not oversights):
 - AI/ML model of any kind, hotspot heatmap, catch-decline detection
-- Photo upload, catch logging, advisories CRUD, sea-condition control
+- Photo upload, advisories CRUD, sea-condition control
 - Overdue/float-plan check-in, profile pages, settings, terms pages
 - Anything not named in the BUILD list
+
+Catch logging was on this list too; it is back in scope - see
+`docs/07_SCOPE_OUT.md`'s "Amended — now in scope" and `backend/app/api/catch.py`.
+(The rest of this list has drifted stale in other ways beyond catch logging -
+AI models, advisories CRUD, profile pages, settings and terms pages are all
+built - left uncorrected here since it wasn't asked for.)
 
 If you think something in the DO NOT BUILD list is needed, **stop and ask**.
 Do not implement it speculatively.

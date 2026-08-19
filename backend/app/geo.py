@@ -111,6 +111,24 @@ SHORE_STATIONS: tuple[dict[str, Any], ...] = (
 )
 
 
+def water_area_km2() -> float:
+    """Area of WATER_POLYGON in km² via the shoelace formula.
+
+    Vertices are converted to a local metre grid using the scale factors at
+    the polygon centroid, then the standard cross-product form gives area.
+    """
+    n = len(WATER_POLYGON)
+    mean_lat = sum(lat for lat, _ in WATER_POLYGON) / n
+    kx = km_per_deg_lon(mean_lat)
+    ky = KM_PER_DEG_LAT
+    cross_sum = 0.0
+    for i in range(n):
+        lat_i, lon_i = WATER_POLYGON[i]
+        lat_j, lon_j = WATER_POLYGON[(i + 1) % n]
+        cross_sum += lon_i * lat_j - lon_j * lat_i
+    return abs(cross_sum * kx * ky / 2.0)
+
+
 def bounding_box() -> tuple[float, float, float, float]:
     """(min_lat, min_lon, max_lat, max_lon) of the water polygon."""
     lats = [lat for lat, _ in WATER_POLYGON]

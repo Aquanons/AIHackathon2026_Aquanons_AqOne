@@ -12,7 +12,10 @@ def test_synthetic_plan_is_deterministic_and_plausible():
     counts = plan_one.counts()
     assert 8 <= counts['buoys'] <= 12
     assert 30 <= counts['vessels'] <= 50
-    assert 6 <= counts['squall_events'] <= 10
+    # Raised from 6-10: that few events left almost no positives after a
+    # train/test split, and the squall classifier scored 0.0 precision and
+    # recall. 2-3 events per day is realistic for tropical waters.
+    assert 28 <= counts['squall_events'] <= 44
     assert 5 <= counts['incidents'] <= 8
     assert counts['sos_events'] == counts['incidents']
     assert counts['barometric_readings'] == counts['buoys'] * 14 * 288

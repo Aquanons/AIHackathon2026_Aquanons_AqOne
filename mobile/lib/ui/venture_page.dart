@@ -1,22 +1,36 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/config.dart';
+import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
 import '../models/buoy_marker.dart';
+import '../models/catch_record.dart';
 import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
+import '../models/hotspot_cell.dart';
 import '../models/sos_record.dart';
+import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
+import '../services/catch_service.dart';
+import '../services/compass_service.dart';
 import '../services/location_service.dart';
+import '../services/mbtiles_provider.dart';
+import '../services/sos_alarm.dart';
 import '../services/sos_service.dart';
+import '../services/tile_cache.dart';
 import '../services/venture_feeds.dart';
+import 'catch_history_page.dart';
 import 'chathubb.dart';
+import 'checklist_page.dart';
+import 'widgets/compass_dial.dart';
+import 'widgets/offline_map_banner.dart';
+import 'widgets/squall_banner.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
 const Color _brandDeep = Color(0xFF0B4C8C);
@@ -25,6 +39,37 @@ const Color _surfaceDark = Color(0xFF1E293B);
 const Color _canvasDark = Color(0xFF0F172A);
 const Color _danger = Color(0xFFDC2626);
 const Color _success = Color(0xFF16A34A);
+
+/// Fill for a modelled hotspot cell. A single hue varied by opacity, not a
+/// traffic-light ramp: suitability is not a safety verdict, and green cells
+/// on a map a fisher reads before leaving would be taken as one.
+const Color _hotspotColor = Color(0xFF14B8A6);
+
+/// Fill for the illustrative cells the app ships before the model exists.
+/// A different hue from the real layer on purpose: the legend says EXAMPLE,
+/// but the colour says it too, for the fisherman who never reads legends.
+const Color _demoHotspotColor = Color(0xFF8B5CF6);
+
+/// How long a fisher has to slide-to-cancel before the SOS actually sends.
+/// Short enough to still read as "immediate" - the button does not gate the
+/// alert behind typing a note - but long enough that a pocket tap can be
+/// caught before anything reaches the MDRRMO.
+const Duration _sosCountdown = Duration(seconds: 4);
+
+/// Preset emergency types offered on the post-dispatch follow-up. Picking
+/// one amends the note already on file with the MDRRMO; it never delays the
+/// SOS itself, which has already gone out by the time this is shown.
+enum _EmergencyType {
+  engine('Engine failure', Icons.settings_suggest_rounded),
+  capsizing('Capsizing / taking on water', Icons.waves_rounded),
+  medical('Medical emergency', Icons.medical_services_rounded),
+  other('Other', Icons.edit_note_rounded);
+
+  const _EmergencyType(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
 
 /// The at-sea operational screen: map, conditions and SOS.
 ///
@@ -39,19 +84,33 @@ class VenturePage extends StatefulWidget {
     super.key,
     required this.identity,
     required this.sos,
+    required this.catches,
+    required this.checklist,
     required this.feeds,
     required this.location,
     this.bottomInset = 0,
+    this.squall = SquallWatch.unavailable,
+    this.squallAcknowledged = false,
+    this.onAcknowledgeSquall,
   });
 
   final VesselIdentity identity;
   final SosService sos;
+  final CatchService catches;
+  final ChecklistStore checklist;
   final VentureFeeds feeds;
   final LocationService location;
 
   /// Space reserved for the shell's floating dock. The map stays full-bleed
   /// behind it; only the controls are lifted clear so they never get covered.
   final double bottomInset;
+
+  /// Polled by AppShell so one squall means one alarm no matter which tab is
+  /// open. RETURN NOW takes the whole screen from there; this is the
+  /// watch-level banner, on the screen a fisher is most likely looking at.
+  final SquallWatch squall;
+  final bool squallAcknowledged;
+  final VoidCallback? onAcknowledgeSquall;
 
   @override
   State<VenturePage> createState() => _VenturePageState();
@@ -64,10 +123,32 @@ class _VenturePageState extends State<VenturePage> {
   final RequestGuard _buoyGuard = RequestGuard();
   final RequestGuard _waveGuard = RequestGuard();
   final RequestGuard _capsizeGuard = RequestGuard();
+  final RequestGuard _hotspotGuard = RequestGuard();
   StreamSubscription<void>? _sosSub;
   Timer? _pollTimer;
 
   double _rotation = 0;
+
+  /// Basemap tiles the fisherman has already looked at, kept on disk.
+  ///
+  /// Required by the OSM tile policy rather than optional - see TileCache.
+  /// Only tiles that were actually drawn are stored; nothing is pre-fetched.
+  final TileCache _tiles = TileCache();
+
+  /// Bundled pack first, disk cache second, network last. Null until the
+  /// chain is built, and the map simply renders from the network until then -
+  /// one frame, and never a blocking spinner over a safety screen.
+  TileProvider? _tileProvider;
+
+  final CompassService _compass = CompassService();
+  StreamSubscription<CompassReading>? _compassSub;
+
+  /// Null until the magnetometer produces a sample. Stays null forever on
+  /// hardware without one (emulators, web), which is what makes the dial
+  /// render in its greyed north-up state instead of pretending.
+  double? _heading;
+  bool _compassNeedsCalibration = false;
+
   LatLng? _userLocation;
   bool _isLocating = false;
 
@@ -76,22 +157,30 @@ class _VenturePageState extends State<VenturePage> {
   bool _safetyDialogShown = false;
 
   List<BuoyMarker> _buoys = const <BuoyMarker>[];
+
+  /// The modelled hotspot surface, or null while the endpoint does not exist.
+  /// Null draws nothing at all - see HotspotCell's doc comment for why there
+  /// is no client-side substitute.
+  HotspotSurface? _hotspots;
+
+  /// When each cached feed was last fetched. Drives the offline banner, and
+  /// is refreshed after every poll rather than on a timer of its own so it
+  /// can never disagree with what is on the map.
+  Map<String, DateTime> _snapshotAges = const <String, DateTime>{};
+  Timer? _hotspotTimer;
   final Map<HazardKind, List<HazardAlert>> _hazards =
       <HazardKind, List<HazardAlert>>{};
   final Set<String> _announcedHazardIds = <String>{};
 
   SosRecord? _latestSos;
   bool _isSendingSos = false;
+  final SosAlarm _sosAlarm = SosAlarm();
 
-  bool _isChecklistOpen = false;
-  final List<_ChecklistItem> _checklist = <_ChecklistItem>[
-    _ChecklistItem('Life jacket'),
-    _ChecklistItem('Flashlight'),
-    _ChecklistItem('Bailer'),
-    _ChecklistItem('Radio check'),
-    _ChecklistItem('First aid kit', isDone: true),
-  ];
-  final TextEditingController _newItem = TextEditingController();
+  int _pendingCatches = 0;
+  CatchRecord? _lastCatch;
+  bool _repeatingCatch = false;
+  StreamSubscription<void>? _catchSub;
+
 
   /// True while a hazard dialog is on screen, so a second alert arriving from
   /// the same poll cannot stack a dialog on top of the first.
@@ -102,14 +191,33 @@ class _VenturePageState extends State<VenturePage> {
   void initState() {
     super.initState();
     _sosSub = widget.sos.changes.listen((_) => _refreshSosStatus());
+    _catchSub = widget.catches.changes.listen((_) => _refreshCatchCount());
+    _initTileProvider();
+    _compassSub = _compass.readings.listen((CompassReading reading) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _heading = reading.headingDegrees;
+        _compassNeedsCalibration = reading.needsCalibration;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _locate(initial: true);
       _loadBuoys();
       _loadHazards();
+      _loadHotspots();
       _refreshSosStatus();
+      _refreshCatchCount();
+      _hotspotTimer = Timer.periodic(
+        AqOneConfig.hotspotRefreshInterval,
+        (_) => _loadHotspots(),
+      );
+      _refreshSnapshotAges();
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
         _loadHazards();
+        _refreshSnapshotAges();
       });
     });
   }
@@ -119,10 +227,29 @@ class _VenturePageState extends State<VenturePage> {
     // Polling must stop with the screen. Left running it drains battery and
     // keeps hitting the backend while the phone is in a pocket at sea.
     _pollTimer?.cancel();
+    _hotspotTimer?.cancel();
     _sosSub?.cancel();
-    _newItem.dispose();
+    _catchSub?.cancel();
+    // The magnetometer keeps the SoC awake while subscribed, so it must go
+    // down with the screen.
+    _compassSub?.cancel();
+    _tiles.dispose();
+    unawaited(_compass.dispose());
     _mapController.dispose();
+    unawaited(_sosAlarm.dispose());
     super.dispose();
+  }
+
+  Future<void> _refreshCatchCount() async {
+    final count = await widget.catches.pendingCount();
+    final last = await widget.catches.mostRecent();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _pendingCatches = count;
+      _lastCatch = last;
+    });
   }
 
   Future<void> _refreshSosStatus() async {
@@ -156,6 +283,40 @@ class _VenturePageState extends State<VenturePage> {
       return;
     }
     setState(() => _buoys = buoys);
+  }
+
+  /// Loads the modelled hotspot surface.
+  ///
+  /// A 404 (the current state - the model is Phase 3) leaves _hotspots null
+  /// and the map draws nothing. There is no fallback by design: the honest
+  /// answer to "where are the fish" is silence until something has actually
+  /// been modelled.
+  Future<void> _loadHotspots() async {
+    final version = _hotspotGuard.begin();
+    final surface = await widget.feeds.hotspots();
+    if (!mounted || !_hotspotGuard.isCurrent(version) || surface == null) {
+      return;
+    }
+    setState(() => _hotspots = surface);
+  }
+
+  Future<void> _initTileProvider() async {
+    final TileProvider provider = await buildTileProvider(
+      cache: _tiles,
+      assetPath: AqOneConfig.offlineMapAsset,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _tileProvider = provider);
+  }
+
+  Future<void> _refreshSnapshotAges() async {
+    final Map<String, DateTime> ages = await widget.feeds.snapshotAges();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _snapshotAges = ages);
   }
 
   Future<void> _loadHazards() async {
@@ -201,95 +362,104 @@ class _VenturePageState extends State<VenturePage> {
     await _loadWeather(fix.lat, fix.lon);
   }
 
-  Future<void> _sendSos() async {
+  /// Tapping the SOS pill starts the alarm immediately and a short,
+  /// cancellable countdown - it does not wait on any dialog or typed note.
+  /// Only once the countdown runs out (uninterrupted) does anything actually
+  /// go to the MDRRMO; the "what's wrong?" detail is gathered afterwards,
+  /// while the alert is already in flight.
+  Future<void> _handleSosTap() async {
     if (_isSendingSos) {
-      return;
-    }
-    final note = await _confirmSos();
-    if (note == null || !mounted) {
       return;
     }
 
     setState(() => _isSendingSos = true);
+    unawaited(_sosAlarm.start());
+
+    final shouldSend = await _runSosCountdown();
+    if (!mounted) {
+      return;
+    }
+
+    if (!shouldSend) {
+      unawaited(_sosAlarm.stop());
+      setState(() => _isSendingSos = false);
+      _snack('SOS cancelled. Nothing was sent.');
+      return;
+    }
+
     try {
-      final record = await widget.sos.raiseSos(note: note);
+      // Sent with no note - the alert itself must never wait on the fisher
+      // typing anything. The follow-up sheet attaches detail afterwards.
+      final record = await widget.sos.raiseSos();
       if (!mounted) {
         return;
       }
       setState(() => _latestSos = record);
-      _snack(
-        record.hasFix
-            ? 'SOS saved and sending.'
-            : 'SOS saved without a GPS fix. It will still be sent.',
-      );
+      await _showEmergencyDetailsSheet(record);
     } on StateError {
       if (mounted) {
         _snack('Finish setting up your boat before sending an SOS.');
       }
     } finally {
+      unawaited(_sosAlarm.stop());
       if (mounted) {
         setState(() => _isSendingSos = false);
       }
     }
   }
 
-  Future<String?> _confirmSos() async {
-    final note = TextEditingController();
-    final confirmed = await showDialog<bool>(
+  /// Full-screen countdown with a slide-to-cancel control. Returns true if
+  /// the countdown ran out (dispatch), false if the fisher cancelled -
+  /// before anything was sent either way.
+  Future<bool> _runSosCountdown() async {
+    final result = await showGeneralDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: <Widget>[
-            Icon(Icons.warning_rounded, color: _danger, size: 26),
-            SizedBox(width: 10),
-            Expanded(child: Text('Send an SOS?')),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              'This alerts the MDRRMO that ${widget.identity.boat} needs '
-              'help, and sends your position. Only use this in a real '
-              'emergency.',
-              style: const TextStyle(fontSize: 14, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: note,
-              maxLength: AqOneConfig.maxNoteLength,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'What is wrong? (optional)',
-                hintText: 'engine down',
-                counterText: '',
-                isDense: true,
-              ),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _danger,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Send SOS'),
-          ),
-        ],
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (ctx, __, ___) =>
+          const _SosCountdownScreen(duration: _sosCountdown),
+    );
+    return result ?? false;
+  }
+
+  /// Shown immediately after dispatch, while the alarm keeps ringing: lets
+  /// the fisher attach what's actually wrong, or stand the alert down if it
+  /// was raised by mistake. Either action stops the alarm; so does just
+  /// leaving it on the "already sent" state and closing without picking
+  /// anything.
+  Future<void> _showEmergencyDetailsSheet(SosRecord record) async {
+    if (!mounted) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _EmergencyDetailsSheet(
+        boat: widget.identity.boat,
+        onSubmitNote: (note) async {
+          try {
+            final updated = await widget.sos.amendNote(record.localId, note);
+            if (mounted) {
+              setState(() => _latestSos = updated);
+            }
+          } catch (_) {
+            // Best-effort per amendNote()'s own contract - the note is
+            // already saved locally regardless of whether this succeeded.
+          }
+        },
+        onStandDown: () async {
+          await widget.sos.standDown(record.localId);
+          if (mounted) {
+            _snack('SOS stood down.');
+          }
+        },
       ),
     );
-
-    final text = note.text;
-    note.dispose();
-    return confirmed == true ? text : null;
+    unawaited(_sosAlarm.stop());
   }
 
   void _queueHazardDialog(HazardKind kind) {
@@ -370,7 +540,7 @@ class _VenturePageState extends State<VenturePage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                unsafe ? 'Take care out there' : 'Conditions look calm',
+                unsafe ? 'Wind above threshold' : 'Conditions look calm',
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -392,19 +562,18 @@ class _VenturePageState extends State<VenturePage> {
               style: const TextStyle(fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 12),
-            // Labelled as informational on purpose. This is a wind and
-            // weather-code threshold, not an official assessment, and must
-            // not be mistaken for the MDRRMO sea condition.
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF4E0),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                'This is a rough weather check only. Always follow the '
-                'official sea condition and advisories before going out.',
-                style: TextStyle(
+              child: Text(
+                'Source: Open-Meteo · threshold '
+                    '${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h. '
+                    'This is not a PAGASA warning. '
+                    'Always follow the official sea condition and advisories.',
+                style: const TextStyle(
                   fontSize: 11.5,
                   color: Color(0xFF8A5A12),
                   height: 1.35,
@@ -447,7 +616,28 @@ class _VenturePageState extends State<VenturePage> {
               top: 12,
               left: 0,
               right: 0,
-              child: _buildWeatherCapsule(isDark),
+              child: Column(
+                children: <Widget>[
+                  _buildWeatherCapsule(isDark),
+                  if (widget.squall.shouldDisplay) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: SquallBanner(
+                        watch: widget.squall,
+                        acknowledged: widget.squallAcknowledged,
+                        onAcknowledge: widget.onAcknowledgeSquall,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  OfflineMapBanner(ages: _snapshotAges, isDark: isDark),
+                  if (_latestSos != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    _buildSosStatus(isDark, _latestSos!),
+                  ],
+                ],
+              ),
             ),
             Positioned(
               top: 72,
@@ -455,19 +645,36 @@ class _VenturePageState extends State<VenturePage> {
               right: 16,
               child: _buildRightControls(isDark),
             ),
+            // Opposite corner from the action rail. The compass is a readout,
+            // not a control, and stacking it with the buttons made a crowded
+            // column crowded by one more thing. Lifted clear of the OSM
+            // attribution that runs along the bottom edge.
+            //
+            // Shares this corner with the hotspot legend, so both live in one
+            // column: two independently positioned widgets anchored to the
+            // same corner would sit on top of each other the day the hotspot
+            // endpoint starts answering.
+            Positioned(
+              bottom: 26 + widget.bottomInset,
+              left: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (_hotspots != null) ...<Widget>[
+                    _buildHotspotLegend(isDark, _hotspots!),
+                    const SizedBox(height: 10),
+                  ],
+                  _buildCompass(isDark),
+                ],
+              ),
+            ),
             if (_isLocating)
               Positioned(
                 top: 90,
                 left: 0,
                 right: 0,
                 child: Center(child: _buildLocatingPill(isDark)),
-              ),
-            if (_isChecklistOpen)
-              Positioned(
-                bottom: 95 + widget.bottomInset,
-                left: 16,
-                right: 96,
-                child: _buildChecklist(isDark),
               ),
             // OSM requires visible attribution. The source project omitted
             // this, which is a licence-compliance gap as well as a courtesy.
@@ -477,6 +684,196 @@ class _VenturePageState extends State<VenturePage> {
               child: _buildAttribution(isDark),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Legend for the hotspot layer, shown only when a surface is on the map.
+  ///
+  /// Deliberately states what the layer is not. A shaded blob on a sea chart
+  /// reads as authority, and this one is a suitability estimate that has never
+  /// promised anyone a fish. Kept to a single compact chip so the map - the
+  /// thing a fisherman is actually reading - keeps its screen: the full
+  /// wording is one tap away rather than permanently parked over the water.
+  Widget _buildHotspotLegend(bool isDark, HotspotSurface surface) {
+    final AppLocalizations t = AppLocalizations.of(context);
+    final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
+    final bool demo = surface.isDemo;
+    final Color accent = demo ? _demoHotspotColor : _hotspotColor;
+    final String? age = surface.ageLabel;
+    final int cells = surface.cells.length;
+    final int observations = surface.cells.fold<int>(
+      0,
+      (int sum, HotspotCell c) => sum + c.observations,
+    );
+
+    // The chip carries the short form; the long form - counts, age, model
+    // caveats, and for demo data the flat statement that nobody reported it -
+    // goes to the sheet behind the tap.
+    final String summary = demo
+        ? 'Example zones · not real data'
+        : '${t.hotspotLegendTitle} · $cells areas';
+
+    return Semantics(
+      button: true,
+      label: demo
+          ? 'Example fishing zones, not real data. Tap for details.'
+          : 'Fishing zone legend. Tap for details.',
+      child: GestureDetector(
+        onTap: () => _showHotspotLegendDetail(
+          isDark: isDark,
+          demo: demo,
+          accent: accent,
+          cells: cells,
+          observations: observations,
+          age: age,
+          minReporters: surface.minReporters,
+          title: t.hotspotLegendTitle,
+          disclaimer: t.hotspotLegendDisclaimer,
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: accent.withValues(alpha: demo ? 0.7 : 0.35),
+              width: demo ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.38),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                summary,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: demo ? FontWeight.w800 : FontWeight.w700,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.info_outline_rounded, size: 11, color: fg),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The wording the chip no longer has room for, on demand.
+  Future<void> _showHotspotLegendDetail({
+    required bool isDark,
+    required bool demo,
+    required Color accent,
+    required int cells,
+    required int observations,
+    required String? age,
+    required int? minReporters,
+    required String title,
+    required String disclaimer,
+  }) {
+    final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? _canvasDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.38),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (demo) ...<Widget>[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'EXAMPLE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (demo) ...<Widget>[
+                // No counts, no age, no model version. Every one of those makes
+                // invented data read as measured, and the numbers on these
+                // cells are inventions too.
+                Text(
+                  'Sample areas, to show how this map works.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    color: fg,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'NOT real fishing data. Nobody reported these.',
+                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
+                ),
+              ] else ...<Widget>[
+                Text(
+                  '$cells areas · $observations catch reports'
+                  '${age == null ? '' : ' · $age'}'
+                  '${minReporters == null ? '' : ' · min $minReporters reporters'}',
+                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  disclaimer,
+                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -499,7 +896,27 @@ class _VenturePageState extends State<VenturePage> {
       if (_userLocation != null) _buildUserMarker(_userLocation!),
     ];
 
+    final hotspots = _hotspots;
     final circles = <CircleMarker>[
+      // Drawn first so buoy coverage and every safety overlay paint on top.
+      // §6.2: safety warnings override and visually supersede hotspot
+      // guidance, which is a paint-order property before it is a policy.
+      if (hotspots != null)
+        for (final cell in hotspots.cells)
+          CircleMarker(
+            point: LatLng(cell.centerLat, cell.centerLon),
+            radius: cell.approxRadiusMeters,
+            useRadiusInMeter: true,
+            // Opacity carries the score. Deliberately no red-to-green scale:
+            // this is suitability, and a green "go here" tier would read as a
+            // safety judgement the model has not made.
+            color: (hotspots.isDemo ? _demoHotspotColor : _hotspotColor)
+                .withValues(alpha: 0.10 + 0.28 * cell.score),
+            borderColor:
+                (hotspots.isDemo ? _demoHotspotColor : _hotspotColor)
+                    .withValues(alpha: 0.35),
+            borderStrokeWidth: 1,
+          ),
       for (final buoy in _buoys)
         CircleMarker(
           point: LatLng(buoy.latitude, buoy.longitude),
@@ -531,6 +948,12 @@ class _VenturePageState extends State<VenturePage> {
         TileLayer(
           urlTemplate: AqOneConfig.osmTileUrl,
           userAgentPackageName: 'ph.aqone.app',
+          tileProvider: _tileProvider ?? CachedNetworkTileProvider(cache: _tiles),
+          // Keep showing the coarser tile already on screen while a finer one
+          // loads or fails. Offline, that is the difference between a blurry
+          // map and a grey one.
+          keepBuffer: 3,
+          panBuffer: 1,
         ),
         if (circles.isNotEmpty) CircleLayer(circles: circles),
         MarkerLayer(markers: markers),
@@ -649,8 +1072,6 @@ class _VenturePageState extends State<VenturePage> {
             child: _buildActionRail(isDark),
           ),
         ),
-        const SizedBox(height: 20),
-        _buildChatHubButton(isDark),
       ],
     );
   }
@@ -660,8 +1081,6 @@ class _VenturePageState extends State<VenturePage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
-        _buildCompass(isDark),
-        const SizedBox(height: 8),
         _RoundButton(
           icon: Icons.my_location_rounded,
           tooltip: 'My location',
@@ -673,96 +1092,294 @@ class _VenturePageState extends State<VenturePage> {
         _RoundButton(
           icon: Icons.checklist_rounded,
           tooltip: 'Trip checklist',
-          isActive: _isChecklistOpen,
+          isActive: false,
           isDark: isDark,
-          onTap: () => setState(() => _isChecklistOpen = !_isChecklistOpen),
+          onTap: _openChecklist,
         ),
+        const SizedBox(height: 10),
+        // Chat sits immediately above SOS rather than in its own corner, so
+        // every action on this screen is reachable from one thumb position.
+        _RoundButton(
+          icon: Icons.chat_bubble_rounded,
+          tooltip: 'Chat with nearby boats',
+          isActive: false,
+          isDark: isDark,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) =>
+                Chathubb(displayName: _chatDisplayName)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _RoundButton(
+          icon: Icons.receipt_long_rounded,
+          tooltip: "Today's catches",
+          isActive: false,
+          isDark: isDark,
+          onTap: _openCatchHistory,
+        ),
+        const SizedBox(height: 10),
+        // The three pills are deliberately identical in size. At sea, with wet
+        // hands and a moving deck, a button is found by where it is and what
+        // colour it is, not by reading it - so shape carries no meaning here
+        // and colour carries all of it: teal repeat, blue log, red SOS.
+        if (_lastCatch != null) ...<Widget>[
+          _ActionPill(
+            icon: Icons.replay_rounded,
+            label: 'Repeat',
+            color: const Color(0xFF0EA5A4),
+            isDark: isDark,
+            tooltip: 'Repeat: ${_lastCatchLabel(_lastCatch!)}',
+            onTap: _repeatingCatch ? null : _repeatLastCatch,
+          ),
+          // The species/weight the repeat button would log, kept off the
+          // button itself so the pill width never depends on a fish name.
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SizedBox(
+              width: _kActionPillWidth,
+              child: Text(
+                _lastCatchLabel(_lastCatch!),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        _ActionPill(
+          icon: Icons.edit_note_rounded,
+          label: 'Log Catch',
+          color: const Color(0xFF0284C7),
+          isDark: isDark,
+          onTap: _showCatchSheet,
+        ),
+        if (_pendingCatches > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: GestureDetector(
+              onTap: _openCatchHistory,
+              child: SizedBox(
+                width: _kActionPillWidth,
+                child: Text(
+                  '$_pendingCatches waiting to upload',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    decoration: TextDecoration.underline,
+                    color: isDark ? Colors.white70 : const Color(0xFF475569),
+                  ),
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 14),
         _ActionPill(
           icon: Icons.warning_rounded,
           label: 'SOS',
           color: _danger,
           isDark: isDark,
-          onTap: _isSendingSos ? null : _sendSos,
+          onTap: _isSendingSos ? null : _handleSosTap,
         ),
-        if (_latestSos != null) _buildSosStatus(isDark, _latestSos!),
       ],
+    );
+  }
+
+  // --- Catch log ------------------------------------------------------------
+
+  Future<void> _showCatchSheet() async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _CatchLogSheet(catches: widget.catches),
+    );
+    if (saved == true && mounted) {
+      await _refreshCatchCount();
+      _snack('Catch saved. It uploads when you have signal.');
+    }
+  }
+
+  /// One tap, no sheet at all: logs another of whatever was just logged,
+  /// same species and the same weight preset. The fast path for the common
+  /// case of pulling in several of the same fish in a row.
+  Future<void> _repeatLastCatch() async {
+    final last = _lastCatch;
+    if (last == null || _repeatingCatch) {
+      return;
+    }
+    setState(() => _repeatingCatch = true);
+    try {
+      await widget.catches.logCatch(
+        speciesName: last.speciesName,
+        estimatedQuantityKg: last.estimatedQuantityKg,
+      );
+      if (!mounted) {
+        return;
+      }
+      await _refreshCatchCount();
+      _snack('Logged another ${_lastCatchLabel(last)}.');
+    } catch (_) {
+      if (mounted) {
+        _snack('Could not repeat that catch.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _repeatingCatch = false);
+      }
+    }
+  }
+
+  String _lastCatchLabel(CatchRecord record) {
+    final species = record.speciesName?.trim();
+    final name = species == null || species.isEmpty ? 'catch' : species;
+    final weight = record.estimatedQuantityKg;
+    final weightLabel =
+        weight == weight.roundToDouble() ? '${weight.toInt()}' : '$weight';
+    return '$name ~${weightLabel}kg';
+  }
+
+  Future<void> _openCatchHistory() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CatchHistoryPage(catches: widget.catches),
+      ),
+    );
+    await _refreshCatchCount();
+  }
+
+  Future<void> _openChecklist() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChecklistPage(checklist: widget.checklist),
+      ),
     );
   }
 
   Widget _buildSosStatus(bool isDark, SosRecord record) {
     final state = record.state;
-    final color = switch (state) {
-      DeliveryState.saved => const Color(0xFFD97706),
-      DeliveryState.relayed => _brandPrimary,
-      DeliveryState.delivered => const Color(0xFF0284C7),
-      DeliveryState.acknowledged => _success,
-    };
+    final standDown = record.isStoodDown;
+    final color = standDown
+        ? const Color(0xFF64748B)
+        : switch (state) {
+            DeliveryState.saved => const Color(0xFFD97706),
+            DeliveryState.relayed => _brandPrimary,
+            DeliveryState.delivered => const Color(0xFF0284C7),
+            DeliveryState.acknowledged => _success,
+          };
+    final t = AppLocalizations.of(context);
+    final title = standDown ? 'Stood down' : state.title(t);
+    final description = standDown
+        ? 'Marked as a false alarm - the MDRRMO has been told to disregard.'
+        : state.description(t);
+    final icon = standDown
+        ? Icons.undo_rounded
+        : switch (state) {
+            DeliveryState.saved => Icons.hourglass_top_rounded,
+            DeliveryState.relayed => Icons.sync_rounded,
+            DeliveryState.delivered => Icons.cloud_done_rounded,
+            DeliveryState.acknowledged => Icons.check_circle_rounded,
+          };
+
     return Container(
-      margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxWidth: 190),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        color: (isDark ? _surfaceDark : const Color(0xFFF4F8FA))
+            .withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: (isDark ? _accentDark : Colors.white).withValues(alpha: 0.6),
+          width: 1.5,
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Row(
         children: <Widget>[
-          Text(
-            state.title,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: color,
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'SOS: $title',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isDark ? Colors.white70 : const Color(0xFF475569),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            state.description,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 10,
-              height: 1.25,
-              color: isDark ? Colors.white70 : const Color(0xFF475569),
+          if (!record.hasFix) ...<Widget>[
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.gps_off_rounded,
+              size: 15,
+              color: Color(0xFFD97706),
             ),
-          ),
-          if (!record.hasFix)
-            const Padding(
-              padding: EdgeInsets.only(top: 3),
-              child: Text(
-                'No GPS fix recorded',
-                textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 9.5, color: Color(0xFFD97706)),
-              ),
-            ),
+          ],
         ],
       ),
     );
   }
 
+  /// Live magnetic compass. Falls back to showing the map's own rotation when
+  /// the handset has no magnetometer, so the control still does something
+  /// truthful on a laptop or emulator.
   Widget _buildCompass(bool isDark) {
-    return GestureDetector(
-      onTap: () => _mapController.rotate(0),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.9),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isDark ? _accentDark : _brandPrimary,
-            width: 1.5,
-          ),
-        ),
-        child: Transform.rotate(
-          angle: _rotation,
-          child: Icon(
-            Icons.navigation_rounded,
-            size: 20,
-            color: isDark ? _accentDark : _brandPrimary,
+    final AppLocalizations t = AppLocalizations.of(context);
+    final double? sensorHeading = _heading;
+    final double? shown = sensorHeading ?? (_rotation == 0 ? null : -_rotation * 180.0 / math.pi);
+
+    return Semantics(
+      button: true,
+      // Screen-reader label reuses the tooltip strings rather than adding two
+      // more keys to translate: a blind user hearing "Heading 142°" is served
+      // as well as one reading it, and every extra safety string is another
+      // thing to get reviewed.
+      label: sensorHeading == null
+          ? t.compassUnavailable
+          : t.compassHeading(sensorHeading.round()),
+      child: Tooltip(
+        message: sensorHeading == null
+            ? t.compassUnavailable
+            : _compassNeedsCalibration
+                ? t.compassNeedsCalibration
+                : t.compassHeading(sensorHeading.round()),
+        child: GestureDetector(
+          // Unchanged behaviour: tapping squares the map back up to north.
+          onTap: () => _mapController.rotate(0),
+          child: CompassDial(
+            headingDegrees: shown,
+            isDark: isDark,
+            needsCalibration: _compassNeedsCalibration,
           ),
         ),
       ),
@@ -835,149 +1452,6 @@ class _VenturePageState extends State<VenturePage> {
     return 'You';
   }
 
-  // --- Chat Hub FAB (bottom-right) — iOS Messages icon shape ---
-  Widget _buildChatHubButton(bool isDark) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => Chathubb(displayName: _chatDisplayName)),
-      ),
-      child: SizedBox(
-        width: 58,
-        height: 62,
-        child: CustomPaint(
-          size: const Size(58, 62),
-          painter: const _BubbleTailPainter(),
-          child: const Align(
-            alignment: Alignment.topLeft,
-            child: Padding(
-              padding: EdgeInsets.only(left: 13, top: 11),
-              child: Icon(
-                Icons.waves_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChecklist(bool isDark) {
-    return Material(
-      elevation: 6,
-      borderRadius: BorderRadius.circular(16),
-      color: isDark ? _surfaceDark : Colors.white,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 280),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.checklist_rounded,
-                    size: 18,
-                    color: isDark ? _accentDark : _brandPrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Trip checklist',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : _canvasDark,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => setState(() => _isChecklistOpen = false),
-                  ),
-                ],
-              ),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _checklist.length,
-                  itemBuilder: (context, index) {
-                    final item = _checklist[index];
-                    return Row(
-                      children: <Widget>[
-                        Checkbox(
-                          value: item.isDone,
-                          onChanged: (value) => setState(
-                            () => item.isDone = value ?? false,
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            item.title,
-                            style: TextStyle(
-                              fontSize: 13,
-                              decoration: item.isDone
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                              color: isDark ? Colors.white : _canvasDark,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          onPressed: () =>
-                              setState(() => _checklist.removeAt(index)),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      controller: _newItem,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Add an item',
-                      ),
-                      onSubmitted: (_) => _addChecklistItem(),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded),
-                    onPressed: _addChecklistItem,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _addChecklistItem() {
-    final text = _newItem.text.trim();
-    if (text.isEmpty) {
-      return;
-    }
-    setState(() {
-      _checklist.add(_ChecklistItem(text));
-      _newItem.clear();
-    });
-  }
-}
-
-class _ChecklistItem {
-  _ChecklistItem(this.title, {this.isDone = false});
-
-  final String title;
-  bool isDone;
 }
 
 class _RoundButton extends StatelessWidget {
@@ -1033,6 +1507,15 @@ class _RoundButton extends StatelessWidget {
   }
 }
 
+/// Fixed footprint for every primary action pill on the venture map.
+///
+/// Repeat, Log Catch and SOS are all this wide and this tall. Uniform size is
+/// the point: it makes the rail a predictable set of targets rather than a
+/// ragged column whose widths shift as soon as someone lands a fish with a
+/// long name, and it leaves colour as the one thing that tells them apart.
+const double _kActionPillWidth = 176;
+const double _kActionPillHeight = 50;
+
 class _ActionPill extends StatelessWidget {
   const _ActionPill({
     required this.icon,
@@ -1040,6 +1523,7 @@ class _ActionPill extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
+    this.tooltip,
   });
 
   final IconData icon;
@@ -1048,88 +1532,860 @@ class _ActionPill extends StatelessWidget {
   final bool isDark;
   final VoidCallback? onTap;
 
+  /// Longer wording for the label that no longer fits on a fixed-width pill.
+  final String? tooltip;
+
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     final display = enabled
         ? color
         : (isDark ? const Color(0xFF334155) : const Color(0xFF94A3B8));
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: display.withValues(alpha: 0.4),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    final Widget pill = SizedBox(
+      width: _kActionPillWidth,
+      height: _kActionPillHeight,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(_kActionPillHeight / 2),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: display.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ElevatedButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: 20, color: Colors.white),
+          label: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: 0.3,
+            ),
           ),
-        ],
-      ),
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 20, color: Colors.white),
-        label: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            letterSpacing: 0.3,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: display,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            // Zero minimum: the SizedBox above owns the size, so the three
+            // pills stay identical no matter how long their labels are.
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(_kActionPillHeight / 2),
+            ),
           ),
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: display,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+    );
+    final String? message = tooltip;
+    return message == null ? pill : Tooltip(message: message, child: pill);
+  }
+}
+
+/// Full-screen "sending SOS in N…" countdown with a slide-to-cancel bar.
+///
+/// Deliberately not a plain [AlertDialog]: this has to be impossible to
+/// dismiss by accident (no tap-outside, no back-gesture - see [PopScope]
+/// below) while still being trivially easy to cancel on purpose via the
+/// slide, which is a large, deliberate, hard-to-trigger-by-accident gesture.
+class _SosCountdownScreen extends StatefulWidget {
+  const _SosCountdownScreen({required this.duration});
+
+  final Duration duration;
+
+  @override
+  State<_SosCountdownScreen> createState() => _SosCountdownScreenState();
+}
+
+class _SosCountdownScreenState extends State<_SosCountdownScreen> {
+  static const Duration _tick = Duration(milliseconds: 100);
+
+  late Duration _remaining = widget.duration;
+  Timer? _timer;
+  bool _resolved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_tick, (_) {
+      final next = _remaining - _tick;
+      if (next <= Duration.zero) {
+        _finish(true);
+        return;
+      }
+      setState(() => _remaining = next);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _finish(bool dispatch) {
+    if (_resolved) {
+      return;
+    }
+    _resolved = true;
+    _timer?.cancel();
+    Navigator.of(context).pop(dispatch);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = 1 -
+        (_remaining.inMilliseconds / widget.duration.inMilliseconds)
+            .clamp(0.0, 1.0);
+    final secondsLeft =
+        (_remaining.inMilliseconds / 1000).ceil().clamp(1, 99);
+
+    return PopScope(
+      // No back-gesture, no back-button dismissal - the only way out of this
+      // screen is the slide-to-cancel control below, or letting it run out.
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF7A0E0E),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+            child: Column(
+              children: <Widget>[
+                const Spacer(),
+                const Icon(
+                  Icons.warning_rounded,
+                  color: Colors.white,
+                  size: 60,
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Sending SOS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Alerting the MDRRMO with your position.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: 130,
+                  height: 130,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: <Widget>[
+                      SizedBox(
+                        width: 130,
+                        height: 130,
+                        child: CircularProgressIndicator(
+                          value: fraction,
+                          strokeWidth: 7,
+                          backgroundColor: Colors.white24,
+                          valueColor:
+                              const AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      Text(
+                        '$secondsLeft',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 42,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                _SlideToAction(
+                  label: 'Slide to cancel',
+                  icon: Icons.close_rounded,
+                  accentColor: Colors.white,
+                  thumbIconColor: const Color(0xFF7A0E0E),
+                  onConfirmed: () => _finish(false),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Do nothing and the SOS sends automatically.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// Draws the iOS-style speech bubble with a connected tail as one silhouette.
-class _BubbleTailPainter extends CustomPainter {
-  const _BubbleTailPainter();
+/// Shown right after dispatch. Lets the fisher attach what's actually wrong
+/// (updating the note already on file at the MDRRMO) or stand the alert
+/// down if it went out by mistake - both remain available at once, they are
+/// not mutually exclusive steps.
+class _EmergencyDetailsSheet extends StatefulWidget {
+  const _EmergencyDetailsSheet({
+    required this.boat,
+    required this.onSubmitNote,
+    required this.onStandDown,
+  });
 
-  static const _blue = Color(0xFF64B5F6);
-  static const _bodyWidth = 50.0;
-  static const _bodyHeight = 46.0;
+  final String boat;
+  final Future<void> Function(String note) onSubmitNote;
+  final Future<void> Function() onStandDown;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    // Body — rounded rectangle.
-    final body = ui.Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, 0, _bodyWidth, _bodyHeight),
-          const Radius.circular(18),
-        ),
-      );
+  State<_EmergencyDetailsSheet> createState() =>
+      _EmergencyDetailsSheetState();
+}
 
-    // Tail — triangle whose top edge is buried inside the body so the union
-    // is a single connected silhouette.
-    final tail = ui.Path()
-      ..moveTo(14, 44)
-      ..lineTo(24, 46)
-      ..lineTo(6, 60)
-      ..close();
+class _EmergencyDetailsSheetState extends State<_EmergencyDetailsSheet> {
+  _EmergencyType? _selected;
+  final TextEditingController _custom = TextEditingController();
+  bool _submitting = false;
+  bool _standingDown = false;
 
-    final shape = ui.Path.combine(ui.PathOperation.union, body, tail);
+  @override
+  void dispose() {
+    _custom.dispose();
+    super.dispose();
+  }
 
-    canvas.drawPath(shape, Paint()..color = _blue);
-    canvas.drawPath(
-      shape,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeJoin = StrokeJoin.round,
-    );
+  String? get _noteToSend {
+    final type = _selected;
+    if (type == null) {
+      return null;
+    }
+    if (type == _EmergencyType.other) {
+      final text = _custom.text.trim();
+      return text.isEmpty ? null : text;
+    }
+    return type.label;
+  }
+
+  Future<void> _submit() async {
+    final note = _noteToSend;
+    setState(() => _submitting = true);
+    if (note != null) {
+      await widget.onSubmitNote(note);
+    }
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _standDown() async {
+    setState(() => _standingDown = true);
+    await widget.onStandDown();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _BubbleTailPainter old) => false;
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? _canvasDark : Colors.white;
+    final fg = isDark ? Colors.white : const Color(0xFF0F172A);
+    final dim = isDark ? Colors.white60 : const Color(0xFF64748B);
+
+    return PopScope(
+      // Closing this sheet is only ever a deliberate choice - "send update",
+      // "stand down", or explicitly dismissing without either - never an
+      // accidental back-swipe, since the alarm is still ringing underneath
+      // it and a stray dismissal must not leave the fisher unsure whether
+      // anything was recorded.
+      canPop: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: dim.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: <Widget>[
+                  const Icon(Icons.check_circle_rounded,
+                      color: _success, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'SOS sent for ${widget.boat}',
+                      style: TextStyle(
+                        color: fg,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "What's wrong? This updates what the MDRRMO sees - optional, "
+                'the alert has already gone out.',
+                style: TextStyle(color: dim, fontSize: 12.5, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final type in _EmergencyType.values)
+                    ChoiceChip(
+                      label: Text(type.label),
+                      avatar: Icon(type.icon, size: 16),
+                      selected: _selected == type,
+                      onSelected: _submitting || _standingDown
+                          ? null
+                          : (value) =>
+                              setState(() => _selected = value ? type : null),
+                    ),
+                ],
+              ),
+              if (_selected == _EmergencyType.other) ...<Widget>[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _custom,
+                  maxLength: AqOneConfig.maxNoteLength,
+                  textCapitalization: TextCapitalization.sentences,
+                  enabled: !_submitting && !_standingDown,
+                  decoration: const InputDecoration(
+                    hintText: 'Describe what is wrong',
+                    counterText: '',
+                    isDense: true,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: (_submitting || _standingDown) ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _brandPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    _selected == null ? 'Close' : 'Send update',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Divider(color: dim.withValues(alpha: 0.25)),
+              const SizedBox(height: 8),
+              Text(
+                'Sent by mistake?',
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _SlideToAction(
+                label: _standingDown ? 'Standing down…' : 'Slide to stand down',
+                icon: Icons.undo_rounded,
+                accentColor: _danger,
+                onConfirmed: _submitting || _standingDown ? null : _standDown,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A large, deliberate "slide to confirm" control - used both to cancel the
+/// countdown and to stand down an already-sent SOS. A tap can happen by
+/// accident; dragging a thumb the width of a track cannot, which is exactly
+/// the asymmetry wanted for actions this consequential.
+class _SlideToAction extends StatefulWidget {
+  const _SlideToAction({
+    required this.label,
+    required this.icon,
+    required this.accentColor,
+    required this.onConfirmed,
+    this.thumbIconColor = Colors.white,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color accentColor;
+  final Color thumbIconColor;
+
+  /// Null disables the control (shown mid-action, e.g. while a stand-down
+  /// request is already in flight).
+  final VoidCallback? onConfirmed;
+
+  @override
+  State<_SlideToAction> createState() => _SlideToActionState();
+}
+
+class _SlideToActionState extends State<_SlideToAction> {
+  static const double _thumbSize = 48;
+
+  double _fraction = 0;
+  bool _dragging = false;
+  bool _confirmed = false;
+
+  void _onDragUpdate(DragUpdateDetails details, double maxDrag) {
+    if (_confirmed || widget.onConfirmed == null || maxDrag <= 0) {
+      return;
+    }
+    setState(() {
+      _dragging = true;
+      _fraction =
+          (_fraction * maxDrag + details.delta.dx).clamp(0, maxDrag) /
+              maxDrag;
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    if (_confirmed || widget.onConfirmed == null) {
+      return;
+    }
+    if (_fraction > 0.8) {
+      setState(() {
+        _confirmed = true;
+        _fraction = 1;
+        _dragging = false;
+      });
+      widget.onConfirmed!();
+    } else {
+      setState(() {
+        _dragging = false;
+        _fraction = 0;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onConfirmed != null;
+    final accent = enabled ? widget.accentColor : Colors.grey;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final trackWidth = constraints.maxWidth;
+        final maxDrag = (trackWidth - _thumbSize).clamp(0, trackWidth);
+        final thumbLeft = _fraction * maxDrag;
+        return Container(
+          height: _thumbSize + 8,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular((_thumbSize + 8) / 2),
+            border: Border.all(color: accent.withValues(alpha: 0.45)),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: _thumbSize),
+                  child: Text(
+                    widget.label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedPositioned(
+                duration: _dragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                left: thumbLeft,
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (d) =>
+                      _onDragUpdate(d, maxDrag.toDouble()),
+                  onHorizontalDragEnd: _onDragEnd,
+                  child: Container(
+                    width: _thumbSize,
+                    height: _thumbSize,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      shape: BoxShape.circle,
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(color: Colors.black26, blurRadius: 6),
+                      ],
+                    ),
+                    child: Icon(
+                      widget.icon,
+                      color: widget.thumbIconColor,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Bottom sheet for recording a catch.
+///
+/// Never gates on connectivity - [CatchService.logCatch] saves locally first
+/// and uploads whenever the phone next has signal, so this can be filled in
+/// and closed even mid-trip with no bars.
+/// Two taps in the common case: species chip, then a weight preset chip.
+///
+/// Deliberately not a form. A form is filled out; this is tapped through.
+/// No exact weight is ever asked for here - see [CatchRecord]'s doc comment
+/// for why a preset guess, confirmed later, beats typing a number at the
+/// moment of catching. Method/notes exist but stay behind an explicit
+/// toggle, off the fast path, because most catches need neither.
+class _CatchLogSheet extends StatefulWidget {
+  const _CatchLogSheet({required this.catches});
+
+  final CatchService catches;
+
+  @override
+  State<_CatchLogSheet> createState() => _CatchLogSheetState();
+}
+
+class _CatchLogSheetState extends State<_CatchLogSheet> {
+  static const List<String> _species = <String>[
+    'Bangus',
+    'Galunggong',
+    'Tulingan',
+    'Hasa-hasa',
+    'Bisugo',
+  ];
+  static const String _other = 'Other';
+
+  /// Common small-catch weights for municipal fishing. "Custom" covers
+  /// anything else without blocking on it being in this list.
+  static const List<double> _weightPresets = <double>[0.5, 1, 2, 5, 10];
+
+  final TextEditingController _otherSpecies = TextEditingController();
+  final TextEditingController _customWeight = TextEditingController();
+  final TextEditingController _method = TextEditingController();
+  final TextEditingController _notes = TextEditingController();
+
+  String? _selectedSpecies;
+  bool _enteringCustomWeight = false;
+  bool _detailsOpen = false;
+  bool _saving = false;
+  String? _speciesError;
+  String? _weightError;
+
+  @override
+  void dispose() {
+    _otherSpecies.dispose();
+    _customWeight.dispose();
+    _method.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  void _selectSpecies(String name) {
+    setState(() {
+      _selectedSpecies = name;
+      _speciesError = null;
+    });
+  }
+
+  Future<void> _selectWeight(double kg) async {
+    if (_selectedSpecies == null) {
+      setState(() => _speciesError = 'Pick a species first');
+      return;
+    }
+    if (_selectedSpecies == _other && _otherSpecies.text.trim().isEmpty) {
+      setState(() => _speciesError = 'Name the species, or pick one above');
+      return;
+    }
+    await _save(kg);
+  }
+
+  void _submitCustomWeight() {
+    final parsed = double.tryParse(_customWeight.text.trim());
+    if (parsed == null || parsed <= 0 || !parsed.isFinite || parsed > 100000) {
+      setState(() => _weightError = 'Enter a weight in kg');
+      return;
+    }
+    _selectWeight(parsed);
+  }
+
+  Future<void> _save(double estimatedKg) async {
+    if (_saving) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await widget.catches.logCatch(
+        // "Other" with a typed name keeps the species instead of discarding
+        // it.
+        speciesName: _selectedSpecies == _other
+            ? _otherSpecies.text.trim()
+            : _selectedSpecies,
+        estimatedQuantityKg: estimatedKg,
+        method: _method.text,
+        notes: _notes.text,
+      );
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save this catch.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? _canvasDark : Colors.white;
+    final fg = isDark ? Colors.white : const Color(0xFF0F172A);
+    final dim = isDark ? Colors.white60 : const Color(0xFF64748B);
+    final fieldFill = isDark ? _surfaceDark : Colors.white;
+    const Color accent = Color(0xFF0284C7);
+    final inset = MediaQuery.of(context).viewInsets.bottom;
+
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(
+        color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+      ),
+    );
+
+    InputDecoration decoration(String label) => InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: dim),
+          border: border,
+          enabledBorder: border,
+          filled: true,
+          fillColor: fieldFill,
+        );
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: inset),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: dim.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Log a catch',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap a species, then a rough weight. Reweigh and confirm the '
+                'exact figure later from Catch history.',
+                style: TextStyle(fontSize: 12, color: dim, height: 1.3),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final name in <String>[..._species, _other])
+                    ChoiceChip(
+                      label: Text(name),
+                      selected: _selectedSpecies == name,
+                      onSelected: _saving ? null : (_) => _selectSpecies(name),
+                    ),
+                ],
+              ),
+              if (_speciesError != null) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  _speciesError!,
+                  style: const TextStyle(fontSize: 11.5, color: Colors.redAccent),
+                ),
+              ],
+              if (_selectedSpecies == _other) ...<Widget>[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _otherSpecies,
+                  textCapitalization: TextCapitalization.words,
+                  style: TextStyle(color: fg),
+                  enabled: !_saving,
+                  decoration: decoration('Species name'),
+                ),
+              ],
+              const SizedBox(height: 18),
+              Text(
+                'Tap a weight to log the catch',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final kg in _weightPresets)
+                    ActionChip(
+                      label: Text(kg == kg.roundToDouble()
+                          ? '${kg.toInt()} kg'
+                          : '$kg kg'),
+                      backgroundColor: accent.withValues(alpha: 0.12),
+                      labelStyle: const TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      onPressed: _saving ? null : () => _selectWeight(kg),
+                    ),
+                  ActionChip(
+                    label: Text(_enteringCustomWeight ? 'Custom…' : 'Custom'),
+                    onPressed: _saving
+                        ? null
+                        : () => setState(
+                              () => _enteringCustomWeight = true,
+                            ),
+                  ),
+                ],
+              ),
+              if (_enteringCustomWeight) ...<Widget>[
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextField(
+                        controller: _customWeight,
+                        autofocus: true,
+                        enabled: !_saving,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        style: TextStyle(color: fg),
+                        decoration: decoration('Weight (kg)'),
+                        onSubmitted: (_) => _submitCustomWeight(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _saving ? null : _submitCustomWeight,
+                      style: FilledButton.styleFrom(backgroundColor: accent),
+                      child: const Text('Log'),
+                    ),
+                  ],
+                ),
+                if (_weightError != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    _weightError!,
+                    style: const TextStyle(fontSize: 11.5, color: Colors.redAccent),
+                  ),
+                ],
+              ],
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => setState(() => _detailsOpen = !_detailsOpen),
+                icon: Icon(
+                  _detailsOpen ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                  _detailsOpen ? 'Hide method/notes' : 'Add method or notes',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+              if (_detailsOpen) ...<Widget>[
+                TextField(
+                  controller: _method,
+                  enabled: !_saving,
+                  style: TextStyle(color: fg),
+                  decoration: decoration('Method (optional)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _notes,
+                  maxLines: 2,
+                  maxLength: AqOneConfig.maxCatchNoteLength,
+                  enabled: !_saving,
+                  style: TextStyle(color: fg),
+                  decoration: decoration('Notes (optional)'),
+                ),
+              ],
+              if (_saving) ...<Widget>[
+                const SizedBox(height: 8),
+                const Center(
+                  child: SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

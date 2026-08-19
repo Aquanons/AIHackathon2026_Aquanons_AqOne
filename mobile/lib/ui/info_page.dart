@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/tokens.dart';
+
 class InfoPage extends StatelessWidget {
   const InfoPage({super.key, required this.title, required this.body});
 
@@ -8,23 +10,24 @@ class InfoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AqPalette.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F8FA),
+      backgroundColor: palette.canvas,
       appBar: AppBar(
         title: Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF0958A6),
+            color: palette.primaryText,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: palette.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF0F69C9),
+            color: palette.active,
             size: 20,
           ),
           onPressed: () => Navigator.pop(context),
@@ -35,9 +38,9 @@ class InfoPage extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           child: Text(
             body,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: Color(0xFF4A6B82),
+              color: palette.secondaryText,
               height: 1.55,
             ),
           ),

@@ -17,7 +17,7 @@ SosRecord _record({double? lat, double? lon, String? note}) {
 
 void main() {
   group('SosRecord.toBuoyPayload', () {
-    test('matches the POST /v1/sos contract in docs/03', () {
+    test('matches the POST /v1/sos contract in fixtures/week1_contract', () {
       final payload = _record(
         lat: 11.6050,
         lon: 122.3125,
@@ -50,7 +50,7 @@ void main() {
       final original = _record(lat: 11.6, lon: 122.3, note: 'taking water')
           .copyWith(
         state: DeliveryState.relayed,
-        buoyId: 1001,
+        buoyId: 'BUOY01',
         srcId: 1001,
         seq: 42,
         serverTs: 1722700002,
@@ -60,7 +60,7 @@ void main() {
 
       expect(restored.localId, original.localId);
       expect(restored.state, DeliveryState.relayed);
-      expect(restored.buoyId, 1001);
+      expect(restored.buoyId, 'BUOY01');
       expect(restored.seq, 42);
       expect(restored.note, 'taking water');
       expect(restored.hasFix, isTrue);
