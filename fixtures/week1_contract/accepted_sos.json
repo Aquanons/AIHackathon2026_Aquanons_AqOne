@@ -1,0 +1,25 @@
+{
+  "_source": "firmware/buoy/AqOneBuoy/AqOneBuoy.ino handlePostSos(), lines 339-346",
+  "_scenario": "POST /v1/sos accepted into the buoy's store-and-forward queue",
+  "request": {
+    "vessel_id": "fisher-7f3a",
+    "boat": "BG-123",
+    "lat": 11.6050,
+    "lon": 122.3125,
+    "note": "engine down",
+    "client_ts": 1755248500
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "accepted": true,
+      "buoy_id": "BUOY01",
+      "seq": 42,
+      "server_ts": 172963201
+    }
+  },
+  "_notes": [
+    "buoy_id is a string, not numeric - BuoyAck.fromJson currently parses it as int and will silently coerce to -1.",
+    "server_ts is millis()/1000 since the buoy booted, not wall-clock epoch seconds."
+  ]
+}

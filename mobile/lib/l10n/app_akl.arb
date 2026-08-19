@@ -1,0 +1,40 @@
+{
+  "@@locale": "akl",
+
+  "languageSettingTitle": "Lengguwahe",
+  "languageSettingSubtitle": "Pilia ro lengguwahe para sa bug-os nga app",
+  "languagePickerPrompt": "Pilia ro imong lengguwahe",
+
+  "navHome": "Home",
+  "navVenture": "Paglayag",
+  "navAdvisories": "Mga Abiso",
+  "navProfile": "Profile",
+
+  "deliveryStateSavedTitle": "Nasave",
+  "deliveryStateSavedDescription": "Owa pa napadaea — waeay malapit nga buoy. Automatiko nga ipapadaea.",
+  "deliveryStateRelayedTitle": "Napasa",
+  "deliveryStateRelayedDescription": "Nahatag ron sa buoy. Nagahueat sa radyo.",
+  "deliveryStateDeliveredTitle": "Nadangat",
+  "deliveryStateDeliveredDescription": "Nabaton ron it dashboard it MDRRMO.",
+  "deliveryStateAcknowledgedTitle": "Nasabat",
+  "deliveryStateAcknowledgedDescription": "Nakita ron it responder ining SOS.",
+
+  "deliveryMetaPosition": "Posisyon",
+  "deliveryMetaBuoy": "Buoy",
+  "deliveryMetaNote": "Nota",
+  "deliveryMetaResponder": "Responder",
+  "deliveryMetaLastAttempt": "Huling pagtinguha",
+  "deliveryNoGpsFix": "Waeay narekord nga GPS",
+
+  "seaStatusSafeHeadline": "Ligtas nga Magguwa",
+  "seaStatusSafeSubtitle": "Maayad ro kahimtangan it dagat.",
+  "seaStatusCautionHeadline": "Mag-andam - Basaha ro Abiso",
+  "seaStatusCautionSubtitle": "Mag-andam anay bag-o magguwa.",
+  "seaStatusNotAdvisedHeadline": "Indi Magguwa",
+  "seaStatusNotAdvisedSubtitle": "Magpabilin sa baybay - delikado ro kahimtangan.",
+  "seaStatusUnknownHeadline": "Waeay pa nga Abiso",
+  "seaStatusUnknownSubtitle": "Basaha ro mga abiso bag-o magguwa.",
+
+  "crashTitle": "May problema nga natabo",
+  "crashBody": "Indi mabuksan ining parte it screen. Subuki nga magbalik, o i-restart ro app kon padayon ini."
+}

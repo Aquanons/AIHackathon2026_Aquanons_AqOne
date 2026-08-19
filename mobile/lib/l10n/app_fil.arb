@@ -1,0 +1,40 @@
+{
+  "@@locale": "fil",
+
+  "languageSettingTitle": "Wika",
+  "languageSettingSubtitle": "Piliin ang wikang gagamitin sa buong app",
+  "languagePickerPrompt": "Piliin ang iyong wika",
+
+  "navHome": "Home",
+  "navVenture": "Paglalayag",
+  "navAdvisories": "Mga Abiso",
+  "navProfile": "Profile",
+
+  "deliveryStateSavedTitle": "Naka-save",
+  "deliveryStateSavedDescription": "Hindi pa naipapadala — walang malapit na buoy. Awtomatikong ipapadala.",
+  "deliveryStateRelayedTitle": "Naipasa",
+  "deliveryStateRelayedDescription": "Naibigay na sa buoy. Naghihintay sa radyo.",
+  "deliveryStateDeliveredTitle": "Naihatid",
+  "deliveryStateDeliveredDescription": "Natanggap na ng dashboard ng MDRRMO.",
+  "deliveryStateAcknowledgedTitle": "Sinagot",
+  "deliveryStateAcknowledgedDescription": "Nakita na ng responder ang SOS na ito.",
+
+  "deliveryMetaPosition": "Posisyon",
+  "deliveryMetaBuoy": "Buoy",
+  "deliveryMetaNote": "Tala",
+  "deliveryMetaResponder": "Responder",
+  "deliveryMetaLastAttempt": "Huling subok",
+  "deliveryNoGpsFix": "Walang naitalang GPS",
+
+  "seaStatusSafeHeadline": "Ligtas Lumabas",
+  "seaStatusSafeSubtitle": "Maganda ang kalagayan ng dagat.",
+  "seaStatusCautionHeadline": "Mag-ingat - Tingnan ang Abiso",
+  "seaStatusCautionSubtitle": "Mag-ingat bago lumabas.",
+  "seaStatusNotAdvisedHeadline": "Huwag Lumabas",
+  "seaStatusNotAdvisedSubtitle": "Manatili sa pampang - delikado ang kalagayan.",
+  "seaStatusUnknownHeadline": "Wala Pang Abiso",
+  "seaStatusUnknownSubtitle": "Tingnan ang mga abiso bago lumabas.",
+
+  "crashTitle": "May naganap na problema",
+  "crashBody": "Hindi ma-load ang bahaging ito ng screen. Subukang bumalik, o i-restart ang app kung paulit-ulit ito."
+}

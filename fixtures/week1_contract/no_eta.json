@@ -1,0 +1,12 @@
+{
+  "_source": "firmware/buoy/AqOneBuoy/AqOneBuoy.ino handleGetSosStatus(), lines 361-370",
+  "_scenario": "GET /v1/sos/status?vessel_id=<id> - buoy is not tracking this vessel, or has not yet polled a response for it",
+  "response": {
+    "status": 200,
+    "body": { "events": [] }
+  },
+  "_notes": [
+    "This is the one shape the firmware hardcodes itself (as opposed to proxying the backend verbatim, see eta_acknowledged.json).",
+    "Also returned for a vessel_id the buoy has never seen a POST /v1/sos from."
+  ]
+}

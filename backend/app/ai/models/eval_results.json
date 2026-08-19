@@ -1,0 +1,68 @@
+{
+  "drift": {
+    "calibration": "synthetic",
+    "containment_rate": 1.0,
+    "generated_at": "2026-08-04T20:47:52.515690+00:00",
+    "incidents_evaluated": 8,
+    "observation_fraction": 1.0,
+    "prediction_runtime_ms": 131.0096999995949,
+    "search_area_reduction_factor": 1.40129430617759
+  },
+  "squall": {
+    "calibration": "synthetic",
+    "generated_at": "2026-08-04T20:48:23.244321+00:00",
+    "mean_lead_time_minutes": 50.0,
+    "precision": 0.2857142857142857,
+    "recall": 0.13333333333333333,
+    "top_features": [
+      {
+        "importance": 1.1599198588624988,
+        "name": "propagation_speed_mps",
+        "weight": -1.1599198588624988
+      },
+      {
+        "importance": 0.7837200347180203,
+        "name": "onset_coverage",
+        "weight": 0.7837200347180203
+      },
+      {
+        "importance": 0.7629105696743697,
+        "name": "anomaly_energy",
+        "weight": 0.7629105696743697
+      },
+      {
+        "importance": 0.749108696664667,
+        "name": "propagation_r2",
+        "weight": 0.749108696664667
+      },
+      {
+        "importance": 0.7145780129438339,
+        "name": "propagation_bearing_cos",
+        "weight": 0.7145780129438339
+      },
+      {
+        "importance": 0.6670754650210007,
+        "name": "mean_tendency_60",
+        "weight": -0.6670754650210007
+      },
+      {
+        "importance": 0.6537426484439942,
+        "name": "array_drop_hpa",
+        "weight": -0.6537426484439942
+      },
+      {
+        "importance": 0.6537426484439942,
+        "name": "min_deviation",
+        "weight": 0.6537426484439942
+      }
+    ]
+  },
+  "trip_anomaly": {
+    "calibration": "synthetic",
+    "false_alarm_rate": 0.0,
+    "generated_at": "2026-08-04T20:48:48.631632+00:00",
+    "incidents_detected": 8,
+    "median_detection_latency_minutes": 55.0,
+    "normal_trips_evaluated": 496
+  }
+}

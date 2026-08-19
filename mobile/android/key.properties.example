@@ -1,0 +1,27 @@
+# Copy this file to android/key.properties and fill in real values.
+#
+# key.properties is gitignored and MUST stay that way: it holds the keystore
+# password in plain text. Rule 4 of docs/25_MOBILE_SECURITY_IMPLEMENTATION_PLAN.md
+# forbids a secret in the repository, and a leaked release key is not
+# recoverable - Play ties an app's identity to it permanently, so anyone
+# holding it can publish updates that Android accepts as yours.
+#
+# Generate the keystore once (from the mobile/android directory):
+#
+#   keytool -genkey -v -keystore aqone-release.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias aqone
+#
+# Store the .jks file OUTSIDE the repository - a password manager attachment
+# or the team's shared drive, not Desktop next to the code. Back it up:
+# losing it means you can never update the published app again.
+#
+# When key.properties is absent, the release build falls back to the debug
+# signing key so teammates can still build. Such a build runs but must never
+# be distributed. Check which key actually applied with:
+#
+#   cd mobile/android && ./gradlew :app:signingReport
+
+storeFile=C:/path/outside/the/repo/aqone-release.jks
+storePassword=CHANGE_ME
+keyAlias=aqone
+keyPassword=CHANGE_ME

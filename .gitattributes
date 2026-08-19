@@ -1,0 +1,29 @@
+# Line endings.
+#
+# The repo accumulated ~150 files showing as fully modified with no content
+# change, because checkouts on different machines disagreed about CRLF. That
+# noise buries real diffs: one nine-line change arrived as 1,324 changed lines.
+#
+# `text=auto eol=lf` normalises everything to LF in the object store while
+# leaving working copies alone, which is what Git wants and what every tool in
+# this project (Dart, Python, Gradle) is happy with.
+#
+# The existing churn is NOT fixed by adding this file. Someone has to run, once,
+# on a clean tree:
+#
+#     git add --renormalize .
+#     git commit -m "chore: normalise line endings"
+#
+# Do that in its own commit, with nothing else in flight - it touches almost
+# every file in the repository.
+* text=auto eol=lf
+
+# Binary, never touch.
+*.png binary
+*.jpg binary
+*.wav binary
+*.docx binary
+*.pdf binary
+*.ico binary
+*.jar binary
+*.keystore binary

@@ -1,0 +1,14 @@
+{
+  "_source": "mobile/lib/services/buoy_client.dart BuoyClient.handoff()/status(), lines 25-49, 51-77",
+  "_scenario": "Buoy is unreachable - no AP in range, DNS/connect failure, or request timeout (AqOneConfig.buoyTimeout = 6s)",
+  "response": null,
+  "expected_client_behavior": {
+    "exception": "BuoyUnreachable",
+    "delivery_state": "saved",
+    "ui_message": "Not sent - no buoy nearby. Will send automatically."
+  },
+  "_notes": [
+    "There is no JSON body for this case - it is a transport-layer failure (SocketException/TimeoutException), not an HTTP error response.",
+    "Per docs/06_DELIVERY_STATES.md, delivery state must not advance past 'saved' when this happens; the record stays in the outbox for retry."
+  ]
+}
