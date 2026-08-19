@@ -13,6 +13,9 @@ dependencies:
   sqflite: ^2.3.3
   sqflite_common_ffi_web: any
   path: ^1.9.0
+  flutter_localizations:
+    sdk: flutter
+  intl: any
 
   # Bumped from ^13.0.1 to match the version the Venture code is proven
   # against. LocationService already uses the modern locationSettings API,
