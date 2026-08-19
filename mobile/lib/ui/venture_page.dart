@@ -1090,7 +1090,9 @@ class _VenturePageState extends State<VenturePage> {
           isActive: false,
           isDark: isDark,
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const Chathubb()),
+            MaterialPageRoute<void>(
+              builder: (_) => Chathubb(identity: widget.identity),
+            ),
           ),
         ),
         const SizedBox(height: 10),
