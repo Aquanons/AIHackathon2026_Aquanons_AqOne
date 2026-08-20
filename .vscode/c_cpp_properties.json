@@ -1,0 +1,30 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "Heltec WiFi LoRa 32 V3 (ESP32-S3, Arduino)",
+
+      "includePath": [
+        "${workspaceFolder}/firmware/**",
+
+        "${env:LOCALAPPDATA}/Arduino15/packages/esp32/hardware/esp32/**",
+        "${env:LOCALAPPDATA}/Arduino15/packages/esp32/tools/**",
+
+        "${env:USERPROFILE}/Documents/Arduino/libraries/**"
+      ],
+
+      "defines": [
+        "ARDUINO=10819",
+        "ARDUINO_ARCH_ESP32",
+        "ESP32",
+        "F_CPU=240000000L"
+      ],
+
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-x64",
+
+      "compilerPath": ""
+    }
+  ]
+}

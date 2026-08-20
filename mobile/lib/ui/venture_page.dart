@@ -1067,8 +1067,12 @@ class _VenturePageState extends State<VenturePage> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
         Expanded(
+          // Bottom-anchored: the rail grew when Log Catch joined it, and a
+          // vertically centred column that tall reads as floating in the middle
+          // of the map. The enclosing Positioned already stops 16px + the dock
+          // inset short of the screen edge, so this sits just above the dock.
           child: Align(
-            alignment: const Alignment(1, -0.12),
+            alignment: Alignment.bottomRight,
             child: _buildActionRail(isDark),
           ),
         ),
