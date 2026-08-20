@@ -32,6 +32,11 @@
 #include <Preferences.h>
 #include <DNSServer.h>
 
+// Built-in 128x64 SSD1306 OLED on the Heltec WiFi LoRa 32 V3.
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
 // ===== CONFIGURE ME ========================================================
 
 // OPEN network — no password, by design.
@@ -57,8 +62,8 @@ static const int MAX_AP_CLIENTS = 10;
 
 // Upstream internet. On a real buoy this is the shore gateway link; for a demo
 // a phone hotspot is fine.
-static const char* UPLINK_SSID  = "Sams21_Hotel";
-static const char* UPLINK_PASS  = "#Sams212024";
+static const char* UPLINK_SSID  = "Converge_2.4GHz_30D7";
+static const char* UPLINK_PASS  = "4eHfak6E";
 
 static const char* BACKEND_HOST =
     "https://incredible-liberation-production-aad7.up.railway.app";
@@ -501,6 +506,100 @@ void onWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len) {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Onboard OLED
+//
+// Heltec WiFi LoRa 32 V3 pinout. These are board wiring, not preferences - the
+// panel is soldered to these pins and will stay dark on any others.
+// ---------------------------------------------------------------------------
+
+static const int  OLED_SDA  = 17;
+static const int  OLED_SCL  = 18;
+static const int  OLED_RST  = 21;
+
+// V3 routes the OLED through the Vext switch, which is ACTIVE LOW. Miss this
+// and begin() fails with correct wiring, because the panel has no power yet.
+static const int  VEXT_CTRL = 36;
+
+static const uint8_t OLED_ADDR = 0x3C;
+static const int  OLED_W = 128;
+static const int  OLED_H = 64;
+
+Adafruit_SSD1306 oled(OLED_W, OLED_H, &Wire, OLED_RST);
+
+// Set only if begin() succeeded. Every draw checks it, so a dead or absent
+// panel costs one boolean per frame and never blocks SOS handling.
+bool oledReady = false;
+
+// Phones joined to the AP. Not the same as chat clients: a handset can be on
+// the WiFi without having opened the chat page, which is worth seeing.
+int apClientCount() { return WiFi.softAPgetStationNum(); }
+
+// Chat clients that sent a "hello" and are still connected.
+int chatClientCount() {
+  int n = 0;
+  for (int i = 0; i < MAX_AP_CLIENTS; i++)
+    if (clientNames[i].length()) n++;
+  return n;
+}
+
+void oledSetup() {
+  pinMode(VEXT_CTRL, OUTPUT);
+  digitalWrite(VEXT_CTRL, LOW);   // active low: power the panel
+  delay(50);                      // let the rail settle before I2C
+
+  Wire.begin(OLED_SDA, OLED_SCL);
+  oledReady = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+  if (!oledReady) {
+    Serial.println("[oled] not found at 0x3C - continuing without display");
+    return;
+  }
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setTextColor(SSD1306_WHITE);
+  oled.setCursor(0, 0);
+  oled.print(F("AqOne booting..."));
+  oled.display();
+}
+
+void oledDraw() {
+  if (!oledReady) return;
+
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setTextColor(SSD1306_WHITE);
+
+  oled.setCursor(0, 0);
+  oled.print(F("AqOne "));
+  oled.print(BUOY_ID);
+  oled.drawFastHLine(0, 10, OLED_W, SSD1306_WHITE);
+
+  oled.setCursor(0, 14);
+  oled.print(F("Net  : "));
+  oled.print(AP_SSID);
+
+  oled.setCursor(0, 26);
+  oled.print(F("Boats: "));
+  oled.print(apClientCount());
+
+  oled.setCursor(0, 38);
+  oled.print(F("Chat : "));
+  oled.print(chatClientCount());
+
+  oled.setCursor(0, 50);
+  oled.print(F("Up   : "));
+  oled.print(haveInternet() ? F("online") : F("offline"));
+
+  // ":>" in the bottom-right corner. At text size 1 a glyph is 6x8, so two
+  // characters start 12px in from the right edge and clear the "Up" text,
+  // which never reaches that far.
+  oled.setCursor(OLED_W - 12, 50);
+  oled.print(F(":>"));
+
+  oled.display();
+}
+
+unsigned long lastDisplay = 0;
 unsigned long lastFlush = 0;
 unsigned long lastPoll  = 0;
 
@@ -509,6 +608,7 @@ void setup() {
   delay(300);
   Serial.println("\n=== AqOne buoy " + String(BUOY_ID) + " ===");
 
+  oledSetup();
   queueLoad();
   memset(tracked, 0, sizeof(tracked));
   setupWiFi();
@@ -544,6 +644,13 @@ void loop() {
   ws.loop();
 
   unsigned long now = millis();
+
+  // 500ms is fast enough for a join to feel instant and slow enough that the
+  // I2C write never competes with SOS delivery or the chat socket.
+  if (now - lastDisplay > 500) {
+    lastDisplay = now;
+    oledDraw();
+  }
 
   if (now - lastFlush > 5000) {     // deliver queued SOS
     lastFlush = now;
