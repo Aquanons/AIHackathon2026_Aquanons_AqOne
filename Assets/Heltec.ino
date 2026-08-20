@@ -63,8 +63,8 @@ static const int MAX_AP_CLIENTS = 10;
 
 // Upstream internet. On a real buoy this is the shore gateway link; for a demo
 // a phone hotspot is fine.
-static const char* UPLINK_SSID  = "Sams21_Hotel";
-static const char* UPLINK_PASS  = "#Sams212024";
+static const char* UPLINK_SSID  = "YOUR_UPLINK_SSID";
+static const char* UPLINK_PASS  = "YOUR_UPLINK_PASS";
 
 static const char* BACKEND_HOST =
     "https://incredible-liberation-production-aad7.up.railway.app";
