@@ -455,6 +455,8 @@ async def fire_beat(index: int) -> dict[str, object]:
     state = get_state()
     if state.run_id is None or state.scenario is None:
         raise ValueError('no demo scenario is active')
+    if index in state.fired and state.beat == index:
+        return state.response()
     _beat(index)
     pool = get_pool()
     await _write_pressure_window(pool, state.run_id, beat, state.scenario)
