@@ -64,6 +64,14 @@ class ChatService extends ChangeNotifier {
   final List<String> _clients = [];
   final List<String> _pendingQueue = [];
 
+  // Texts just put on the wire that the hub will echo back.
+  //
+  // The Heltec relay broadcasts every 'msg' to ALL clients INCLUDING the
+  // sender, while sendMessage already shows the line optimistically. Without
+  // this the sender sees everything twice. Registered at send time rather than
+  // queue time, so a message that sat offline for an hour still matches.
+  final List<MapEntry<String, DateTime>> _awaitingEcho = [];
+
   bool _connected = false;
   bool _connecting = false;
   bool _disposed = false;
@@ -175,6 +183,8 @@ class ChatService extends ChangeNotifier {
         final name = json['from'] as String? ?? '?';
         final text = json['text'] as String? ?? '';
         if (text.isEmpty) return;
+        // Our own line bouncing off the hub broadcast - already on screen.
+        if (name == displayName && _consumeEcho(text)) return;
         _messages.add(ChatMessage(
           text: text,
           from: name,
@@ -202,6 +212,23 @@ class ChatService extends ChangeNotifier {
         _persistMessages();
         _notify();
     }
+  }
+
+  void _expectEcho(String text) {
+    _awaitingEcho.add(MapEntry(text, DateTime.now()));
+    // Bounded: a hub that never echoes must not grow this without limit.
+    if (_awaitingEcho.length > 50) _awaitingEcho.removeAt(0);
+  }
+
+  /// True if [text] is our own message coming back, which the caller drops.
+  bool _consumeEcho(String text) {
+    final now = DateTime.now();
+    _awaitingEcho.removeWhere(
+        (e) => now.difference(e.value) > const Duration(minutes: 2));
+    final i = _awaitingEcho.indexWhere((e) => e.key == text);
+    if (i == -1) return false;
+    _awaitingEcho.removeAt(i);
+    return true;
   }
 
   void _trimMessages() {
@@ -261,6 +288,7 @@ class ChatService extends ChangeNotifier {
     _notify();
 
     if (_connected) {
+      _expectEcho(trimmed);
       _safeSend(jsonEncode({
         'type': 'msg',
         'from': displayName,
@@ -313,6 +341,7 @@ class ChatService extends ChangeNotifier {
     final batch = List<String>.from(_pendingQueue);
     _pendingQueue.clear();
     for (final text in batch) {
+      _expectEcho(text);
       _safeSend(jsonEncode({
         'type': 'msg',
         'from': displayName,
@@ -474,6 +503,16 @@ class _ChathubbState extends State<Chathubb> {
   }
 
   Future<void> _checkWifi() async {
+    // A live socket is the only proof that matters: if chat is connected we
+    // are on the hub's network, whatever the platform says the SSID is.
+    // getWifiName() cannot be the primary signal - it needs location
+    // permission (and location switched ON) from Android 10, returns the SSID
+    // wrapped in quotes on some builds, and is unsupported on web.
+    if (_service.connected) {
+      if (mounted && !_onAquan) setState(() => _onAquan = true);
+      return;
+    }
+
     bool onAq = false;
     try {
       final info = NetworkInfo();
@@ -540,10 +579,12 @@ class _ChathubbState extends State<Chathubb> {
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: Tooltip(
-                  message: _onAquan ? 'Connected to Aquan' : 'Not on Aquan',
+                  message: _service.connected
+                      ? 'Connected to Aquan'
+                      : (_onAquan ? 'On Aquan - connecting…' : 'Not on Aquan'),
                   child: Icon(
                     Icons.wifi,
-                    color: _onAquan
+                    color: (_service.connected || _onAquan)
                         ? const Color(0xFF16A34A)
                         : const Color(0xFF94A3B8),
                     size: 22,
@@ -555,7 +596,7 @@ class _ChathubbState extends State<Chathubb> {
           body: Column(
             children: [
               // Clients wheel
-              if (_service.clients.isNotEmpty) _buildClientWheel(isDark),
+              _buildClientWheel(isDark),
               // Messages
               Expanded(child: _buildMessageList(isDark)),
               // Input
@@ -570,11 +611,14 @@ class _ChathubbState extends State<Chathubb> {
   // ---- Client wheel ------------------------------------------------------
 
   Widget _buildClientWheel(bool isDark) {
-    final users = ['You', ..._service.clients];
+    // The hub's roster already contains this handset under its own name -
+    // it is added when we send 'hello'. Prepending a literal "You" gave the
+    // local user two bubbles: one "You" and one under their real name.
+    final users = _service.clients;
     return Container(
       height: 92,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: users.length == 1
+      child: users.isEmpty
           ? Center(
               child: Text(
                 'Waiting for others to join…',
@@ -591,7 +635,7 @@ class _ChathubbState extends State<Chathubb> {
                   const SizedBox(width: 16),
               itemBuilder: (context, index) {
                 final name = users[index];
-                final isSelf = name == _service.displayName || name == 'You';
+                final isSelf = name == _service.displayName;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
