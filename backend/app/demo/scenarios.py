@@ -455,6 +455,8 @@ async def fire_beat(index: int) -> dict[str, object]:
     state = get_state()
     if state.run_id is None or state.scenario is None:
         raise ValueError('no demo scenario is active')
+    if state.scenario == 'clear-day' and index != 0:
+        raise ValueError('clear-day has baseline beat 0 only')
     if index in state.fired and state.beat == index:
         return state.response()
     _beat(index)

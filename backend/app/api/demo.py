@@ -12,10 +12,6 @@ from app.demo.weather import coordinates, forecast, marine
 router = APIRouter(prefix='/api/demo', tags=['demo'])
 
 
-def _demo_enabled() -> bool:
-    return os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
-
-
 async def require_demo_key(
     demo_key: str | None = Header(default=None, alias='X-Demo-Key'),
 ) -> None:
