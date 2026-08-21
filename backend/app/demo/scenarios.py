@@ -45,8 +45,8 @@ class BeatDefinition:
 
 BEATS = (
     BeatDefinition(0, 'Baseline', 0),
-    BeatDefinition(1, 'Pressure falls', 35),
-    BeatDefinition(2, 'Zones escalate', 60),
+    BeatDefinition(1, 'Pressure falls', 60),
+    BeatDefinition(2, 'Zones escalate', 75),
     BeatDefinition(3, 'RETURN NOW', 90),
     BeatDefinition(4, 'Boat overdue', 90),
     BeatDefinition(5, 'SOS + drift', 90),
