@@ -49,12 +49,13 @@ async def _rebuild_and_score() -> list[dict[str, object]]:
         rows = await _load_trip_rows(conn)
         profiles = build_profiles_from_contacts(rows)
         latest_rows = _group_latest_trips(rows)
+        dataset_now = max((row['observed_at'] for row in rows), default=None)
 
         await conn.execute('TRUNCATE TABLE vessel_profiles, vessel_anomaly_scores')
         score_rows: list[dict[str, object]] = []
         for vessel_id, trip_id, contacts in latest_rows:
             profile = profiles[vessel_id]
-            as_of = contacts[-1].observed_at
+            as_of = dataset_now or contacts[-1].observed_at
             score = score_trip(profile, contacts, as_of=as_of)
             score_rows.append(score.to_response())
             await conn.execute(
