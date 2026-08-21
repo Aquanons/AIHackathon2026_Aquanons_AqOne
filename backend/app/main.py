@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
+from app.api.demo import router as demo_router
 from app.api.drift import router as drift_router
 from app.api.metrics import router as metrics_router
 from app.api.public import router as public_router
@@ -89,6 +91,9 @@ app.include_router(sea_condition_router, dependencies=_protected)
 app.include_router(metrics_router, dependencies=_protected)
 app.include_router(sos_read_router, dependencies=_protected)
 app.include_router(catch_read_router, dependencies=_protected)
+
+if os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}:
+    app.include_router(demo_router)
 
 
 @app.get('/healthz')
