@@ -45,10 +45,12 @@ class ChatService extends ChangeNotifier {
   ChatService({
     this.host = '192.168.4.1',
     this.displayName = 'You',
+    this.backendUrl = 'https://aqone-backend.up.railway.app',
   });
 
   final String host;
   final String displayName;
+  final String backendUrl;
 
   static const int maxMessageLength = 50;
   static const int _maxMessages = 50;
@@ -61,6 +63,14 @@ class ChatService extends ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final List<String> _clients = [];
   final List<String> _pendingQueue = [];
+
+  // Texts just put on the wire that the hub will echo back.
+  //
+  // The Heltec relay broadcasts every 'msg' to ALL clients INCLUDING the
+  // sender, while sendMessage already shows the line optimistically. Without
+  // this the sender sees everything twice. Registered at send time rather than
+  // queue time, so a message that sat offline for an hour still matches.
+  final List<MapEntry<String, DateTime>> _awaitingEcho = [];
 
   bool _connected = false;
   bool _connecting = false;
@@ -173,10 +183,12 @@ class ChatService extends ChangeNotifier {
         final name = json['from'] as String? ?? '?';
         final text = json['text'] as String? ?? '';
         if (text.isEmpty) return;
+        // Our own line bouncing off the hub broadcast - already on screen.
+        if (name == displayName && _consumeEcho(text)) return;
         _messages.add(ChatMessage(
           text: text,
           from: name,
-          isMine: name == displayName || name == 'You',
+          isMine: name == displayName,
           time: DateTime.now(),
         ));
         _trimMessages();
@@ -202,6 +214,23 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  void _expectEcho(String text) {
+    _awaitingEcho.add(MapEntry(text, DateTime.now()));
+    // Bounded: a hub that never echoes must not grow this without limit.
+    if (_awaitingEcho.length > 50) _awaitingEcho.removeAt(0);
+  }
+
+  /// True if [text] is our own message coming back, which the caller drops.
+  bool _consumeEcho(String text) {
+    final now = DateTime.now();
+    _awaitingEcho.removeWhere(
+        (e) => now.difference(e.value) > const Duration(minutes: 2));
+    final i = _awaitingEcho.indexWhere((e) => e.key == text);
+    if (i == -1) return false;
+    _awaitingEcho.removeAt(i);
+    return true;
+  }
+
   void _trimMessages() {
     final retained = retainRecentMessages(_messages);
     _messages
@@ -224,6 +253,23 @@ class ChatService extends ChangeNotifier {
     return retained;
   }
 
+  /// Fire-and-forget POST to the backend mesh chat endpoint.
+  /// Errors are silently ignored — the local Heltec relay is the primary path.
+  void _relayToBackend(String sender, String text) {
+    // .then<void> before .catchError is deliberate: catchError must return the
+    // future's own type, so attaching it straight to a Future<Response> throws
+    // at runtime on the exact failure this is meant to swallow.
+    http
+        .post(
+          Uri.parse('$backendUrl/api/mesh/chat'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'sender': sender, 'text': text}),
+        )
+        .timeout(const Duration(seconds: 5))
+        .then<void>((_) {})
+        .catchError((Object _) {});
+  }
+
   // ----- Outgoing messages ------------------------------------------------
 
   Future<void> sendMessage(String text) async {
@@ -242,6 +288,7 @@ class ChatService extends ChangeNotifier {
     _notify();
 
     if (_connected) {
+      _expectEcho(trimmed);
       _safeSend(jsonEncode({
         'type': 'msg',
         'from': displayName,
@@ -251,6 +298,9 @@ class ChatService extends ChangeNotifier {
       _pendingQueue.add(trimmed);
       _persistQueue();
     }
+
+    // Also relay to the cloud backend so the dashboard can display it.
+    _relayToBackend(displayName, trimmed);
   }
 
   // ----- History backfill -------------------------------------------------
@@ -291,6 +341,7 @@ class ChatService extends ChangeNotifier {
     final batch = List<String>.from(_pendingQueue);
     _pendingQueue.clear();
     for (final text in batch) {
+      _expectEcho(text);
       _safeSend(jsonEncode({
         'type': 'msg',
         'from': displayName,
@@ -408,18 +459,56 @@ class ChatService extends ChangeNotifier {
 }
 
 // ---------------------------------------------------------------------------
+// Avatars
+// ---------------------------------------------------------------------------
+
+/// First letter of [name], upper-cased. That letter is the entire avatar:
+/// there are no profile pictures to fetch once this runs over LoRa.
+String initialOf(String name) {
+  final trimmed = name.trim();
+  return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+}
+
+/// A stable colour per participant - the same name always lands on the same
+/// hue, so a neighbour is recognisable before you read the letter. Matters
+/// once LoRa makes the roster longer than a couple of boats, and two of them
+/// share an initial.
+Color avatarColorOf(String name) {
+  const palette = <Color>[
+    Color(0xFF38BDF8),
+    Color(0xFF34D399),
+    Color(0xFFF59E0B),
+    Color(0xFFF472B6),
+    Color(0xFFA78BFA),
+    Color(0xFF22D3EE),
+  ];
+  var hash = 0;
+  for (final unit in name.trim().codeUnits) {
+    hash = (hash * 31 + unit) & 0x7FFFFFFF;
+  }
+  return palette[hash % palette.length];
+}
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
 class Chathubb extends StatefulWidget {
-  const Chathubb({super.key});
+  const Chathubb({super.key, this.displayName = 'You'});
+
+  /// Who this handset appears as to the rest of the mesh. Venture passes the
+  /// skipper or boat name so the wheel shows something a neighbour recognises
+  /// rather than "You" on every phone.
+  final String displayName;
 
   @override
   State<Chathubb> createState() => _ChathubbState();
 }
 
 class _ChathubbState extends State<Chathubb> {
-  final ChatService _service = ChatService();
+  // Built in initState, not as a field initialiser: the name comes from
+  // `widget`, which is not available while fields are being initialised.
+  late final ChatService _service;
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _onAquan = false;
@@ -427,6 +516,7 @@ class _ChathubbState extends State<Chathubb> {
   @override
   void initState() {
     super.initState();
+    _service = ChatService(displayName: widget.displayName);
     _service.start();
     _checkWifi();
     // Poll WiFi status every 5 s.
@@ -444,6 +534,16 @@ class _ChathubbState extends State<Chathubb> {
   }
 
   Future<void> _checkWifi() async {
+    // A live socket is the only proof that matters: if chat is connected we
+    // are on the hub's network, whatever the platform says the SSID is.
+    // getWifiName() cannot be the primary signal - it needs location
+    // permission (and location switched ON) from Android 10, returns the SSID
+    // wrapped in quotes on some builds, and is unsupported on web.
+    if (_service.connected) {
+      if (mounted && !_onAquan) setState(() => _onAquan = true);
+      return;
+    }
+
     bool onAq = false;
     try {
       final info = NetworkInfo();
@@ -499,21 +599,18 @@ class _ChathubbState extends State<Chathubb> {
                   color: isDark ? Colors.white : Colors.black87),
               onPressed: () => Navigator.of(context).pop(),
             ),
-            title: Text(
-              'Chat',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            titleSpacing: 0,
+            title: _buildHeaderTitle(isDark),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: Tooltip(
-                  message: _onAquan ? 'Connected to Aquan' : 'Not on Aquan',
+                  message: _service.connected
+                      ? 'Connected to Aquan'
+                      : (_onAquan ? 'On Aquan - connecting…' : 'Not on Aquan'),
                   child: Icon(
                     Icons.wifi,
-                    color: _onAquan
+                    color: (_service.connected || _onAquan)
                         ? const Color(0xFF16A34A)
                         : const Color(0xFF94A3B8),
                     size: 22,
@@ -525,7 +622,7 @@ class _ChathubbState extends State<Chathubb> {
           body: Column(
             children: [
               // Clients wheel
-              if (_service.clients.isNotEmpty) _buildClientWheel(isDark),
+              _buildClientWheel(isDark),
               // Messages
               Expanded(child: _buildMessageList(isDark)),
               // Input
@@ -537,14 +634,100 @@ class _ChathubbState extends State<Chathubb> {
     );
   }
 
+  // ---- Header ------------------------------------------------------------
+
+  /// Everyone on the hub roster except this handset.
+  List<String> get _peers => _service.clients
+      .where((String name) => name != _service.displayName)
+      .toList(growable: false);
+
+  /// Who you are talking to. One peer shows their name; a fuller roster shows
+  /// the first two and a count, the way a group thread does, so the title
+  /// never overflows the app bar on a phone.
+  String get _headerName {
+    final peers = _peers;
+    if (peers.isEmpty) return 'Chat';
+    if (peers.length == 1) return peers.first;
+    if (peers.length == 2) return '${peers[0]}, ${peers[1]}';
+    return '${peers[0]}, ${peers[1]} +${peers.length - 2}';
+  }
+
+  Widget _buildHeaderTitle(bool isDark) {
+    final peers = _peers;
+    final String status;
+    if (!_service.connected) {
+      status = _onAquan ? 'Connecting…' : 'Offline';
+    } else if (peers.isEmpty) {
+      status = 'Waiting for others…';
+    } else if (peers.length == 1) {
+      status = 'On the mesh';
+    } else {
+      status = '${peers.length} on the mesh';
+    }
+
+    return Row(
+      children: [
+        if (peers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: avatarColorOf(peers.first),
+              child: Text(
+                initialOf(peers.first),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _headerName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              Text(
+                status,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _service.connected
+                      ? const Color(0xFF16A34A)
+                      : (isDark ? Colors.white54 : Colors.black45),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ---- Client wheel ------------------------------------------------------
 
   Widget _buildClientWheel(bool isDark) {
-    final users = ['You', ..._service.clients];
+    // The hub's roster already contains this handset under its own name -
+    // it is added when we send 'hello'. Prepending a literal "You" gave the
+    // local user two bubbles: one "You" and one under their real name.
+    final users = _service.clients;
     return Container(
       height: 92,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: users.length == 1
+      child: users.isEmpty
           ? Center(
               child: Text(
                 'Waiting for others to join…',
@@ -561,7 +744,7 @@ class _ChathubbState extends State<Chathubb> {
                   const SizedBox(width: 16),
               itemBuilder: (context, index) {
                 final name = users[index];
-                final isSelf = name == _service.displayName || name == 'You';
+                final isSelf = name == _service.displayName;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -569,9 +752,9 @@ class _ChathubbState extends State<Chathubb> {
                       radius: 22,
                       backgroundColor: isSelf
                           ? const Color(0xFF0F69C9)
-                          : const Color(0xFF38BDF8),
+                          : avatarColorOf(name),
                       child: Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?',
+                        initialOf(name),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
@@ -655,8 +838,7 @@ class _ChathubbState extends State<Chathubb> {
       bottomRight: Radius.circular(isMine ? 4 : 16),
     );
 
-    final initial =
-        msg.from.isNotEmpty ? msg.from[0].toUpperCase() : '?';
+    final initial = initialOf(msg.from);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -670,7 +852,7 @@ class _ChathubbState extends State<Chathubb> {
               padding: const EdgeInsets.only(right: 8, top: 4),
               child: CircleAvatar(
                 radius: 14,
-                backgroundColor: const Color(0xFF38BDF8),
+                backgroundColor: avatarColorOf(msg.from),
                 child: Text(
                   initial,
                   style: const TextStyle(

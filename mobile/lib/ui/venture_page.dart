@@ -640,9 +640,10 @@ class _VenturePageState extends State<VenturePage> {
               ),
             ),
             Positioned(
-              bottom: 24 + widget.bottomInset,
+              top: 72,
+              bottom: 16 + widget.bottomInset,
               right: 16,
-              child: _buildActionRail(isDark),
+              child: _buildRightControls(isDark),
             ),
             // Opposite corner from the action rail. The compass is a readout,
             // not a control, and stacking it with the buttons made a crowded
@@ -1061,6 +1062,24 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
+  Widget _buildRightControls(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        Expanded(
+          // Bottom-anchored: the rail grew when Log Catch joined it, and a
+          // vertically centred column that tall reads as floating in the middle
+          // of the map. The enclosing Positioned already stops 16px + the dock
+          // inset short of the screen edge, so this sits just above the dock.
+          child: Align(
+            alignment: Alignment.bottomRight,
+            child: _buildActionRail(isDark),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildActionRail(bool isDark) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1090,7 +1109,8 @@ class _VenturePageState extends State<VenturePage> {
           isActive: false,
           isDark: isDark,
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const Chathubb()),
+            MaterialPageRoute<void>(builder: (_) =>
+                Chathubb(displayName: _chatDisplayName)),
           ),
         ),
         const SizedBox(height: 10),
@@ -1420,6 +1440,20 @@ class _VenturePageState extends State<VenturePage> {
         ),
       ),
     );
+  }
+
+  /// What the rest of the mesh sees this handset as. Prefers skipper name,
+  /// then boat, then vessel ID - the wheel is never blank.
+  String get _chatDisplayName {
+    for (final candidate in <String>[
+      widget.identity.skipperName,
+      widget.identity.boat,
+      widget.identity.vesselId,
+    ]) {
+      final trimmed = candidate.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return 'You';
   }
 
 }

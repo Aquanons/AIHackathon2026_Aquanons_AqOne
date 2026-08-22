@@ -1,0 +1,89 @@
+"""The mesh chat relay has to stay reachable and stay unauthenticated.
+
+Two ways this silently breaks, both of which have already happened once:
+
+  * The router is never registered, so /api/mesh/chat falls through to the
+    static dashboard mount at "/" and answers with HTML. The hub's POSTs get a
+    404 it has no way to report, and messages from sea simply vanish.
+  * The router gets swept up in the `_protected` list. Every other router
+    belongs there, but the Heltec hub and the fishermen behind it have no
+    accounts and no token to send, so auth on this path takes the relay down
+    for exactly the people it exists to serve.
+
+There is no database in the test environment, so the routes answer 503 from
+get_pool(). That is fine - what is being asserted is which layer answered.
+"""
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+CHAT = '/api/mesh/chat'
+
+
+def test_chat_history_is_served_by_the_api_not_the_static_mount(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+
+    with TestClient(app) as client:
+        response = client.get(CHAT)
+
+    assert 'application/json' in response.headers['content-type']
+    assert response.status_code == 503, 'no database here; 404 would mean unrouted'
+
+
+def test_chat_ingest_is_served_by_the_api_not_the_static_mount(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+
+    with TestClient(app) as client:
+        response = client.post(CHAT, json={'sender': 'Boat-1', 'text': 'engine trouble'})
+
+    assert 'application/json' in response.headers['content-type']
+    assert response.status_code == 503
+
+
+def test_chat_does_not_require_a_bearer_token(monkeypatch):
+    """The hub cannot authenticate. Neither leg of the relay may demand it."""
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+
+    with TestClient(app) as client:
+        get = client.get(CHAT)
+        post = client.post(CHAT, json={'sender': 'Boat-1', 'text': 'hello'})
+
+    for response in (get, post):
+        assert response.status_code not in (401, 403), (
+            'mesh chat was moved behind require_user - the Heltec hub has no '
+            'token and the relay stops carrying messages'
+        )
+
+
+def test_validation_runs_before_the_database(monkeypatch):
+    """A malformed POST is rejected on its own merits, not masked by the 503."""
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+
+    with TestClient(app) as client:
+        assert client.post(CHAT, json={'sender': '', 'text': 'x'}).status_code == 422
+        assert client.post(CHAT, json={'sender': 'a', 'text': ''}).status_code == 422
+        # The firmware clamps outgoing text to 256 bytes; the model must agree,
+        # or the hub's own messages start bouncing back as validation errors.
+        assert (
+            client.post(CHAT, json={'sender': 'a', 'text': 'x' * 257}).status_code == 422
+        )
+
+
+def test_since_id_rejects_a_negative_cursor(monkeypatch):
+    """The hub sends its stored cursor verbatim; a corrupt one must not scan
+    the whole table."""
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+
+    with TestClient(app) as client:
+        assert client.get(f'{CHAT}?since_id=-1').status_code == 422
+
+
+def test_other_api_routers_are_still_protected(monkeypatch):
+    """Contrast case: opening up mesh must not have opened up everything."""
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+
+    with TestClient(app) as client:
+        response = client.get('/api/sea-condition')
+
+    assert response.status_code in (401, 403)

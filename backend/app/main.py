@@ -14,6 +14,7 @@ from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
 from app.api.drift import router as drift_router
+from app.api.mesh import router as mesh_router
 from app.api.metrics import router as metrics_router
 from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
@@ -44,6 +45,10 @@ app = FastAPI(lifespan=lifespan)
 # Auth is the only unauthenticated API surface: /api/login, /api/admin-signup
 # (itself gated by ADMIN_SETUP_KEY) and /api/me, which authenticates itself.
 app.include_router(auth_router)
+
+# The mesh chat relay is unauthenticated - the hub and fishermen have no accounts.
+# It carries public messages only (name, text, origin) on a fixed schema the hub validates.
+app.include_router(mesh_router)
 
 # SOS ingest is intentionally unauthenticated - see app/api/sos.py. A handset in
 # distress has no token, and the LoRa gateway relays frames it cannot
