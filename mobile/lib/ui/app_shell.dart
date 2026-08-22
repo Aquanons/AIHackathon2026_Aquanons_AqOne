@@ -302,6 +302,7 @@ class _AppShellState extends State<AppShell> {
       children: <Widget>[
         HomePage(
           service: widget.sos,
+          catches: widget.catches,
           identity: widget.identity,
           feeds: widget.feeds,
           location: widget.location,

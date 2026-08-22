@@ -254,10 +254,12 @@ The buoy network degrades gracefully to an opportunistic messaging service. **Al
 - Drift prediction producing a probability density and 50/75/95% search contours,
   with Bayesian re-tasking on negative search results (§5.3(c))
 - PCG / BFAR operations console
+- Privacy-preserving catch-activity heatmap from explicitly consented catch
+  logs. Output is coarse cells only, requires multiple independent vessels,
+  expires old observations, and is guidance rather than a catch guarantee.
 
 ### Explicitly out of scope
 
-- **Fish hotspot prediction.** Deliberately removed. Aqone is a life-safety system, and every feature that does not serve that mission dilutes both the product and the case for institutional procurement.
 - **Boat-mounted hardware.** Deferred to v2 (see open questions) — it would restore real-time capsize detection, but v1 deliberately keeps the fisher's barrier to entry at zero.
 - Market pricing, marketplace features *(catch logging itself — species, quantity, date, method, notes — is back in scope as a lightweight offline-first log; see `docs/07_SCOPE_OUT.md`'s "Amended — now in scope". It stops at recording the catch, not selling it.)*
 - Fisheries enforcement and illegal fishing detection *(technically feasible on this data; deferred to avoid positioning a safety network as a surveillance network, which would undermine fisher adoption)*

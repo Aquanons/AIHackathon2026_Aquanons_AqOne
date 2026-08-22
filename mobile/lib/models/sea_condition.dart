@@ -28,8 +28,17 @@ enum SeaStatus {
   final IconData icon;
 
   static SeaStatus fromWire(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    final aliases = <String, SeaStatus>{
+      'safe to go out': SeaStatus.safe,
+      'caution — check advisories': SeaStatus.caution,
+      'caution - check advisories': SeaStatus.caution,
+      'not advised': SeaStatus.notAdvised,
+    };
+    final alias = normalized == null ? null : aliases[normalized];
+    if (alias != null) return alias;
     for (final status in SeaStatus.values) {
-      if (status.wire == value) {
+      if (status.wire == normalized) {
         return status;
       }
     }
@@ -63,6 +72,11 @@ class SeaCondition {
     this.setByName,
     this.createdAt,
     this.fetchedAt,
+    this.source,
+    this.buoyCount = 0,
+    this.currentSpeedMps,
+    this.currentDirectionDeg,
+    this.observedAt,
   });
 
   final SeaStatus status;
@@ -77,6 +91,15 @@ class SeaCondition {
 
   /// When this handset last successfully read the value.
   final DateTime? fetchedAt;
+
+  /// Measurement context supplied by the backend. This is deliberately
+  /// separate from [status]: a buoy observation informs the decision but does
+  /// not replace the MDRRMO's official go/no-go call.
+  final String? source;
+  final int buoyCount;
+  final double? currentSpeedMps;
+  final double? currentDirectionDeg;
+  final DateTime? observedAt;
 
   /// Free text from the MDRRMO when they gave one, otherwise the translated
   /// default for the status.
@@ -102,6 +125,8 @@ class SeaCondition {
     final reason = source['reason'];
     final setBy = source['set_by_name'];
     final createdAt = source['created_at'];
+    final telemetry = source['buoy_telemetry'];
+    final telemetryMap = telemetry is Map ? telemetry : const <Object?, Object?>{};
     return SeaCondition(
       status: SeaStatus.fromWire(status is String ? status : null),
       reason: reason is String && reason.trim().isNotEmpty
@@ -112,6 +137,19 @@ class SeaCondition {
       createdAt:
           createdAt is String ? DateTime.tryParse(createdAt)?.toUtc() : null,
       fetchedAt: DateTime.now(),
+      source: telemetryMap['source']?.toString(),
+      buoyCount: telemetryMap['buoy_count'] is num
+          ? (telemetryMap['buoy_count'] as num).toInt()
+          : 0,
+      currentSpeedMps: telemetryMap['current_speed_mps'] is num
+          ? (telemetryMap['current_speed_mps'] as num).toDouble()
+          : null,
+      currentDirectionDeg: telemetryMap['current_direction_deg'] is num
+          ? (telemetryMap['current_direction_deg'] as num).toDouble()
+          : null,
+      observedAt: telemetryMap['observed_at'] is String
+          ? DateTime.tryParse(telemetryMap['observed_at'] as String)?.toUtc()
+          : null,
     );
   }
 
@@ -121,6 +159,11 @@ class SeaCondition {
         setByName: setByName,
         createdAt: createdAt,
         fetchedAt: fetchedAt ?? this.fetchedAt,
+        source: source,
+        buoyCount: buoyCount,
+        currentSpeedMps: currentSpeedMps,
+        currentDirectionDeg: currentDirectionDeg,
+        observedAt: observedAt,
       );
 
   /// Whether this reading has gone stale.

@@ -43,6 +43,7 @@ class CatchLogIn(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     method: str | None = Field(default=None, max_length=64)
     notes: str | None = Field(default=None, max_length=240)
+    share_for_hotspots: bool = False
 
 
 class ConfirmWeightIn(BaseModel):
@@ -88,9 +89,10 @@ async def ingest_catch_log(
             '''
                 INSERT INTO catch_logs (
                   vessel_id, local_id, species_name, estimated_quantity_kg,
-                  catch_date, latitude, longitude, method, notes
+                  catch_date, latitude, longitude, method, notes,
+                  share_for_hotspots
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                 ON CONFLICT (local_id) WHERE local_id IS NOT NULL DO UPDATE SET
                   -- A retried upload of the same local_id fills in whatever
                   -- was missing rather than overwriting what already landed.
@@ -98,7 +100,8 @@ async def ingest_catch_log(
                   -- only ever written by confirm_weight below.
                   species_name = COALESCE(catch_logs.species_name, EXCLUDED.species_name),
                   method       = COALESCE(catch_logs.method, EXCLUDED.method),
-                  notes        = COALESCE(catch_logs.notes, EXCLUDED.notes)
+                  notes        = COALESCE(catch_logs.notes, EXCLUDED.notes),
+                  share_for_hotspots = EXCLUDED.share_for_hotspots
                 RETURNING id, created_at, (xmax = 0) AS was_inserted
                 ''',
             owned_vessel_id,
@@ -110,6 +113,7 @@ async def ingest_catch_log(
             payload.longitude,
             payload.method,
             payload.notes,
+            payload.share_for_hotspots,
         )
 
     return {

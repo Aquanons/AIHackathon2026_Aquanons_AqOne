@@ -95,6 +95,17 @@ class SeaConditionBanner extends StatelessWidget {
               color: isDark ? Colors.white70 : const Color(0xFF334155),
             ),
           ),
+          if (value.buoyCount > 0 && value.currentSpeedMps != null) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              'Buoy check: ${value.currentSpeedMps!.toStringAsFixed(1)} m/s current'
+              '${value.observedAt == null ? '' : ' · ${_age(value.observedAt!)}'}',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white54 : const Color(0xFF64748B),
+              ),
+            ),
+          ],
           if (value.setByName != null) ...<Widget>[
             const SizedBox(height: 6),
             Text(
@@ -109,6 +120,13 @@ class SeaConditionBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+String _age(DateTime value) {
+  final minutes = DateTime.now().toUtc().difference(value.toUtc()).inMinutes;
+  if (minutes <= 0) return 'just now';
+  if (minutes == 1) return '1 min ago';
+  return '$minutes min ago';
 }
 
 class _Shell extends StatelessWidget {

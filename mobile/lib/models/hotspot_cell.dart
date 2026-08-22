@@ -8,9 +8,7 @@
 /// map has no way to draw one - the privacy property is a property of the
 /// contract, not of the widget that happens to render it.
 ///
-/// The model that fills these does not exist yet. Nothing renders until
-/// `/api/public/hotspots` answers, which is the honest state: hotspot
-/// prediction is Phase 3 in the delivery plan.
+/// Filled by the server-side aggregation at `/api/public/hotspots`.
 class HotspotCell {
   const HotspotCell({
     required this.centerLat,
@@ -28,8 +26,8 @@ class HotspotCell {
   /// without the client needing a release.
   final double cellSizeDegrees;
 
-  /// Relative suitability, 0-1. Explicitly NOT a probability of catching
-  /// anything: §6.2 forbids implying guaranteed catch.
+  /// Relative recent catch activity, 0-1. Explicitly NOT a probability of
+  /// catching anything: §6.2 forbids implying guaranteed catch.
   final double score;
 
   /// How many independent observations back this cell. Displayed, not hidden -
@@ -75,13 +73,10 @@ class HotspotCell {
         ),
       );
     }
-    if (parsed.isEmpty) {
-      return null;
-    }
-
     final Object? generated = payload['generated_at'];
     final Object? model = payload['model_version'];
     final Object? minReporters = payload['min_reporters'];
+    final Object? windowDays = payload['window_days'];
 
     return HotspotSurface(
       cells: parsed,
@@ -89,6 +84,7 @@ class HotspotCell {
           generated is String ? DateTime.tryParse(generated) : null,
       modelVersion: model is String ? model : null,
       minReporters: minReporters is num ? minReporters.toInt() : null,
+      windowDays: windowDays is num ? windowDays.toInt() : null,
     );
   }
 }
@@ -100,6 +96,7 @@ class HotspotSurface {
     this.generatedAt,
     this.modelVersion,
     this.minReporters,
+    this.windowDays,
     this.isDemo = false,
   });
 
@@ -115,6 +112,7 @@ class HotspotSurface {
   /// §6.3's minimum-reporter rule exists so one prolific fisher cannot become
   /// "the model", and showing it lets a fisher judge the surface for himself.
   final int? minReporters;
+  final int? windowDays;
 
   /// True for the illustrative cells the app ships to show what the layer
   /// will look like. Never set from the wire - a backend cannot mark its own

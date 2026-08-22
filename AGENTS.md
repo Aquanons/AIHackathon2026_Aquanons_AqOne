@@ -39,8 +39,9 @@ These are scoped-out decisions, not gaps. See `docs/07_SCOPE_OUT.md` for the
 full list and for the items that have since been amended into scope.
 
 Still out: no photos, no fisheries-enforcement or surveillance features, no
-LoRa downlink to the handset. Catch logging was cut for the original build but
-is back in scope - see `docs/07_SCOPE_OUT.md`'s "Amended — now in scope".
+LoRa downlink to the handset. Catch logging and its explicitly consented,
+coarse aggregated activity heatmap are now in scope - see
+`docs/07_SCOPE_OUT.md`'s "Amended — now in scope".
 
 **Do not treat this file as the scope of record.** The canonical scope is
 `Aqone_PRD (2).md` (v3.0); unbuilt sections there are tagged

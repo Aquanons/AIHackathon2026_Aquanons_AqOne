@@ -8,6 +8,7 @@ void main() {
         'generated_at': '2026-08-16T02:00:00Z',
         'model_version': 'hotspot-v0.1',
         'min_reporters': 5,
+        'window_days': 30,
         'cells': <Object?>[
           <String, Object?>{
             'center_lat': 11.72,
@@ -23,19 +24,19 @@ void main() {
       expect(surface!.cells.length, 1);
       expect(surface.modelVersion, 'hotspot-v0.1');
       expect(surface.minReporters, 5);
+      expect(surface.windowDays, 30);
       expect(surface.cells.first.observations, 34);
       // 0.05 degrees is about 5.5 km across, so a ~2.8 km drawing radius.
       expect(surface.cells.first.approxRadiusMeters, closeTo(2775, 1));
     });
 
-    test('returns null when the endpoint is absent or empty', () {
-      // The live state today: no model, no layer, no fallback.
+    test('distinguishes an absent endpoint from an empty real surface', () {
       expect(HotspotCell.parse(null), isNull);
       expect(HotspotCell.parse(<String, Object?>{}), isNull);
-      expect(
-        HotspotCell.parse(<String, Object?>{'cells': <Object?>[]}),
-        isNull,
-      );
+      final surface =
+          HotspotCell.parse(<String, Object?>{'cells': <Object?>[]});
+      expect(surface, isNotNull);
+      expect(surface!.cells, isEmpty);
     });
 
     test('drops malformed cells rather than failing the whole surface', () {

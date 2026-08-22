@@ -9,6 +9,7 @@ import '../core/tokens.dart';
 import '../data/forecast_cache.dart';
 import '../data/identity_store.dart';
 import '../models/advisory.dart';
+import '../models/catch_record.dart';
 import '../models/daily_outlook.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
@@ -16,6 +17,7 @@ import '../models/sos_record.dart';
 import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
 import '../services/location_service.dart';
+import '../services/catch_service.dart';
 import '../services/sos_service.dart';
 import '../services/venture_feeds.dart';
 import 'widgets/advisory_card.dart';
@@ -29,6 +31,7 @@ class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
     required this.service,
+    required this.catches,
     required this.identity,
     required this.feeds,
     required this.location,
@@ -41,6 +44,7 @@ class HomePage extends StatefulWidget {
   });
 
   final SosService service;
+  final CatchService catches;
   final VesselIdentity identity;
   final VentureFeeds feeds;
   final LocationService location;
@@ -70,6 +74,8 @@ class _HomePageState extends State<HomePage> {
   Timer? _buoyTimer;
   Timer? _seaTimer;
   StreamSubscription<void>? _changes;
+  StreamSubscription<void>? _catchChanges;
+  List<CatchRecord> _catchRecords = const <CatchRecord>[];
 
   SeaCondition? _sea;
   bool _seaLoading = true;
@@ -95,8 +101,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _changes = widget.service.changes.listen((_) => _loadRecords());
+    _catchChanges = widget.catches.changes.listen((_) => _loadCatchRecords());
     widget.service.start();
     _loadRecords();
+    _loadCatchRecords();
     _pollBuoy();
     _loadSea();
     _loadAdvisories();
@@ -125,6 +133,7 @@ class _HomePageState extends State<HomePage> {
     _seaTimer?.cancel();
     _forecastTimer?.cancel();
     _changes?.cancel();
+    _catchChanges?.cancel();
     super.dispose();
   }
 
@@ -219,6 +228,14 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     setState(() => _records = records);
+  }
+
+  Future<void> _loadCatchRecords() async {
+    final records = await widget.catches.history();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _catchRecords = records);
   }
 
   Future<void> _pollBuoy() async {
@@ -377,6 +394,8 @@ class _HomePageState extends State<HomePage> {
                 locationLabel:
                     _weatherAtDevice ? 'your position' : 'Aklan (default)',
               ),
+              const SizedBox(height: AqSpace.base),
+              _CatchAnalysisCard(records: _catchRecords),
               if (_advisories.isNotEmpty) ...<Widget>[
                 const SizedBox(height: AqSpace.base),
                 AdvisoryCard(
@@ -459,6 +478,108 @@ class _HomePageState extends State<HomePage> {
       Icons.person_rounded,
       color: palette.secondaryText,
       size: 28,
+    );
+  }
+}
+
+class _CatchAnalysisCard extends StatelessWidget {
+  const _CatchAnalysisCard({required this.records});
+
+  final List<CatchRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AqPalette.of(context);
+    final totalKg = records.fold<double>(
+      0,
+      (sum, record) => sum + (record.quantityKg ?? record.estimatedQuantityKg),
+    );
+    final pending = records.where((record) => record.awaitsSync).length;
+    final confirmed = records.where((record) => record.isWeightConfirmed).length;
+    final species = <String, int>{};
+    for (final record in records) {
+      final name = record.speciesName?.trim();
+      if (name != null && name.isNotEmpty) {
+        species[name] = (species[name] ?? 0) + 1;
+      }
+    }
+    final topSpecies = species.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Container(
+      padding: const EdgeInsets.all(AqSpace.lg),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.analytics_outlined, color: palette.primaryText),
+              const SizedBox(width: 8),
+              Text(
+                'Catch analysis',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: palette.primaryText,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            records.isEmpty
+                ? 'Your offline catch summary will appear here.'
+                : 'Based on ${records.length} catch logs stored on this phone.',
+            style: TextStyle(fontSize: 12, color: palette.dimText),
+          ),
+          const SizedBox(height: AqSpace.md),
+          Row(
+            children: <Widget>[
+              _CatchMetric(label: 'Estimated kg', value: totalKg.toStringAsFixed(1), palette: palette),
+              _CatchMetric(label: 'Confirmed', value: '$confirmed', palette: palette),
+              _CatchMetric(label: 'Pending sync', value: '$pending', palette: palette),
+            ],
+          ),
+          if (topSpecies.isNotEmpty) ...<Widget>[
+            const SizedBox(height: AqSpace.md),
+            Text(
+              'Most logged species: ${topSpecies.first.key} (${topSpecies.first.value})',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: palette.primaryText,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CatchMetric extends StatelessWidget {
+  const _CatchMetric({required this.label, required this.value, required this.palette});
+
+  final String label;
+  final String value;
+  final AqPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: palette.primaryText)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 11, color: palette.dimText)),
+        ],
+      ),
     );
   }
 }
