@@ -188,7 +188,7 @@ class ChatService extends ChangeNotifier {
         _messages.add(ChatMessage(
           text: text,
           from: name,
-          isMine: name == displayName || name == 'You',
+          isMine: name == displayName,
           time: DateTime.now(),
         ));
         _trimMessages();
@@ -459,6 +459,37 @@ class ChatService extends ChangeNotifier {
 }
 
 // ---------------------------------------------------------------------------
+// Avatars
+// ---------------------------------------------------------------------------
+
+/// First letter of [name], upper-cased. That letter is the entire avatar:
+/// there are no profile pictures to fetch once this runs over LoRa.
+String initialOf(String name) {
+  final trimmed = name.trim();
+  return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+}
+
+/// A stable colour per participant - the same name always lands on the same
+/// hue, so a neighbour is recognisable before you read the letter. Matters
+/// once LoRa makes the roster longer than a couple of boats, and two of them
+/// share an initial.
+Color avatarColorOf(String name) {
+  const palette = <Color>[
+    Color(0xFF38BDF8),
+    Color(0xFF34D399),
+    Color(0xFFF59E0B),
+    Color(0xFFF472B6),
+    Color(0xFFA78BFA),
+    Color(0xFF22D3EE),
+  ];
+  var hash = 0;
+  for (final unit in name.trim().codeUnits) {
+    hash = (hash * 31 + unit) & 0x7FFFFFFF;
+  }
+  return palette[hash % palette.length];
+}
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
@@ -568,13 +599,8 @@ class _ChathubbState extends State<Chathubb> {
                   color: isDark ? Colors.white : Colors.black87),
               onPressed: () => Navigator.of(context).pop(),
             ),
-            title: Text(
-              'Chat',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            titleSpacing: 0,
+            title: _buildHeaderTitle(isDark),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
@@ -605,6 +631,89 @@ class _ChathubbState extends State<Chathubb> {
           ),
         );
       },
+    );
+  }
+
+  // ---- Header ------------------------------------------------------------
+
+  /// Everyone on the hub roster except this handset.
+  List<String> get _peers => _service.clients
+      .where((String name) => name != _service.displayName)
+      .toList(growable: false);
+
+  /// Who you are talking to. One peer shows their name; a fuller roster shows
+  /// the first two and a count, the way a group thread does, so the title
+  /// never overflows the app bar on a phone.
+  String get _headerName {
+    final peers = _peers;
+    if (peers.isEmpty) return 'Chat';
+    if (peers.length == 1) return peers.first;
+    if (peers.length == 2) return '${peers[0]}, ${peers[1]}';
+    return '${peers[0]}, ${peers[1]} +${peers.length - 2}';
+  }
+
+  Widget _buildHeaderTitle(bool isDark) {
+    final peers = _peers;
+    final String status;
+    if (!_service.connected) {
+      status = _onAquan ? 'Connecting…' : 'Offline';
+    } else if (peers.isEmpty) {
+      status = 'Waiting for others…';
+    } else if (peers.length == 1) {
+      status = 'On the mesh';
+    } else {
+      status = '${peers.length} on the mesh';
+    }
+
+    return Row(
+      children: [
+        if (peers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: avatarColorOf(peers.first),
+              child: Text(
+                initialOf(peers.first),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _headerName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              Text(
+                status,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _service.connected
+                      ? const Color(0xFF16A34A)
+                      : (isDark ? Colors.white54 : Colors.black45),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -643,9 +752,9 @@ class _ChathubbState extends State<Chathubb> {
                       radius: 22,
                       backgroundColor: isSelf
                           ? const Color(0xFF0F69C9)
-                          : const Color(0xFF38BDF8),
+                          : avatarColorOf(name),
                       child: Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?',
+                        initialOf(name),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
@@ -729,8 +838,7 @@ class _ChathubbState extends State<Chathubb> {
       bottomRight: Radius.circular(isMine ? 4 : 16),
     );
 
-    final initial =
-        msg.from.isNotEmpty ? msg.from[0].toUpperCase() : '?';
+    final initial = initialOf(msg.from);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -744,7 +852,7 @@ class _ChathubbState extends State<Chathubb> {
               padding: const EdgeInsets.only(right: 8, top: 4),
               child: CircleAvatar(
                 radius: 14,
-                backgroundColor: const Color(0xFF38BDF8),
+                backgroundColor: avatarColorOf(msg.from),
                 child: Text(
                   initial,
                   style: const TextStyle(
