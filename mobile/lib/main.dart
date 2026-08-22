@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -30,7 +28,11 @@ import 'ui/onboarding_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  AqOneConfig.validateEndpoints();
+  try {
+    AqOneConfig.validateEndpoints();
+  } catch (error, stack) {
+    AppDiagnostics.log('endpoint-config', error, stackTrace: stack);
+  }
 
   // A widget that throws mid-build/layout/paint would otherwise show
   // Flutter's default red screen-of-death - the exact "RenderFlex
@@ -47,14 +49,7 @@ void main() {
   // callback with nothing downstream to catch it - would otherwise crash
   // the isolate outright rather than show anything. Caught here and logged
   // instead of left to reach the user as a raw stack trace.
-  runZonedGuarded(
-    () => runApp(const AqOneApp()),
-    (error, stack) => AppDiagnostics.log(
-      'uncaught',
-      error,
-      stackTrace: stack,
-    ),
-  );
+  runApp(const AqOneApp());
 }
 
 /// Fallback shown in place of a widget that failed to build.

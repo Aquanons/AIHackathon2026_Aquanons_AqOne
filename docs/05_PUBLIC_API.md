@@ -310,26 +310,22 @@ Field notes, all of them load-bearing:
 Parsing and every one of these rules is pinned by
 `mobile/test/daily_outlook_test.dart`.
 
-## Fish hotspots — **contract agreed, not yet implemented**
+## Catch-activity heatmap — **implemented**
 
 ### `GET /api/public/hotspots`
 
-The modelled hotspot surface (§6.2): consented catch logs joined with
-seasonal and environmental indicators, scored server-side.
-
-**This endpoint does not exist yet** — it is Phase 3 in the delivery plan.
-The handset polls it and draws nothing when it 404s. There is deliberately no
-client-side fallback: a hotspot needs other fishers' consented data joined
-with environmental history, and a handset has neither, so the honest answer
-until the model exists is an empty map.
+The server-side recent catch-activity surface (§6.2), built only from catch
+logs whose owner explicitly opted in. This first operational version scores
+coarse cells from recent independent reporters and observation density. It is
+not an environmental prediction or a guarantee of catching fish.
 
 Response `200`:
 
 ```json
 {
   "generated_at": "2026-08-16T02:00:00Z",
-  "model_version": "hotspot-v0.1",
-  "min_reporters": 5,
+  "model_version": "catch-density-v1",
+  "min_reporters": 3,
   "cells": [
     {
       "center_lat": 11.72,
@@ -348,7 +344,7 @@ Rules the shape enforces, all of them deliberate:
   individual's exact productive location. There is no field in which a
   precise coordinate could be expressed, so the privacy property belongs to
   the contract rather than to whatever renders it.
-- `score` is relative suitability 0–1, **not** a probability of catching
+- `score` is relative recent activity 0–1, **not** a probability of catching
   anything. §6.2 forbids implying guaranteed catch, and the client renders it
   as opacity of a single hue — never a red-to-green ramp, which reads as a
   safety verdict.

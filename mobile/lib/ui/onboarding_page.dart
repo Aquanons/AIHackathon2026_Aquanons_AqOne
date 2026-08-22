@@ -194,14 +194,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ),
             ),
           ),
-          // A dark scrim keeps the (light-themed) background photo legible
-          // behind the form when the app is in dark mode, without needing a
-          // second image asset.
+          // Keep the light gradient visible while preserving contrast for the
+          // registration form.
           if (isDark)
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.55),
+                  color: Colors.black.withValues(alpha: 0.12),
                 ),
               ),
             ),
