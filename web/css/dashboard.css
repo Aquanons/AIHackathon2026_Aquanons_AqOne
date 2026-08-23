@@ -3,14 +3,14 @@
    ══════════════════════════════════════════════════════════════ */
 :root {
   /* ===== LIGHT THEME (default) ===== */
-  --bg: #F4F8FA;
+  --bg: #eef1f5;
   --surface: #FFFFFF;
   --surface-2: #B9E8FF;
-  --border: #CFE8F9;
-  --border-accent: #E3F5FF;
-  --text: #1E293B;
-  --text-secondary: #64748B;
-  --text-dim: #94A3B8;
+  --border: #e2e8f0;
+  --border-accent: #e2e8f0;
+  --text: #1f2a37;
+  --text-secondary: #7b8797;
+  --text-dim: #94a0af;
   --text-tertiary: #CBD5E1;
   --accent: #38BDF8;
   --accent-glow: rgba(56,189,248,0.35);
@@ -20,32 +20,32 @@
   --purple: #a78bfa;
 
   /* Brand blues (theme-independent) */
-  --primary: #0F69C9;
+  --primary: #1a73c8;
   --brand-deep: #0958A6;
   --blue-dark: #0958A6;
-  --blue-mid: #0F69C9;
-  --blue-primary: #0F69C9;
+  --blue-mid: #1a73c8;
+  --blue-primary: #1a73c8;
   --sky-accent: #38BDF8;
   --blue-soft: #E8F8FF;
 
   /* Gray surfaces for light mode */
-  --gray-border: #E2EFF9;
+  --gray-border: #e2e8f0;
   --gray-button: #E8F0F8;
   --gray-icon: #64748B;
   --gray-text: #64748B;
 
   /* Glass */
-  --glass-bg: rgba(244,248,250,0.92);
-  --glass-bg-light: rgba(255,255,255,0.95);
-  --glass-border: rgba(15,105,201,0.12);
-  --glass-shadow: 0 8px 32px rgba(15,23,42,0.10);
+  --glass-bg: rgba(255,255,255,0.98);
+  --glass-bg-light: rgba(255,255,255,0.98);
+  --glass-border: #e2e8f0;
+  --glass-shadow: 0 4px 14px rgba(31,42,55,0.06);
   --radius: 12px;
   --radius-sm: 8px;
 
   /* Layout */
-  --header-h: 68px;
-  --banner-h: 36px;
-  --demo-banner-h: 34px;
+  --header-h: 64px;
+  --banner-h: 34px;
+  --demo-banner-h: 30px;
   --panel-w: 380px;
 }
 
@@ -4604,6 +4604,136 @@ h3.buoy-drawer-title {
 .lang-btn.active {
   background: #2563eb;
   color: #ffffff;
+}
+
+/* Dashboard layout refresh: compact operational top bar */
+.app-header {
+  gap: 18px;
+  padding: 0 22px;
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom-color: var(--border);
+  box-shadow: 0 1px 0 rgba(31, 42, 55, 0.03);
+}
+
+.header-brand { gap: 8px; }
+.top-logo { height: 42px; }
+.top-title {
+  font-size: 25px;
+  letter-spacing: -0.35px;
+  color: var(--blue-primary);
+}
+
+.header-controls {
+  width: auto;
+  margin-left: 8px;
+}
+
+.app-header .layer-switcher {
+  position: static;
+  transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f7f9fb;
+}
+
+.app-header .layer-btn {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7787;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.app-header .layer-btn:hover { background: #edf3f8; color: var(--text); }
+.app-header .layer-btn.active { background: var(--blue-primary); color: #fff; }
+.app-header .layer-btn svg { width: 15px; height: 15px; }
+
+.header-search { max-width: 360px; }
+.search-input {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-radius: 8px;
+  background: #f7f9fb;
+  border-color: var(--border);
+}
+
+.header-right { gap: 8px; }
+.lang-toggle-container {
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f7f9fb;
+}
+.lang-btn {
+  min-height: 28px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  color: #6b7787;
+  font-weight: 700;
+}
+.lang-btn.active { background: var(--blue-primary); }
+
+.sync-status {
+  padding: 5px 10px;
+  border-color: #f6cdcf;
+  background: #fdeced;
+}
+.sync-text { color: #c8383d; }
+.sync-dot { background: #c8383d; }
+
+.icon-btn-top {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9fb;
+  color: var(--text-secondary);
+}
+.icon-btn-top:hover { background: #edf3f8; color: var(--text); }
+
+.user-pill {
+  padding: 3px 12px 3px 3px;
+  border: 1px solid var(--border);
+  background: #f7f9fb;
+}
+.user-avatar { width: 30px; height: 30px; }
+.user-name { color: var(--text); opacity: 1; }
+
+/* Dashboard layout refresh: low-contrast demonstration strip */
+.demo-data-banner {
+  justify-content: flex-start;
+  padding: 0 24px;
+  background: #f7f9fb;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.demo-data-banner::before {
+  content: 'i';
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 7px;
+  border: 1px solid #aeb9c6;
+  border-radius: 50%;
+  color: #7b8797;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 /* ══════════════════════════════════════════════════════════════
