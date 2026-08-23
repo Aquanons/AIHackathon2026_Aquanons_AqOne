@@ -42,6 +42,7 @@
   var squallLayer = ns.squallLayer;
   var driftLayer = ns.driftLayer;
   var dangerZoneLayer = ns.dangerZoneLayer;
+  var showToast = ns.showToast;
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
@@ -97,7 +98,6 @@
     return html;
   }
 
-  // ===== GATEWAY MARKERS =====
 
   // ===== GATEWAY MARKERS =====
   shoreStations.forEach(s => {
@@ -110,7 +110,6 @@
     gatewayLayer.addLayer(marker);
   });
 
-  // ===== BUOY MARKERS =====
 
   // ===== BUOY MARKERS =====
   initialBuoys.forEach(b => {
@@ -134,7 +133,6 @@
     buoyLayer.addLayer(marker);
   });
 
-  // ===== COVERAGE CIRCLES =====
 
   // ===== COVERAGE CIRCLES =====
   // Two layers per buoy. The large LoRa rings overlap into a continuous relay
@@ -181,7 +179,6 @@
     }, 2500);
   }
 
-  // ===== MESH NETWORK =====
 
   // ===== MESH NETWORK =====
   var meshPolylines = [];
@@ -256,7 +253,6 @@
     meshDot.setLatLng(meshPath[dotIdx]);
   }, 60);
 
-  // ===== INCIDENT MARKERS =====
 
   // ===== INCIDENT MARKERS =====
   const incidentDrawerData = [
@@ -446,7 +442,6 @@
     }
   }
 
-  // ===== BOUNDARY =====
 
   // ===== BOUNDARY =====
   const boundaryPoly = L.polygon(opsBoundary, {
@@ -472,7 +467,6 @@
   dangerZoneLayer.addTo(map);
   refreshDangerZones();
 
-  // ===== PIN TOOL (local-only, no backend dependency) =====
 
   // ===== PIN TOOL (local-only, no backend dependency) =====
   let pinModeActive = false;
@@ -590,7 +584,6 @@
     panBtn.classList.remove('active');
   }
 
-  // ===== MEASURE TOOL =====
 
   // ===== MEASURE TOOL =====
   const MEASURE_COLOR   = '#2ecc71';
@@ -783,7 +776,6 @@
     }
   });
 
-  // ===== LAYER SWITCHER =====
 
   // ===== LAYER SWITCHER =====
   function switchLayer(name) {
@@ -802,7 +794,6 @@
     btn.addEventListener('click', () => switchLayer(btn.dataset.layer));
   });
 
-  // ===== RAIL PANEL SYSTEM =====
 
   // ===== RAIL PANEL SYSTEM =====
   const toolPanelCard  = document.getElementById('tool-panel-card');
@@ -813,7 +804,6 @@
 
   let activePanel = null;
 
-  // ===== TOOLBOX SCROLL OVERFLOW =====
 
   // ===== TOOLBOX SCROLL OVERFLOW =====
   (function initToolboxScroll() {
@@ -953,7 +943,6 @@
     L.DomEvent.stopPropagation(e);
   });
 
-  // ===== TOGGLE LAYERS =====
 
   // ===== TOGGLE LAYERS =====
   function toggleLayer(checkboxId, layer) {
@@ -983,7 +972,6 @@
     });
   }
 
-  // ===== STATS PANEL =====
 
   // ===== STATS PANEL =====
   const statsWidget = document.getElementById('stats-widget');
@@ -1014,7 +1002,6 @@
     });
   }
 
-  // ===== LEGEND =====
 
   // ===== LEGEND =====
   const legendCard = document.querySelector('.map-legend');
@@ -1029,7 +1016,6 @@
     });
   }
 
-  // ===== TAB SWITCHING =====
 
   // ===== TAB SWITCHING =====
   const statsTabs = document.querySelectorAll('.stats-tab');
@@ -1045,7 +1031,6 @@
     });
   });
 
-  // ===== VESSEL DATA (phone–buoy contact events) =====
 
   // ===== VESSEL DATA (phone–buoy contact events) =====
   const vessels = [
@@ -1161,7 +1146,6 @@
   const overdueCount = vessels.filter(v => v.status === 'overdue').length;
   document.getElementById('badge-vessels').textContent = overdueCount;
 
-  // ===== ALERT DATA (confidence-scored, escalation ladder) =====
 
   // ===== ALERT DATA (confidence-scored, escalation ladder) =====
   const alertData = [
@@ -1298,7 +1282,6 @@
     renderAlerts();
   }
 
-  // ===== LIVE SOS FEED =====
 
   // ===== LIVE SOS FEED =====
   //
@@ -1315,7 +1298,6 @@
   let liveSosFirstLoad = true;
   let knownSosIds = Object.create(null);
 
-  // ===== FEED FRESHNESS (LIVE / STALE / OFFLINE) =====
 
   // ===== FEED FRESHNESS (LIVE / STALE / OFFLINE) =====
   //
@@ -1518,7 +1500,6 @@
   loadActiveSos();
   setInterval(loadActiveSos, LIVE_SOS_POLL_MS);
 
-  // ===== SAR METRICS TAB =====
 
   // ===== SAR METRICS TAB =====
   // SAR metrics come from the evaluation scripts via /api/ai/metrics. There is
@@ -1641,7 +1622,6 @@
   loadSarMetrics();
   document.getElementById('badge-sar').textContent = incidentDrawerData.filter(function (d) { return d.alertType === 'overdue' || d.alertType === 'squall'; }).length;
 
-  // ===== INCIDENT DRAWER (scored alert / escalation ladder) =====
 
   // ===== INCIDENT DRAWER (scored alert / escalation ladder) =====
   const sosDrawer          = document.getElementById('sos-drawer');
@@ -1762,7 +1742,6 @@
     }
   });
 
-  // ===== ACKNOWLEDGE WITH ETA =====
 
   // ===== ACKNOWLEDGE WITH ETA =====
   //
@@ -1952,7 +1931,6 @@
     sosBroadcastMsg.textContent = 'Silent check-in request queued at surrounding buoys \u2014 awaiting next contact';
   });
 
-  // ===== INCIDENT FEED =====
 
   // ===== INCIDENT FEED =====
   function renderIncidentFeed() {
@@ -1988,7 +1966,6 @@
   }
   renderIncidentFeed();
 
-  // ===== BUOY HEALTH MONITOR =====
 
   // ===== BUOY HEALTH MONITOR =====
   const buoyMonitorData = initialBuoys.map(function (b) {
@@ -2129,7 +2106,6 @@
   updateBuoySync();
   setInterval(updateBuoySync, 30000);
 
-  // ===== VIEWPORT-BASED STATS =====
 
   // ===== VIEWPORT-BASED STATS =====
   function updateStats() {
@@ -2152,7 +2128,6 @@
   map.on('moveend', updateStats);
   map.on('zoomend', updateStats);
 
-  // ===== COORDINATES =====
 
   // ===== COORDINATES =====
   function formatCoord(val, pos, neg) {
@@ -2171,7 +2146,6 @@
     document.getElementById('coords-zoom').textContent = 'Zoom: ' + map.getZoom();
   });
 
-  // ===== HOME / RECENTER =====
 
   // ===== HOME / RECENTER =====
   const compassWidget = document.getElementById('compass-widget');
@@ -2180,7 +2154,6 @@
     map.setView(OPS_CENTER, OPS_ZOOM);
   });
 
-  // ===== FULLSCREEN =====
 
   // ===== FULLSCREEN =====
   document.getElementById('btn-fullscreen').addEventListener('click', function () {
@@ -2191,7 +2164,6 @@
     }
   });
 
-  // ===== CENTER ON REGION =====
 
   // ===== CENTER ON REGION =====
   document.getElementById('btn-center-aklan').addEventListener('click', function () {
@@ -2199,7 +2171,6 @@
     if (activePanel) closePanel();
   });
 
-  // ===== EXPORT =====
 
   // ===== EXPORT =====
   document.getElementById('btn-export').addEventListener('click', function () {
@@ -2220,7 +2191,6 @@
     URL.revokeObjectURL(url);
   });
 
-  // ===== AI OPERATIONS =====
 
   // ===== AI OPERATIONS =====
   var aiContoursLayer = L.layerGroup().addTo(map);
@@ -2797,7 +2767,6 @@
 
   initAIOperations();
 
-  // ===== EXIT LOADING =====
 
   // ===== EXIT LOADING =====
   window.addEventListener('load', function () {
@@ -2806,7 +2775,6 @@
     }, 800);
   });
 
-  // ===== USER PROFILE PILL =====
 
   // ===== USER PROFILE PILL =====
   var userProfilePill = document.getElementById('user-profile');
@@ -2817,7 +2785,6 @@
     });
   }
 
-  // ===== EXPORT =====
 
   // ===== EXPORT =====
   const btnExport = document.getElementById('btn-export');
@@ -2841,7 +2808,6 @@
     });
   }
 
-  // ===== EXIT LOADING =====
 
   // ===== EXIT LOADING =====
   function hideLoadingOverlay() {
@@ -2861,7 +2827,6 @@
   }
   setTimeout(hideLoadingOverlay, 1500);
 
-  // ===== THEME TOGGLE (shared with profile.html) =====
 
   // ===== THEME TOGGLE (shared with profile.html) =====
   // Reads BOTH storage keys used by profile.js ('aqone_dark_mode') and
@@ -2919,7 +2884,6 @@
     }
   })();
 
-  // ===== LANGUAGE TRANSLATIONS (EN / AKL) =====
 
   // ===== LANGUAGE TRANSLATIONS (EN / AKL) =====
   (function () {
@@ -3119,7 +3083,6 @@
     applyLanguage(savedLang);
   })();
 
-  // ===== PROFILE PAGE: TABS, SAVE HANDLERS, LOGOUT (from profile.html) =====
 
   // ===== PROFILE PAGE: TABS, SAVE HANDLERS, LOGOUT (from profile.html) =====
   (function () {
@@ -3211,7 +3174,6 @@
     if (statAlertsAck) statAlertsAck.textContent = '34';
   })();
 
-  // ===== KEYBOARD SHORTCUTS =====
 
   // ===== KEYBOARD SHORTCUTS =====
   document.addEventListener('keydown', function (e) {
@@ -3251,7 +3213,6 @@
 
   updateStats();
 
-  // ===== WEATHER =====
 
   // ===== WEATHER =====
   var wcBody = document.getElementById('wc-body');
@@ -3619,7 +3580,6 @@
     if (!document.hidden) fetchWeatherData();
   });
 
-  // ===== EMERGENCY CONTACTS MODAL =====
 
   // ===== EMERGENCY CONTACTS MODAL =====
   const emergencyOverlay = document.getElementById('emergency-modal-overlay');
@@ -3654,7 +3614,6 @@
     });
   });
 
-  // ===== ADVISORY PANEL =====
 
   // ===== ADVISORY PANEL =====
   var advisoryPanelClose = document.getElementById('advisory-panel-close');
@@ -3891,7 +3850,6 @@
 
    renderAdvisoryList();
 
-   // ===== SEA CONDITION STATUS =====
 
    // ===== SEA CONDITION STATUS =====
    var seaConditionCurrent = document.getElementById('sea-condition-current');
@@ -4005,25 +3963,6 @@
    // than kept in sync by hand: updateSyncStatus() already writes
    // .banner-time every second from the one real timestamp
    // (lastSosSuccessMs), so a second writer here could only drift from it.
-
-   // ===== TOAST =====
-
-   // ===== TOAST =====
-   function showToast(title, msg, isError) {
-     var container = document.getElementById('toast-container');
-     var toast = document.createElement('div');
-     toast.className = 'toast';
-     if (isError) toast.classList.add('toast-error');
-     // title/msg can carry server-provided SOS text (boat name, position) -
-     // see the loadActiveSos() call site - so both must be escaped.
-     toast.innerHTML = '<div class="toast-title">' + escapeHtml(title) + '</div><div class="toast-msg">' + escapeHtml(msg) + '</div>';
-     container.appendChild(toast);
-     setTimeout(function () {
-       toast.classList.add('toast-leave');
-       setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
-     }, 4000);
-   }
-
 
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

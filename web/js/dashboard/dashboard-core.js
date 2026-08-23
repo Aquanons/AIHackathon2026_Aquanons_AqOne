@@ -39,7 +39,6 @@
       : { text: 'DEMO', cssClass: 'alert-demo-badge' };
   };
 
-  // ===== CONFIG =====
 
   // ===== CONFIG =====
   // New Washington, Aklan municipal centre (PhilAtlas: 11.6473 N, 122.4356 E).
@@ -67,7 +66,6 @@
 
   const PIN_POLL_INTERVAL_MS = 15000;
 
-  // ===== API + AUTH =====
 
   // ===== API + AUTH =====
   // API_BASE was previously referenced but never declared in this file - the
@@ -120,7 +118,6 @@
     return;
   }
 
-  // ===== CURRENT USER =====
 
   // ===== CURRENT USER =====
   // Populated at login. Falls back to the token-less placeholder only if the
@@ -136,7 +133,6 @@
     return { id: 'unknown', name: 'Operator' };
   })();
 
-  // ===== USER COLOR HASH =====
 
   // ===== USER COLOR HASH =====
   const PIN_PALETTE = [
@@ -155,7 +151,6 @@
 
   const CURRENT_USER_COLOR = hashUserId(CURRENT_USER.id);
 
-  // ===== SAMPLE DATA =====
 
   // ===== SAMPLE DATA =====
   // Shore gateways (coastal barangay / BFAR / PCG stations) — LoRa mesh exit to backend
@@ -239,7 +234,6 @@
     [11.7223, 122.4061], [11.6703, 122.4157]
   ];
 
-  // ===== MAP INIT =====
 
   // ===== MAP INIT =====
   const map = L.map('map', {
@@ -262,7 +256,6 @@
   let currentBase = 'streets';
   tileLayers.streets.addTo(map);
 
-  // ===== LAYER GROUPS =====
 
   // ===== LAYER GROUPS =====
   const gatewayLayer   = L.layerGroup();
@@ -284,7 +277,24 @@
   map.getPane('aiSquallPane').style.zIndex = 450;
   const dangerZoneLayer = L.layerGroup();
 
-  // ===== MARKER CREATION =====
+
+   // ===== TOAST =====
+   function showToast(title, msg, isError) {
+     var container = document.getElementById('toast-container');
+     var toast = document.createElement('div');
+     toast.className = 'toast';
+     if (isError) toast.classList.add('toast-error');
+     // title/msg can carry server-provided SOS text (boat name, position) -
+     // see the loadActiveSos() call site - so both must be escaped.
+     toast.innerHTML = '<div class="toast-title">' + escapeHtml(title) + '</div><div class="toast-msg">' + escapeHtml(msg) + '</div>';
+     container.appendChild(toast);
+     setTimeout(function () {
+       toast.classList.add('toast-leave');
+       setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+     }, 4000);
+   }
+
+
   ns.ready = true;  ns.dashboardUtils = dashboardUtils;
   ns.escapeHtml = escapeHtml;
   ns.classifyFreshness = classifyFreshness;
@@ -326,5 +336,6 @@
   ns.squallLayer = squallLayer;
   ns.driftLayer = driftLayer;
   ns.dangerZoneLayer = dangerZoneLayer;
+  ns.showToast = showToast;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});
