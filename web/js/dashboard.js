@@ -1,66 +1,16 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
-  var pinModeActive = ns.pinModeActive;
-  var panModeActive = ns.panModeActive;
-  var pinBtn = ns.pinBtn;
-  var panBtn = ns.panBtn;
-  var mapEl = ns.mapEl;
-  var pinMarkers = ns.pinMarkers;
-  var relativeTime = ns.relativeTime;
-  var createPinIcon = ns.createPinIcon;
-  var dropLocalPin = ns.dropLocalPin;
-  var activatePinMode = ns.activatePinMode;
-  var deactivatePinMode = ns.deactivatePinMode;
-  var activatePanMode = ns.activatePanMode;
-  var deactivatePanMode = ns.deactivatePanMode;
-  var MEASURE_COLOR = ns.MEASURE_COLOR;
-  var MEASURE_PREVIEW = ns.MEASURE_PREVIEW;
-  var haversineKm = ns.haversineKm;
-  var fmtKm = ns.fmtKm;
-  var measureActive = ns.measureActive;
-  var measureFinished = ns.measureFinished;
-  var measurePts = ns.measurePts;
-  var measureLayer = ns.measureLayer;
-  var mPolyline = ns.mPolyline;
-  var mPreview = ns.mPreview;
-  var mTooltips = ns.mTooltips;
-  var mVertices = ns.mVertices;
-  var measureBtn = ns.measureBtn;
-  var measureHud = ns.measureHud;
-  var hudTotal = ns.hudTotal;
-  var panelTotal = ns.panelTotal;
-  var panelCount = ns.panelCount;
-  var btnFinish = ns.btnFinish;
-  var btnClear = ns.btnClear;
-  var mDblClickGuard = ns.mDblClickGuard;
-  var measureUpdateUI = ns.measureUpdateUI;
-  var measureAddVertexMarker = ns.measureAddVertexMarker;
-  var measureAddSegmentLabel = ns.measureAddSegmentLabel;
-  var measureRedrawPolyline = ns.measureRedrawPolyline;
-  var measureClearLabels = ns.measureClearLabels;
-  var measureClearVertices = ns.measureClearVertices;
-  var measureRebuildLabels = ns.measureRebuildLabels;
-  var measureAddPoint = ns.measureAddPoint;
-  var measureClearPreview = ns.measureClearPreview;
-  var measureUpdatePreview = ns.measureUpdatePreview;
-  var measureClearAll = ns.measureClearAll;
-  var measureFinish = ns.measureFinish;
-  var activateMeasureMode = ns.activateMeasureMode;
-  var deactivateMeasureMode = ns.deactivateMeasureMode;
-  var onMeasureMouseMove = ns.onMeasureMouseMove;
-  var switchLayer = ns.switchLayer;
-  var toolPanelCard = ns.toolPanelCard;
-  var toolPanelTitle = ns.toolPanelTitle;
-  var railBtns = ns.railBtns;
-  var panelContents = ns.panelContents;
-  var panelCloseBtns = ns.panelCloseBtns;
-  var activePanel = ns.activePanel;
-  var PANEL_TITLES = ns.PANEL_TITLES;
-  var openPanel = ns.openPanel;
-  var closePanel = ns.closePanel;
-  var toggleLayer = ns.toggleLayer;
-  var dangerZoneRefresh = ns.dangerZoneRefresh;
+  var statsWidget = ns.statsWidget;
+  var statsMinimizeBtn = ns.statsMinimizeBtn;
+  var statsBody = ns.statsBody;
+  var statsMinimized = ns.statsMinimized;
+  var statAlertsCard = ns.statAlertsCard;
+  var legendCard = ns.legendCard;
+  var legendToggle = ns.legendToggle;
+  var legendCollapsed = ns.legendCollapsed;
+  var statsTabs = ns.statsTabs;
+  var tabContents = ns.tabContents;
 
   // ===== SHARED HELPERS (web/js/dashboard-utils.js) =====
   // Loaded before this script in dashboard.html. The inline fallback below
@@ -749,63 +699,509 @@
   refreshDangerZones();
 
 
-  // ===== STATS PANEL =====
-  const statsWidget = document.getElementById('stats-widget');
-  const statsMinimizeBtn = document.getElementById('stats-minimize');
-  const statsBody = document.getElementById('stats-body');
-  let statsMinimized = false;
+  // ===== PIN TOOL (local-only, no backend dependency) =====
+  let pinModeActive = false;
+  let panModeActive = true;
+  const pinBtn = document.getElementById('rail-btn-pin');
+  const panBtn  = document.getElementById('rail-btn-pan');
+  const mapEl  = document.getElementById('map');
 
-  if (statsMinimizeBtn) {
-    statsMinimizeBtn.addEventListener('click', () => {
-      statsMinimized = !statsMinimized;
-      if (statsWidget) statsWidget.classList.toggle('minimized', statsMinimized);
-      statsMinimizeBtn.innerHTML = statsMinimized ? '+' : '&minus;';
+  const pinMarkers = {};
+
+  function relativeTime(date) {
+    const secs = Math.floor((Date.now() - date) / 1000);
+    if (secs < 10)  return 'just now';
+    if (secs < 60)  return secs + ' secs ago';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60)  return mins + ' min' + (mins === 1 ? '' : 's') + ' ago';
+    const hrs = Math.floor(mins / 60);
+    if (hrs  < 24)  return hrs  + ' hr'  + (hrs  === 1 ? '' : 's') + ' ago';
+    const days = Math.floor(hrs / 24);
+    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  }
+
+  function createPinIcon(color) {
+    return L.divIcon({
+      className: 'user-pin-marker',
+      html: `<div class="user-pin-dot" style="background:${color}"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      popupAnchor: [0, -12]
     });
   }
 
-  // Active alerts card click
-  const statAlertsCard = document.querySelector('.stat-card.stat-alerts');
-  if (statAlertsCard) {
-    statAlertsCard.style.cursor = 'pointer';
-    statAlertsCard.addEventListener('click', function() {
-      statsTabs.forEach(t => t.classList.remove('active'));
-      tabContents.forEach(tc => tc.classList.remove('active'));
-      const alertsTab = document.querySelector('.stats-tab[data-tab="alerts"]');
-      const alertsTabContent = document.getElementById('tab-alerts');
-      if (alertsTab) alertsTab.classList.add('active');
-      if (alertsTabContent) alertsTabContent.classList.add('active');
-      if (statsMinimized && statsWidget) { statsMinimized = false; statsWidget.classList.remove('minimized'); if (statsMinimizeBtn) statsMinimizeBtn.innerHTML = '&minus;'; }
+  function dropLocalPin(latlng) {
+    const id = 'local-' + Date.now();
+    const color = CURRENT_USER_COLOR;
+    const createdAt = Date.now();
+    const popupHtml =
+      `<div class="popup-title">
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px;border:2px solid rgba(255,255,255,0.7);"></span>${CURRENT_USER.name}
+      </div>
+      <div class="popup-row"><span>Pinned</span><span>just now</span></div>
+      <div class="popup-row"><span>Lat</span><span>${latlng.lat.toFixed(5)}</span></div>
+      <div class="popup-row"><span>Lng</span><span>${latlng.lng.toFixed(5)}</span></div>
+      <div class="pin-popup-footer" id="pin-footer-${id}">
+        <button class="pin-delete-btn" data-pin-id="${id}" data-action="delete-init">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/>
+            <path d="M9 6V4h6v2"/>
+          </svg>
+          Delete
+        </button>
+      </div>`;
+
+    const marker = L.marker([latlng.lat, latlng.lng], { icon: createPinIcon(color) });
+    marker.bindPopup(popupHtml);
+
+    marker.on('popupopen', function () {
+      const container = marker.getPopup().getElement();
+      if (!container) return;
+      container.addEventListener('click', function handleLocalDelete(e) {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const footer = container.querySelector(`#pin-footer-${id}`);
+        if (btn.dataset.action === 'delete-init') {
+          footer.innerHTML =
+            `<div class="pin-confirm-row">
+               <span class="pin-confirm-label">Delete this pin?</span>
+               <button class="pin-confirm-yes" data-action="delete-confirm">Yes</button>
+               <button class="pin-confirm-no"  data-action="delete-cancel">No</button>
+             </div>`;
+          marker.getPopup().update();
+        }
+        if (btn.dataset.action === 'delete-confirm') {
+          pinLayer.removeLayer(marker);
+          delete pinMarkers[id];
+        }
+        if (btn.dataset.action === 'delete-cancel') {
+          footer.innerHTML =
+            `<button class="pin-delete-btn" data-pin-id="${id}" data-action="delete-init">Delete</button>`;
+          marker.getPopup().update();
+        }
+      });
     });
+
+    pinLayer.addLayer(marker);
+    pinMarkers[id] = marker;
+    marker.openPopup();
+    void createdAt;
+    return marker;
+  }
+
+  function activatePinMode() {
+    pinModeActive = true;
+    pinBtn.classList.add('pin-mode-active');
+    mapEl.classList.add('pin-mode');
+    deactivatePanMode();
+    if (activePanel) closePanel();
+  }
+
+  function deactivatePinMode() {
+    pinModeActive = false;
+    pinBtn.classList.remove('pin-mode-active');
+    mapEl.classList.remove('pin-mode');
+  }
+
+  function activatePanMode() {
+    panModeActive = true;
+    panBtn.classList.add('active');
+  }
+
+  function deactivatePanMode() {
+    panModeActive = false;
+    panBtn.classList.remove('active');
   }
 
 
-  // ===== LEGEND =====
-  const legendCard = document.querySelector('.map-legend');
-  const legendToggle = document.getElementById('legend-toggle');
-  let legendCollapsed = false;
+  // ===== MEASURE TOOL =====
+  const MEASURE_COLOR   = '#2ecc71';
+  const MEASURE_PREVIEW = 'rgba(46,204,113,0.55)';
 
-  if (legendToggle) {
-    legendToggle.addEventListener('click', () => {
-      legendCollapsed = !legendCollapsed;
-      if (legendCard) legendCard.classList.toggle('collapsed', legendCollapsed);
-      legendToggle.innerHTML = legendCollapsed ? '+' : '&minus;';
+  function haversineKm(a, b) {
+    const R = 6371;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLng = (b.lng - a.lng) * Math.PI / 180;
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLng = Math.sin(dLng / 2);
+    const c = sinDLat * sinDLat +
+              Math.cos(a.lat * Math.PI / 180) *
+              Math.cos(b.lat * Math.PI / 180) *
+              sinDLng * sinDLng;
+    return R * 2 * Math.atan2(Math.sqrt(c), Math.sqrt(1 - c));
+  }
+
+  function fmtKm(km) { return km.toFixed(3) + ' km'; }
+
+  let measureActive   = false;
+  let measureFinished = false;
+  const measurePts    = [];
+  const measureLayer  = L.layerGroup().addTo(map);
+
+  let mPolyline   = null;
+  let mPreview    = null;
+  let mTooltips   = [];
+  let mVertices   = [];
+
+  const measureBtn  = document.getElementById('rail-btn-measure');
+  const measureHud  = document.getElementById('measure-hud');
+  const hudTotal    = document.getElementById('measure-hud-total');
+  const panelTotal  = document.getElementById('measure-total');
+  const panelCount  = document.getElementById('measure-point-count');
+  const btnFinish   = document.getElementById('btn-measure-finish');
+  const btnClear    = document.getElementById('btn-measure-clear');
+
+  let mDblClickGuard = false;
+
+  function measureUpdateUI() {
+    const n   = measurePts.length;
+    let total = 0;
+    for (let i = 1; i < n; i++) total += haversineKm(measurePts[i - 1], measurePts[i]);
+    const fmt = fmtKm(total);
+
+    panelTotal.textContent = fmt;
+    hudTotal.textContent   = fmt;
+    panelCount.textContent = n + (n === 1 ? ' pt' : ' pts');
+
+    btnFinish.disabled = n < 2 || measureFinished;
+    btnClear.disabled  = n === 0;
+  }
+
+  function measureAddVertexMarker(latlng, isFirst) {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="measure-vertex${isFirst ? ' measure-vertex-first' : ''}"></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5]
+    });
+    const m = L.marker(latlng, { icon, interactive: false, zIndexOffset: 500 });
+    measureLayer.addLayer(m);
+    mVertices.push(m);
+  }
+
+  function measureAddSegmentLabel(a, b, distKm) {
+    const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+    const tt  = L.tooltip({
+      permanent: true,
+      direction: 'center',
+      offset: [0, 0],
+      className: 'measure-label',
+      interactive: false
+    })
+      .setLatLng(mid)
+      .setContent(fmtKm(distKm))
+      .addTo(map);
+    mTooltips.push(tt);
+  }
+
+  function measureRedrawPolyline() {
+    if (mPolyline) { measureLayer.removeLayer(mPolyline); mPolyline = null; }
+    if (measurePts.length < 2) return;
+    mPolyline = L.polyline(measurePts, {
+      color: MEASURE_COLOR,
+      weight: 3,
+      opacity: 0.9,
+      dashArray: measureFinished ? null : '8 5',
+      lineCap: 'round',
+      lineJoin: 'round'
+    });
+    measureLayer.addLayer(mPolyline);
+  }
+
+  function measureClearLabels() {
+    mTooltips.forEach(t => map.removeLayer(t));
+    mTooltips = [];
+  }
+
+  function measureClearVertices() {
+    mVertices.forEach(m => measureLayer.removeLayer(m));
+    mVertices = [];
+  }
+
+  function measureRebuildLabels() {
+    measureClearLabels();
+    for (let i = 1; i < measurePts.length; i++) {
+      measureAddSegmentLabel(measurePts[i - 1], measurePts[i], haversineKm(measurePts[i - 1], measurePts[i]));
+    }
+  }
+
+  function measureAddPoint(latlng) {
+    if (measureFinished) return;
+    const isFirst = measurePts.length === 0;
+    measurePts.push(latlng);
+    measureAddVertexMarker(latlng, isFirst);
+    if (measurePts.length >= 2) {
+      measureRebuildLabels();
+    }
+    measureRedrawPolyline();
+    measureUpdateUI();
+  }
+
+  function measureClearPreview() {
+    if (mPreview) { measureLayer.removeLayer(mPreview); mPreview = null; }
+  }
+
+  function measureUpdatePreview(latlng) {
+    if (!measureActive || measureFinished || measurePts.length === 0) { measureClearPreview(); return; }
+    const last = measurePts[measurePts.length - 1];
+    measureClearPreview();
+    mPreview = L.polyline([last, latlng], {
+      color: MEASURE_PREVIEW,
+      weight: 2,
+      dashArray: '5 6',
+      interactive: false
+    });
+    measureLayer.addLayer(mPreview);
+  }
+
+  function measureClearAll() {
+    measurePts.length = 0;
+    measureFinished   = false;
+    measureClearPreview();
+    measureClearLabels();
+    measureClearVertices();
+    if (mPolyline) { measureLayer.removeLayer(mPolyline); mPolyline = null; }
+    measureUpdateUI();
+  }
+
+  function measureFinish() {
+    if (measurePts.length < 2 || measureFinished) return;
+    measureFinished = true;
+    measureClearPreview();
+    measureRedrawPolyline();
+    measureUpdateUI();
+    map.off('mousemove', onMeasureMouseMove);
+  }
+
+  function activateMeasureMode() {
+    measureActive = true;
+    measureFinished = false;
+    measureBtn.classList.add('measure-mode-active');
+    mapEl.classList.add('measure-mode');
+    measureHud.classList.add('visible');
+    deactivatePanMode();
+    map.on('mousemove', onMeasureMouseMove);
+    measureUpdateUI();
+  }
+
+  function deactivateMeasureMode() {
+    measureActive = false;
+    measureBtn.classList.remove('measure-mode-active');
+    mapEl.classList.remove('measure-mode');
+    measureHud.classList.remove('visible');
+    measureClearPreview();
+    map.off('mousemove', onMeasureMouseMove);
+  }
+
+  function onMeasureMouseMove(e) {
+    measureUpdatePreview(e.latlng);
+  }
+
+  btnFinish.addEventListener('click', measureFinish);
+  btnClear.addEventListener('click', () => {
+    measureClearAll();
+    if (measureActive) {
+      map.on('mousemove', onMeasureMouseMove);
+    }
+  });
+
+
+  // ===== LAYER SWITCHER =====
+  function switchLayer(name) {
+    if (currentBase === name) return;
+    map.removeLayer(tileLayers[currentBase]);
+    if (currentBase === 'hybrid') map.removeLayer(tileLayers.hybridLabels);
+    tileLayers[name].addTo(map);
+    if (name === 'hybrid') tileLayers.hybridLabels.addTo(map);
+    currentBase = name;
+    document.querySelectorAll('.layer-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.layer === name);
     });
   }
 
+  document.querySelectorAll('.layer-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchLayer(btn.dataset.layer));
+  });
 
-  // ===== TAB SWITCHING =====
-  const statsTabs = document.querySelectorAll('.stats-tab');
-  const tabContents = document.querySelectorAll('.tab-content');
 
-  statsTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      statsTabs.forEach(t => t.classList.remove('active'));
-      tabContents.forEach(tc => tc.classList.remove('active'));
-      tab.classList.add('active');
-      const targetContent = document.getElementById('tab-' + tab.dataset.tab);
-      if (targetContent) targetContent.classList.add('active');
+  // ===== RAIL PANEL SYSTEM =====
+  const toolPanelCard  = document.getElementById('tool-panel-card');
+  const toolPanelTitle = document.getElementById('tool-panel-title');
+  const railBtns       = document.querySelectorAll('.rail-btn');
+  const panelContents  = document.querySelectorAll('.rail-panel-content');
+  const panelCloseBtns = document.querySelectorAll('.rail-panel-close');
+
+  let activePanel = null;
+
+
+  // ===== TOOLBOX SCROLL OVERFLOW =====
+  (function initToolboxScroll() {
+    var toolboxBody = document.querySelector('.toolbox-body');
+    var toolboxCard = document.querySelector('.toolbox-card');
+    if (!toolboxBody || !toolboxCard) return;
+
+    function checkOverflow() {
+      var hasOverflow = toolboxBody.scrollWidth > toolboxBody.clientWidth + 2;
+      toolboxCard.classList.toggle('has-overflow', hasOverflow);
+    }
+
+    function updateFade() {
+      var atEnd = toolboxBody.scrollLeft + toolboxBody.clientWidth >= toolboxBody.scrollWidth - 4;
+      toolboxCard.classList.toggle('has-overflow', !atEnd && toolboxBody.scrollWidth > toolboxBody.clientWidth + 2);
+    }
+
+    toolboxBody.addEventListener('scroll', updateFade, { passive: true });
+    toolboxBody.addEventListener('wheel', function (e) {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        toolboxBody.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+    window.addEventListener('resize', checkOverflow);
+    checkOverflow();
+  })();
+
+  const PANEL_TITLES = { layers: 'Operational Layers', measure: 'Measure Distance', buoys: 'Buoy Network Health', advisories: 'Maritime Advisories' };
+
+  function openPanel(panelId) {
+    panelContents.forEach(el => el.classList.toggle('active', el.id === 'panel-' + panelId));
+    railBtns.forEach(btn => {
+      if (btn.dataset.panel === 'layers' || btn.dataset.panel === 'buoys' || btn.dataset.panel === 'advisories') {
+        btn.classList.toggle('active', btn.dataset.panel === panelId);
+      }
+    });
+    toolPanelTitle.textContent = PANEL_TITLES[panelId] || 'Tool Panel';
+    toolPanelCard.classList.remove('collapsed');
+    activePanel = panelId;
+    if (panelId === 'advisories') renderAdvisoryList();
+    if (panelId === 'buoys') updateBuoySync();
+  }
+
+  function closePanel() {
+    toolPanelCard.classList.add('collapsed');
+    railBtns.forEach(btn => {
+      if (btn.dataset.panel === 'layers' || btn.dataset.panel === 'buoys' || btn.dataset.panel === 'advisories') btn.classList.remove('active');
+    });
+    if (panModeActive) panBtn.classList.add('active');
+    panelContents.forEach(el => el.classList.remove('active'));
+    activePanel = null;
+  }
+
+  railBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panelId = btn.dataset.panel;
+
+      if (panelId === 'pan') {
+        if (!panModeActive) {
+          if (pinModeActive) { deactivatePinMode(); }
+          if (measureActive) {
+            deactivateMeasureMode();
+            measureClearAll();
+            if (activePanel === 'measure') closePanel();
+          }
+          activatePanMode();
+        }
+        return;
+      }
+
+      if (panelId === 'pin') {
+        if (pinModeActive) {
+          deactivatePinMode();
+          activatePanMode();
+        } else {
+          if (measureActive) {
+            deactivateMeasureMode();
+            measureClearAll();
+            if (activePanel === 'measure') closePanel();
+          }
+          activatePinMode();
+        }
+        return;
+      }
+
+      if (panelId === 'measure') {
+        if (activePanel === 'measure') {
+          closePanel();
+          deactivateMeasureMode();
+          measureClearAll();
+          activatePanMode();
+        } else {
+          if (pinModeActive) { deactivatePinMode(); }
+          openPanel('measure');
+          activateMeasureMode();
+        }
+        return;
+      }
+
+      if (!panelId) return;
+
+      if (activePanel === panelId) {
+        closePanel();
+      } else {
+        openPanel(panelId);
+      }
     });
   });
+
+  panelCloseBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (activePanel === 'measure') { deactivateMeasureMode(); activatePanMode(); }
+      closePanel();
+    });
+  });
+
+  // Map click
+  map.on('click', function (e) {
+    if (mDblClickGuard) return;
+    if (pinModeActive) {
+      dropLocalPin(e.latlng);
+      deactivatePinMode();
+      activatePanMode();
+    } else if (measureActive && !measureFinished) {
+      measureAddPoint(e.latlng);
+    } else if (activePanel && !measureActive) {
+      closePanel();
+    }
+  });
+
+  map.on('dblclick', function (e) {
+    if (!measureActive || measureFinished) return;
+    mDblClickGuard = true;
+    setTimeout(() => { mDblClickGuard = false; }, 300);
+    measureFinish();
+    L.DomEvent.stopPropagation(e);
+  });
+
+
+  // ===== TOGGLE LAYERS =====
+  function toggleLayer(checkboxId, layer) {
+    const el = document.getElementById(checkboxId);
+    if (!el) return;
+    el.addEventListener('change', function () {
+      if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
+    });
+  }
+
+  toggleLayer('toggle-gateways',  gatewayLayer);
+  toggleLayer('toggle-vessels',   vesselLayer);
+  toggleLayer('toggle-incidents', incidentLayer);
+  toggleLayer('toggle-danger-zones', dangerZoneLayer);
+  toggleLayer('toggle-buoys',     buoyLayer);
+  toggleLayer('toggle-coverage',  coverageLayer);
+  toggleLayer('toggle-mesh',      meshLayer);
+  toggleLayer('toggle-squall',    squallLayer);
+  toggleLayer('toggle-drift',     driftLayer);
+  toggleLayer('toggle-boundary',  boundaryLayer);
+  toggleLayer('toggle-pins',      pinLayer);
+
+  var dangerZoneRefresh = document.getElementById('danger-zone-refresh');
+  if (dangerZoneRefresh) {
+    dangerZoneRefresh.addEventListener('click', function () {
+      refreshDangerZones();
+    });
+  }
 
 
   // ===== VESSEL DATA (phone–buoy contact events) =====
