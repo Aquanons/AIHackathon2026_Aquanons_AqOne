@@ -4902,6 +4902,90 @@ h3.buoy-drawer-title {
   color: #c8383d;
 }
 
+/* Dashboard layout refresh: toolbox and inline tool panel */
+.panel-column {
+  width: var(--panel-w);
+  gap: 10px;
+  padding: 10px 12px 10px 0;
+  background: var(--bg);
+  border-left: 0;
+  scrollbar-color: #c9d3df transparent;
+}
+
+.panel-column::-webkit-scrollbar-thumb { background: #c9d3df; }
+
+.panel-card,
+.stats-widget,
+.weather-conditions-card {
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border);
+  box-shadow: 0 3px 12px rgba(31,42,55,0.05);
+}
+
+.panel-card-header {
+  min-height: 42px;
+  padding: 11px 14px;
+  border-bottom-color: var(--border);
+  color: var(--blue-primary);
+  font-size: 11.5px;
+  letter-spacing: 0.7px;
+}
+
+.panel-card-header svg { color: var(--text-secondary); opacity: 0.75; }
+.panel-card-body { padding: 12px 14px; }
+
+.toolbox-body {
+  overflow: visible;
+  padding: 10px 12px 12px;
+  scrollbar-width: none;
+}
+
+.toolbox-body::-webkit-scrollbar { display: none; }
+.toolbox-button-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 6px;
+  width: auto;
+}
+
+.toolbox-card::after { display: none; }
+
+.rail-btn {
+  min-width: 0;
+  width: 100%;
+  height: 54px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.rail-btn:hover { background: #f7f9fb; color: var(--text); }
+.rail-btn.active { background: #edf5fc; color: var(--blue-primary); border-color: #d9eaf8; }
+.rail-btn.active::after,
+.rail-btn.pin-mode-active::after { bottom: 3px; left: 12px; right: 12px; }
+.rail-btn.pin-mode-active { background: #fff5ea; }
+.rail-label { font-size: 8px; letter-spacing: 0.25px; }
+
+.tool-panel-card { border-radius: var(--radius); }
+.tool-panel-card.collapsed > .panel-card-header { border-bottom: 0; }
+.tool-panel-body { background: #fbfcfd; }
+
+.stats-widget { border-radius: var(--radius); }
+.stats-header { border-bottom-color: var(--border); }
+.stats-tab {
+  padding: 11px 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.stats-tab.active { color: var(--blue-primary); border-bottom-color: var(--blue-primary); }
+.tab-badge.badge-red { background: #fdeced; color: #c8383d; }
+.tab-badge.badge-orange { background: #fff5e5; color: #b7791f; }
+.stats-body { scrollbar-color: #c9d3df transparent; }
+.stats-body::-webkit-scrollbar-thumb { background: #c9d3df; }
+
 /* ══════════════════════════════════════════════════════════════
    ACKNOWLEDGE MODAL — responder ETA capture
    ══════════════════════════════════════════════════════════════ */
