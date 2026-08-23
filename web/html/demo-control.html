@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AqOne Demo Control</title>
+  <style>
+    :root { color-scheme: dark; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #07111f; color: #f8fafc; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px; }
+    h1 { margin-top: 0; font-size: 30px; }
+    section { background: #102238; border: 1px solid #29415d; border-radius: 12px; padding: 18px; margin: 16px 0; }
+    label { display: block; font-weight: 700; margin-bottom: 8px; }
+    input, select, button { box-sizing: border-box; min-height: 48px; border-radius: 8px; border: 1px solid #58718f; font-size: 17px; }
+    input, select { width: 100%; padding: 10px; background: #081729; color: #fff; }
+    button { padding: 10px 16px; background: #1d67d1; color: #fff; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .toolbar, .arc-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .toolbar > *, .arc-controls > * { flex: 1 1 160px; }
+    .status { display: flex; gap: 10px; align-items: center; font-weight: 700; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; background: #ef4444; }
+    .dot.online { background: #22c55e; }
+    #message { min-height: 24px; color: #cbd5e1; }
+    .beat { display: grid; grid-template-columns: 42px 1fr auto auto; gap: 10px; align-items: center; border-top: 1px solid #29415d; padding: 12px 0; }
+    .beat:first-child { border-top: 0; }
+    .beat-number { font-size: 24px; font-weight: 800; color: #93c5fd; }
+    .beat-state { color: #fbbf24; font-weight: 700; }
+    .beat-state.fired { color: #4ade80; }
+    #reset { width: 100%; background: #b91c1c; border-color: #f87171; font-size: 20px; min-height: 62px; }
+    @media (max-width: 560px) { .beat { grid-template-columns: 36px 1fr; } .beat button, .beat-state { grid-column: 2; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AqOne Demo Control</h1>
+    <section>
+      <div class="status"><span id="connection-dot" class="dot"></span><span id="connection">Disconnected</span></div>
+      <p id="message">Enter the demo key, then start a scenario.</p>
+      <label for="demo-key">Demo key</label>
+      <input id="demo-key" type="password" autocomplete="off" placeholder="X-Demo-Key">
+    </section>
+    <section>
+      <div class="toolbar">
+        <button id="start-squall">Start squall fleet</button>
+        <button id="start-clear">Start clear day</button>
+      </div>
+    </section>
+    <section>
+      <div id="beats"></div>
+    </section>
+    <section>
+      <div class="arc-controls">
+        <button id="pause">Pause</button>
+        <button id="step">Step next beat</button>
+        <select id="skip-to" aria-label="Skip to beat"></select>
+        <button id="skip">Fire selected beat</button>
+      </div>
+    </section>
+    <section>
+      <button id="reset">RESET DEMO DATA</button>
+    </section>
+  </main>
+  <script src="/js/demo-control.js"></script>
+</body>
+</html>

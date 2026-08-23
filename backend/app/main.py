@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,13 +9,13 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from app.api.advisories import public_router as public_advisories_router
-from app.api.advisories import router as advisories_router  # <-- ONLY ADDED THIS IMPORT
+from app.api.advisories import router as advisories_router
 from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
+from app.api.demo import router as demo_router
 from app.api.drift import router as drift_router
-from app.api.hotspots import router as hotspots_router
 from app.api.metrics import router as metrics_router
 from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
@@ -67,7 +68,6 @@ app.include_router(spots_router)
 # ingest is: the fisherman app has no account by design, so anything it needs
 # in an emergency cannot sit behind a token. See app/api/public.py.
 app.include_router(public_router)
-app.include_router(hotspots_router)
 # Vessel-device pairing + token lifecycle. Some routes are public
 # (enrollment), others require an operator or vessel-device token per-route.
 app.include_router(vessel_auth_router)
@@ -91,6 +91,9 @@ app.include_router(sea_condition_router, dependencies=_protected)
 app.include_router(metrics_router, dependencies=_protected)
 app.include_router(sos_read_router, dependencies=_protected)
 app.include_router(catch_read_router, dependencies=_protected)
+
+if os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}:
+    app.include_router(demo_router)
 
 
 @app.get('/healthz')
