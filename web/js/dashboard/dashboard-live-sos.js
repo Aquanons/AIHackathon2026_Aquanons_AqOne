@@ -37,6 +37,7 @@
   const syncStatusEl = document.getElementById('sync-status');
   const syncTextEl = document.getElementById('sync-text');
   const bannerTimeEl = document.querySelector('.banner-time');
+  const statsFeedStatusEl = document.getElementById('stats-feed-status');
 
   function updateSyncStatus() {
     const state = classifyFreshness(lastSosSuccessMs, Date.now(), {
@@ -49,6 +50,10 @@
     }
     if (syncTextEl) {
       syncTextEl.textContent = freshnessLabel(state);
+    }
+    if (statsFeedStatusEl) {
+      statsFeedStatusEl.textContent = freshnessLabel(state);
+      statsFeedStatusEl.className = 'metric-status metric-status-feed metric-status-' + state;
     }
     if (syncStatusEl) {
       syncStatusEl.title = lastSosSuccessMs == null
