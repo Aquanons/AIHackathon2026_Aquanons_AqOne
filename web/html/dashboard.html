@@ -168,48 +168,52 @@
 
     <!-- ─── MAP COLUMN (left 68%) ─── -->
     <div class="map-column">
-      <div id="map"></div>
+      <div class="map-card">
+        <!-- AI danger zone scan -->
+        <div class="danger-zone-status" id="danger-zone-status" aria-live="polite">
+          <span class="danger-zone-status-icon">!</span>
+          <span class="danger-zone-status-copy">
+            <strong>Live near-shore danger scan</strong>
+            <span id="danger-zone-status-text">Loading live weather and marine observations...</span>
+            <span class="danger-zone-disclosure">Experimental · Not for navigation</span>
+          </span>
+          <button type="button" class="danger-zone-refresh" id="danger-zone-refresh" title="Recalculate danger zones">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+              <path d="M20 4v7h-7" />
+            </svg>
+          </button>
+        </div>
 
-      <!-- Measure HUD -->
-      <div class="measure-hud" id="measure-hud">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          style="flex-shrink:0">
-          <path d="M3 17l4-8 4 4 4-6 4 5" />
-        </svg>
-        <span id="measure-hud-total">0.000 km</span>
-      </div>
+        <div class="map-stage">
+          <div id="map"></div>
 
-      <!-- Compass / Home button -->
-      <div class="compass-widget" id="compass-widget" title="Reset to Region Center">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
-          <path d="M9 21V12h6v9"/>
-        </svg>
-      </div>
+          <!-- Measure HUD -->
+          <div class="measure-hud" id="measure-hud">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              style="flex-shrink:0">
+              <path d="M3 17l4-8 4 4 4-6 4 5" />
+            </svg>
+            <span id="measure-hud-total">0.000 km</span>
+          </div>
 
-      <!-- Coordinates display -->
-      <div class="coords-display" id="coords-display">
-        <span id="coords-lat">11.7010° N</span>
-        <span class="coords-sep">|</span>
-        <span id="coords-lng">122.3610° E</span>
-        <span class="coords-sep">|</span>
-        <span id="coords-zoom">Zoom: 11</span>
-      </div>
+          <!-- Compass / Home button -->
+          <div class="compass-widget" id="compass-widget" title="Reset to Region Center">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
+              <path d="M9 21V12h6v9"/>
+            </svg>
+          </div>
 
-      <!-- AI danger zone scan (DangerzoneFeature) -->
-      <div class="danger-zone-status" id="danger-zone-status" aria-live="polite">
-        <span class="danger-zone-status-icon">!</span>
-        <span class="danger-zone-status-copy">
-          <strong>Live near-shore danger scan</strong>
-          <span id="danger-zone-status-text">Loading live weather and marine observations...</span>
-          <span class="danger-zone-disclosure">Experimental · Not for navigation</span>
-        </span>
-        <button type="button" class="danger-zone-refresh" id="danger-zone-refresh" title="Recalculate danger zones">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-            <path d="M20 4v7h-7" />
-          </svg>
-        </button>
+          <!-- Coordinates display -->
+          <div class="coords-display" id="coords-display">
+            <span id="coords-lat">11.7010° N</span>
+            <span class="coords-sep">|</span>
+            <span id="coords-lng">122.3610° E</span>
+            <span class="coords-sep">|</span>
+            <span id="coords-zoom">Zoom: 11</span>
+          </div>
+        </div>
       </div>
 
     </div>
