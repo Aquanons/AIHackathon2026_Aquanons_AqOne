@@ -5272,3 +5272,82 @@ h3.buoy-drawer-title {
   font-weight: 800;
   letter-spacing: 0.6px;
 }
+
+[data-theme="dark"] .app-header .layer-switcher,
+[data-theme="dark"] .search-input,
+[data-theme="dark"] .lang-toggle-container,
+[data-theme="dark"] .icon-btn-top,
+[data-theme="dark"] .user-pill,
+[data-theme="dark"] .demo-data-banner,
+[data-theme="dark"] .rail-btn:hover,
+[data-theme="dark"] .tool-panel-body,
+[data-theme="dark"] .ai-trace-card,
+[data-theme="dark"] .ai-drift-select,
+[data-theme="dark"] .ai-meta-line {
+  background: var(--surface-2);
+}
+
+[data-theme="dark"] .app-header .layer-btn:hover,
+[data-theme="dark"] .icon-btn-top:hover {
+  background: var(--border);
+}
+
+[data-theme="dark"] .sync-status,
+[data-theme="dark"] .metric-status-danger,
+[data-theme="dark"] .metric-status-offline,
+[data-theme="dark"] .squall-status.squall-return {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.42);
+}
+
+[data-theme="dark"] .rail-btn.pin-mode-active,
+[data-theme="dark"] .metric-status-watch,
+[data-theme="dark"] .metric-status-stale,
+[data-theme="dark"] .squall-status.squall-watch,
+[data-theme="dark"] .squall-hero {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+[data-theme="dark"] .metric-status,
+[data-theme="dark"] .squall-status {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.38);
+}
+
+[data-theme="dark"] .rail-btn.active {
+  background: rgba(26, 115, 200, 0.24);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+[data-theme="dark"] .tab-badge.badge-red {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+
+[data-theme="dark"] .tab-badge.badge-orange {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+}
+
+[data-theme="dark"] .map-card .danger-zone-refresh {
+  background: var(--surface-2);
+}
+
+[data-theme="dark"] .map-card .danger-zone-refresh:hover {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+[data-theme="dark"] .metric-status.metric-status-danger,
+[data-theme="dark"] .metric-status.metric-status-offline,
+[data-theme="dark"] .squall-status.squall-return {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.42);
+}
+
+[data-theme="dark"] .metric-status.metric-status-watch,
+[data-theme="dark"] .metric-status.metric-status-stale,
+[data-theme="dark"] .squall-status.squall-watch {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.42);
+}
