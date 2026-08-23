@@ -466,8 +466,11 @@ function initHeaderAndActions() {
         logoutBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to log out?')) {
                 showToast('Logging out...', 'info');
+                sessionStorage.removeItem('aqoneToken');
+                sessionStorage.removeItem('aqoneUser');
+                sessionStorage.removeItem('aqoneDemoBypassActive');
                 setTimeout(() => {
-                    window.location.href = 'dashboard.html';
+                    window.location.href = 'login.html';
                 }, 1000);
             }
         });
