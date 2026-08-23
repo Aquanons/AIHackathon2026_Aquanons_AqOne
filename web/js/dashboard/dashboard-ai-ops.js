@@ -64,6 +64,12 @@
     var countEl = document.getElementById('banner-squall-count');
     if (countEl) countEl.textContent = String(returnNow.length);
 
+    var squallStatusEl = document.getElementById('stats-squall-status');
+    if (squallStatusEl) {
+      squallStatusEl.textContent = returnNow.length ? 'RETURN NOW' : (rows.length ? 'WATCH' : 'MONITORING');
+      squallStatusEl.className = 'metric-status metric-status-watch' + (returnNow.length ? ' metric-status-danger' : '');
+    }
+
     var statusEl = document.getElementById('squall-status');
     if (!statusEl) return;
     statusEl.classList.remove('squall-watch', 'squall-return');

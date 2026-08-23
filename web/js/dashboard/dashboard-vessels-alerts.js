@@ -235,7 +235,12 @@
 
   const liveBanner = document.getElementById('live-alert-banner');
   const bannerCountEl = document.getElementById('banner-alert-count');
+  const sosStatusEl = document.getElementById('stats-sos-status');
   if (bannerCountEl) bannerCountEl.textContent = activeAlertCount;
+  if (sosStatusEl) {
+    sosStatusEl.textContent = activeAlertCount ? 'ACTION NEEDED' : 'ALL CLEAR';
+    sosStatusEl.className = 'metric-status metric-status-' + (activeAlertCount ? 'danger' : 'clear');
+  }
   if (liveBanner) liveBanner.classList.toggle('has-alerts', activeAlertCount > 0);
 
   const squallCountEl = document.getElementById('banner-squall-count');
@@ -253,8 +258,13 @@
       return alert.status === 'active';
     }).length;
     const alertBadge = document.getElementById('badge-alerts');
+    const sosStatus = document.getElementById('stats-sos-status');
     if (alertBadge) alertBadge.textContent = activeCount;
     if (bannerCountEl) bannerCountEl.textContent = activeCount;
+    if (sosStatus) {
+      sosStatus.textContent = activeCount ? 'ACTION NEEDED' : 'ALL CLEAR';
+      sosStatus.className = 'metric-status metric-status-' + (activeCount ? 'danger' : 'clear');
+    }
     if (liveBanner) liveBanner.classList.toggle('has-alerts', activeCount > 0);
     renderAlerts();
   }

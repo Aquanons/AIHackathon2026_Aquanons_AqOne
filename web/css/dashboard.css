@@ -4736,6 +4736,103 @@ h3.buoy-drawer-title {
   font-weight: 700;
 }
 
+/* Dashboard layout refresh: three live metric cards */
+:root { --stats-h: 104px; }
+
+.app-body {
+  margin-top: calc(var(--header-h) + var(--banner-h) + var(--demo-banner-h) + var(--stats-h));
+}
+
+.live-alert-banner {
+  top: calc(var(--header-h) + var(--banner-h) + var(--demo-banner-h));
+  height: var(--stats-h);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 24px;
+  background: var(--bg);
+  border: 0;
+  color: var(--text);
+}
+
+.live-alert-banner.has-alerts {
+  background: var(--bg);
+  border: 0;
+  color: var(--text);
+}
+
+.metric-card {
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(31,42,55,0.04);
+}
+
+.metric-card-topline,
+.metric-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.metric-label {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+}
+
+.metric-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border: 1px solid #d4f0de;
+  border-radius: 20px;
+  background: #eefbf2;
+  color: #16a34a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+
+.metric-status-watch {
+  border-color: #f5dfb6;
+  background: #fff8e8;
+  color: #b7791f;
+}
+
+.metric-status-danger,
+.metric-status-offline {
+  border-color: #f6cdcf;
+  background: #fdeced;
+  color: #c8383d;
+}
+
+.metric-status-stale {
+  border-color: #f5dfb6;
+  background: #fff8e8;
+  color: #b7791f;
+}
+
+.metric-value {
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  line-height: 1.05;
+}
+
+.metric-value-time { font-size: 22px; }
+.metric-sparkline { width: 92px; height: 24px; opacity: 0.65; }
+.metric-sparkline path { fill: none; stroke: var(--blue-primary); stroke-width: 2; stroke-linecap: round; }
+.metric-caption { display: block; margin-top: 3px; color: var(--text-dim); font-size: 10px; }
+
 /* ══════════════════════════════════════════════════════════════
    ACKNOWLEDGE MODAL — responder ETA capture
    ══════════════════════════════════════════════════════════════ */
