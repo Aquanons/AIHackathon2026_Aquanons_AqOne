@@ -5,6 +5,7 @@
   var OPS_ZOOM = ns.OPS_ZOOM;
   var shoreStations = ns.shoreStations;
   var initialBuoys = ns.initialBuoys;
+  var vessels = ns.vessels;
   var incidents = ns.incidents;
   var map = ns.map;
   var openPanel = ns.openPanel;

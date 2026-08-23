@@ -296,6 +296,7 @@
    }
 
 
+  ns.ready = true;
   ns.dashboardUtils = dashboardUtils;
   ns.escapeHtml = escapeHtml;
   ns.classifyFreshness = classifyFreshness;

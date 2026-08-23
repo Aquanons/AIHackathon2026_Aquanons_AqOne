@@ -428,7 +428,6 @@
   ns.openAdvisoryModal = openAdvisoryModal;
   ns.closeAdvisoryModal = closeAdvisoryModal;
   ns.renderAdvisoryList = renderAdvisoryList;
-  ns._escHtml = _escHtml;
   ns.closeDeleteModal = closeDeleteModal;
   ns.seaConditionCurrent = seaConditionCurrent;
   ns.seaConditionSetBtn = seaConditionSetBtn;

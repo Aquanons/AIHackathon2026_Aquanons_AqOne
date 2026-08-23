@@ -1,6 +1,7 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
+  var escapeHtml = ns.escapeHtml;
   var authFetch = ns.authFetch;
   var incidents = ns.incidents;
   var incidentDrawerData = ns.incidentDrawerData;
@@ -74,7 +75,7 @@
 
   function renderSarEmpty(message) {
     const list = document.getElementById('sar-list');
-    if (list) list.innerHTML = '<div class="ai-empty-state">' + ns._escHtml(message) + '</div>';
+    if (list) list.innerHTML = '<div class="ai-empty-state">' + escapeHtml(message) + '</div>';
   }
 
   function renderSarMetrics(results) {
