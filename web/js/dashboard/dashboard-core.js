@@ -1,6 +1,8 @@
 (function (ns) {
   'use strict';
 
+  ns.ready = false;
+
 
   // Failsafe: never leave the operator staring at the loading spinner.
   //

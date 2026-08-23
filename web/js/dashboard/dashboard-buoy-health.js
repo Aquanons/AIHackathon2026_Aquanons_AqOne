@@ -10,6 +10,7 @@
   var openPanel = ns.openPanel;
   var closePanel = ns.closePanel;
   var allAlerts = ns.allAlerts;
+  var alertIcon = ns.alertIcon;
 
   // ===== INCIDENT FEED =====
   function renderIncidentFeed() {
