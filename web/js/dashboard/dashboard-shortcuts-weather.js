@@ -13,6 +13,7 @@
   var sosDrawer = ns.sosDrawer;
   var closeSOSDrawer = ns.closeSOSDrawer;
   var updateStats = ns.updateStats;
+  var alertData = ns.alertData;
 
   // ===== KEYBOARD SHORTCUTS =====
   document.addEventListener('keydown', function (e) {
