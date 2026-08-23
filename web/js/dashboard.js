@@ -1,576 +1,752 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
-  var dashboardUtils = ns.dashboardUtils;
-  var escapeHtml = ns.escapeHtml;
-  var classifyFreshness = ns.classifyFreshness;
-  var freshnessLabel = ns.freshnessLabel;
-  var alertBadge = ns.alertBadge;
-  var OPS_CENTER = ns.OPS_CENTER;
-  var OPS_ZOOM = ns.OPS_ZOOM;
-  var TILES = ns.TILES;
-  var PIN_POLL_INTERVAL_MS = ns.PIN_POLL_INTERVAL_MS;
-  var API_BASE = ns.API_BASE;
-  var TOKEN_KEY = ns.TOKEN_KEY;
-  var USER_KEY = ns.USER_KEY;
-  var LOGIN_URL = ns.LOGIN_URL;
-  var getToken = ns.getToken;
-  var clearSession = ns.clearSession;
-  var redirectToLogin = ns.redirectToLogin;
-  var authFetch = ns.authFetch;
-  var CURRENT_USER = ns.CURRENT_USER;
-  var PIN_PALETTE = ns.PIN_PALETTE;
-  var hashUserId = ns.hashUserId;
-  var CURRENT_USER_COLOR = ns.CURRENT_USER_COLOR;
-  var shoreStations = ns.shoreStations;
-  var initialBuoys = ns.initialBuoys;
-  var _metresBetween = ns._metresBetween;
-  var meshLinks = ns.meshLinks;
-  var incidents = ns.incidents;
-  var opsBoundary = ns.opsBoundary;
-  var map = ns.map;
-  var tileLayers = ns.tileLayers;
-  var currentBase = ns.currentBase;
-  var gatewayLayer = ns.gatewayLayer;
-  var incidentLayer = ns.incidentLayer;
-  var buoyLayer = ns.buoyLayer;
-  var boundaryLayer = ns.boundaryLayer;
-  var pinLayer = ns.pinLayer;
-  var vesselLayer = ns.vesselLayer;
-  var coverageLayer = ns.coverageLayer;
-  var meshLayer = ns.meshLayer;
-  var squallLayer = ns.squallLayer;
-  var driftLayer = ns.driftLayer;
-  var dangerZoneLayer = ns.dangerZoneLayer;
-  var showToast = ns.showToast;
-  var createMarkerIcon = ns.createMarkerIcon;
-  var createOverdueIcon = ns.createOverdueIcon;
-  var makePopup = ns.makePopup;
-  var coverageCircles = ns.coverageCircles;
-  var pulseCoverageCircle = ns.pulseCoverageCircle;
-  var meshPolylines = ns.meshPolylines;
-  var findNode = ns.findNode;
-  var gatewayBuoy = ns.gatewayBuoy;
-  var meshPath = ns.meshPath;
-  var meshDot = ns.meshDot;
-  var dotIdx = ns.dotIdx;
-  var meshDotInterval = ns.meshDotInterval;
-  var incidentDrawerData = ns.incidentDrawerData;
-  var incidentMarkers = ns.incidentMarkers;
-  var apiBuoys = ns.apiBuoys;
-  var dangerZoneRequestId = ns.dangerZoneRequestId;
-  var lastDangerZoneResult = ns.lastDangerZoneResult;
-  var dangerZoneCacheKey = ns.dangerZoneCacheKey;
-  var readCachedDangerZoneResult = ns.readCachedDangerZoneResult;
-  var cacheDangerZoneResult = ns.cacheDangerZoneResult;
-  var escapeDangerZoneText = ns.escapeDangerZoneText;
-  var renderDangerZones = ns.renderDangerZones;
-  var refreshDangerZones = ns.refreshDangerZones;
-  var boundaryPoly = ns.boundaryPoly;
+  var pinModeActive = ns.pinModeActive;
+  var panModeActive = ns.panModeActive;
+  var pinBtn = ns.pinBtn;
+  var panBtn = ns.panBtn;
+  var mapEl = ns.mapEl;
+  var pinMarkers = ns.pinMarkers;
+  var relativeTime = ns.relativeTime;
+  var createPinIcon = ns.createPinIcon;
+  var dropLocalPin = ns.dropLocalPin;
+  var activatePinMode = ns.activatePinMode;
+  var deactivatePinMode = ns.deactivatePinMode;
+  var activatePanMode = ns.activatePanMode;
+  var deactivatePanMode = ns.deactivatePanMode;
+  var MEASURE_COLOR = ns.MEASURE_COLOR;
+  var MEASURE_PREVIEW = ns.MEASURE_PREVIEW;
+  var haversineKm = ns.haversineKm;
+  var fmtKm = ns.fmtKm;
+  var measureActive = ns.measureActive;
+  var measureFinished = ns.measureFinished;
+  var measurePts = ns.measurePts;
+  var measureLayer = ns.measureLayer;
+  var mPolyline = ns.mPolyline;
+  var mPreview = ns.mPreview;
+  var mTooltips = ns.mTooltips;
+  var mVertices = ns.mVertices;
+  var measureBtn = ns.measureBtn;
+  var measureHud = ns.measureHud;
+  var hudTotal = ns.hudTotal;
+  var panelTotal = ns.panelTotal;
+  var panelCount = ns.panelCount;
+  var btnFinish = ns.btnFinish;
+  var btnClear = ns.btnClear;
+  var mDblClickGuard = ns.mDblClickGuard;
+  var measureUpdateUI = ns.measureUpdateUI;
+  var measureAddVertexMarker = ns.measureAddVertexMarker;
+  var measureAddSegmentLabel = ns.measureAddSegmentLabel;
+  var measureRedrawPolyline = ns.measureRedrawPolyline;
+  var measureClearLabels = ns.measureClearLabels;
+  var measureClearVertices = ns.measureClearVertices;
+  var measureRebuildLabels = ns.measureRebuildLabels;
+  var measureAddPoint = ns.measureAddPoint;
+  var measureClearPreview = ns.measureClearPreview;
+  var measureUpdatePreview = ns.measureUpdatePreview;
+  var measureClearAll = ns.measureClearAll;
+  var measureFinish = ns.measureFinish;
+  var activateMeasureMode = ns.activateMeasureMode;
+  var deactivateMeasureMode = ns.deactivateMeasureMode;
+  var onMeasureMouseMove = ns.onMeasureMouseMove;
+  var switchLayer = ns.switchLayer;
+  var toolPanelCard = ns.toolPanelCard;
+  var toolPanelTitle = ns.toolPanelTitle;
+  var railBtns = ns.railBtns;
+  var panelContents = ns.panelContents;
+  var panelCloseBtns = ns.panelCloseBtns;
+  var activePanel = ns.activePanel;
+  var PANEL_TITLES = ns.PANEL_TITLES;
+  var openPanel = ns.openPanel;
+  var closePanel = ns.closePanel;
+  var toggleLayer = ns.toggleLayer;
+  var dangerZoneRefresh = ns.dangerZoneRefresh;
 
-  // ===== PIN TOOL (local-only, no backend dependency) =====
-  let pinModeActive = false;
-  let panModeActive = true;
-  const pinBtn = document.getElementById('rail-btn-pin');
-  const panBtn  = document.getElementById('rail-btn-pan');
-  const mapEl  = document.getElementById('map');
+  // ===== SHARED HELPERS (web/js/dashboard-utils.js) =====
+  // Loaded before this script in dashboard.html. The inline fallback below
+  // only runs if that tag failed to load - degrading to "still escapes text
+  // and still reports itself offline" rather than throwing ReferenceErrors
+  // through every call site that follows.
+  var dashboardUtils = window.AqOneDashboardUtils || {
+    escapeHtml: function (value) {
+      if (value == null) return '';
+      return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+    classifyFreshness: function () { return 'offline'; },
+    freshnessLabel: function (state) { return (state || 'offline').toUpperCase(); }
+  };
+  var escapeHtml = dashboardUtils.escapeHtml;
+  var classifyFreshness = dashboardUtils.classifyFreshness;
+  var freshnessLabel = dashboardUtils.freshnessLabel;
+  var alertBadge = dashboardUtils.alertBadge || function (isLive) {
+    return isLive
+      ? { text: 'LIVE', cssClass: 'alert-live-badge' }
+      : { text: 'DEMO', cssClass: 'alert-demo-badge' };
+  };
 
-  const pinMarkers = {};
 
-  function relativeTime(date) {
-    const secs = Math.floor((Date.now() - date) / 1000);
-    if (secs < 10)  return 'just now';
-    if (secs < 60)  return secs + ' secs ago';
-    const mins = Math.floor(secs / 60);
-    if (mins < 60)  return mins + ' min' + (mins === 1 ? '' : 's') + ' ago';
-    const hrs = Math.floor(mins / 60);
-    if (hrs  < 24)  return hrs  + ' hr'  + (hrs  === 1 ? '' : 's') + ' ago';
-    const days = Math.floor(hrs / 24);
-    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  // ===== CONFIG =====
+  // New Washington, Aklan municipal centre (PhilAtlas: 11.6473 N, 122.4356 E).
+  // Zoom 11 framed the whole province; 12 frames the municipality and its
+  // waters, which is the actual service area.
+  const OPS_CENTER = [11.6473, 122.4356];
+  const OPS_ZOOM = 12;
+
+  const TILES = {
+    streets: {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attr: '&copy; OpenStreetMap contributors'
+    },
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attr: '&copy; Esri, Maxar, Earthstar Geographics'
+    },
+    hybrid: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attr: '&copy; Esri, Maxar, Earthstar Geographics',
+      labels: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
+      labelsAttr: '&copy; CartoDB'
+    }
+  };
+
+  const PIN_POLL_INTERVAL_MS = 15000;
+
+
+  // ===== API + AUTH =====
+  // API_BASE was previously referenced but never declared in this file - the
+  // one in advisoryService.js is scoped inside its IIFE, so every fetch here
+  // threw a ReferenceError. The dashboard is served from the same origin as
+  // the API, so this is simply the current origin.
+  const API_BASE = window.location.origin;
+
+  const TOKEN_KEY = 'aqoneToken';
+  const USER_KEY = 'aqoneUser';
+  const LOGIN_URL = 'login.html';
+
+  function getToken() {
+    return sessionStorage.getItem(TOKEN_KEY) || '';
   }
 
-  function createPinIcon(color) {
-    return L.divIcon({
-      className: 'user-pin-marker',
-      html: `<div class="user-pin-dot" style="background:${color}"></div>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-      popupAnchor: [0, -12]
-    });
+  function clearSession() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
   }
 
-  function dropLocalPin(latlng) {
-    const id = 'local-' + Date.now();
-    const color = CURRENT_USER_COLOR;
-    const createdAt = Date.now();
-    const popupHtml =
-      `<div class="popup-title">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px;border:2px solid rgba(255,255,255,0.7);"></span>${CURRENT_USER.name}
-      </div>
-      <div class="popup-row"><span>Pinned</span><span>just now</span></div>
-      <div class="popup-row"><span>Lat</span><span>${latlng.lat.toFixed(5)}</span></div>
-      <div class="popup-row"><span>Lng</span><span>${latlng.lng.toFixed(5)}</span></div>
-      <div class="pin-popup-footer" id="pin-footer-${id}">
-        <button class="pin-delete-btn" data-pin-id="${id}" data-action="delete-init">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6l-1 14H6L5 6"/>
-            <path d="M10 11v6"/><path d="M14 11v6"/>
-            <path d="M9 6V4h6v2"/>
-          </svg>
-          Delete
-        </button>
-      </div>`;
+  function redirectToLogin() {
+    clearSession();
+    window.location.replace(LOGIN_URL);
+  }
 
-    const marker = L.marker([latlng.lat, latlng.lng], { icon: createPinIcon(color) });
-    marker.bindPopup(popupHtml);
+  // Every API route except the auth endpoints requires a bearer token. A 401
+  // means the token is missing, expired or invalid - in all three cases the
+  // operator needs to log in again, so bounce rather than rendering an empty
+  // dashboard that looks like a backend outage.
+  function authFetch(path, options) {
+    const opts = options || {};
+    const headers = Object.assign({ Accept: 'application/json' }, opts.headers || {});
+    const token = getToken();
+    if (token) headers.Authorization = 'Bearer ' + token;
 
-    marker.on('popupopen', function () {
-      const container = marker.getPopup().getElement();
-      if (!container) return;
-      container.addEventListener('click', function handleLocalDelete(e) {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const footer = container.querySelector(`#pin-footer-${id}`);
-        if (btn.dataset.action === 'delete-init') {
-          footer.innerHTML =
-            `<div class="pin-confirm-row">
-               <span class="pin-confirm-label">Delete this pin?</span>
-               <button class="pin-confirm-yes" data-action="delete-confirm">Yes</button>
-               <button class="pin-confirm-no"  data-action="delete-cancel">No</button>
-             </div>`;
-          marker.getPopup().update();
+    return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }))
+      .then(function (res) {
+        if (res.status === 401) {
+          redirectToLogin();
+          throw new Error('Session expired');
         }
-        if (btn.dataset.action === 'delete-confirm') {
-          pinLayer.removeLayer(marker);
-          delete pinMarkers[id];
+        return res;
+      });
+  }
+
+  // Guard: no token means never logged in, so do not even start the panels.
+  if (!getToken()) {
+    redirectToLogin();
+    return;
+  }
+
+
+  // ===== CURRENT USER =====
+  // Populated at login. Falls back to the token-less placeholder only if the
+  // stored record is unreadable, so attribution on sea-condition entries is a
+  // real account rather than a hardcoded name.
+  const CURRENT_USER = (function () {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(USER_KEY) || 'null');
+      if (stored && stored.id) return stored;
+    } catch (err) {
+      /* fall through */
+    }
+    return { id: 'unknown', name: 'Operator' };
+  })();
+
+
+  // ===== USER COLOR HASH =====
+  const PIN_PALETTE = [
+    '#00bcd4', '#e91e63', '#ff9800', '#8bc34a', '#673ab7',
+    '#009688', '#ff5722', '#3f51b5', '#cddc39', '#f06292',
+  ];
+
+  function hashUserId(id) {
+    let h = 5381;
+    for (let i = 0; i < id.length; i++) {
+      h = ((h << 5) + h) ^ id.charCodeAt(i);
+      h = h >>> 0;
+    }
+    return PIN_PALETTE[h % PIN_PALETTE.length];
+  }
+
+  const CURRENT_USER_COLOR = hashUserId(CURRENT_USER.id);
+
+
+  // ===== SAMPLE DATA =====
+  // Shore gateways (coastal barangay / BFAR / PCG stations) — LoRa mesh exit to backend
+  // Shore gateways are ON LAND - they are the mesh's exit to the internet.
+  // Coordinates mirror SHORE_STATIONS in backend/app/geo.py, which is the
+  // single source of truth for the service area.
+  const shoreStations = [
+    { name: 'New Washington Municipal Hall', lat: 11.6473, lng: 122.4200, type: 'MDRRMO Station', status: 'active', role: 'Shore gateway' },
+    { name: 'Dumaguit Port', lat: 11.6700, lng: 122.4100, type: 'Port Facility', status: 'active', role: 'Shore gateway' },
+    { name: 'BFAR Kalibo', lat: 11.7086, lng: 122.3653, type: 'BFAR Station', status: 'warning', role: 'Shore gateway' },
+  ];
+
+  // Buoy nodes — GPS, barometer, current sensing, solar + battery, LoRa mesh radio
+  const initialBuoys = [
+    // All positions are AT SEA inside New Washington's municipal waters,
+    // ordered nearshore to offshore. Verified against WATER_POLYGON in
+    // backend/app/geo.py - the previous set spanned 55 km of Aklan province
+    // and several sat inland over Panay.
+    // Two radios per buoy, matching docs/01_ARCHITECTURE.md:
+    //   wifiRadius - phone to buoy, WiFi SoftAP. Short: where a phone can hand
+    //                over an SOS.
+    //   loraRadius - buoy to buoy and buoy to shore gateway. Long: what forms
+    //                the relay mesh. These circles overlap; the WiFi ones do not.
+    // Positions form a connected chain anchored at a shore station, generated by
+    // the same algorithm as the backend (_build_mesh_chain in generator.py).
+    { name: 'Buoy Alpha',   id: 'buoy-alpha',   lat: 11.6639, lng: 122.4602, status: 'active',  battery: 87, signal: 'Strong',   pressure: 1008.4, pressureTrend: -1.2, current: '0.6 m/s', currentDir: 'SW',  wifiRadius: 1340, loraRadius: 7023, isGateway: true },
+    { name: 'Buoy Bravo',   id: 'buoy-bravo',   lat: 11.6742, lng: 122.4226, status: 'active',  battery: 72, signal: 'Moderate', pressure: 1007.1, pressureTrend: -2.8, current: '0.9 m/s', currentDir: 'S',   wifiRadius: 1330, loraRadius: 6524, isGateway: true },
+    { name: 'Buoy Charlie', id: 'buoy-charlie', lat: 11.6346, lng: 122.4744, status: 'warning', battery: 31, signal: 'Weak',     pressure: 1006.3, pressureTrend: -3.4, current: '0.4 m/s', currentDir: 'W',   wifiRadius: 1090, loraRadius: 7282, isGateway: true },
+    { name: 'Buoy Delta',   id: 'buoy-delta',   lat: 11.7178, lng: 122.4403, status: 'active',  battery: 94, signal: 'Strong',   pressure: 1008.9, pressureTrend: -0.5, current: '0.3 m/s', currentDir: 'SE',  wifiRadius: 1350, loraRadius: 6146 },
+    { name: 'Buoy Echo',    id: 'buoy-echo',    lat: 11.7338, lng: 122.4845, status: 'danger',  battery: 12, signal: 'Lost',     pressure: null,   pressureTrend: null, current: null,     currentDir: null, wifiRadius: 930,  loraRadius: 6752 },
+  ];
+
+  // Mesh links are COMPUTED from LoRa range, not hardcoded. The previous list
+  // asserted links between buoys that were nowhere near each other, and
+  // referenced two shore stations that no longer exist.
+  function _metresBetween(aLat, aLng, bLat, bLng) {
+    var dLat = (bLat - aLat) * 110574;
+    var dLng = (bLng - aLng) * 111320 * Math.cos((aLat + bLat) / 2 * Math.PI / 180);
+    return Math.sqrt(dLat * dLat + dLng * dLng);
+  }
+
+  // A link exists where the gap is within the lower of the two LoRa ranges -
+  // the same rule the backend connectivity tests use.
+  const meshLinks = (function () {
+    var links = [];
+    for (var i = 0; i < initialBuoys.length; i++) {
+      for (var j = i + 1; j < initialBuoys.length; j++) {
+        var a = initialBuoys[i], b = initialBuoys[j];
+        if (_metresBetween(a.lat, a.lng, b.lat, b.lng) <= Math.min(a.loraRadius, b.loraRadius)) {
+          links.push([a.name, b.name]);
         }
-        if (btn.dataset.action === 'delete-cancel') {
-          footer.innerHTML =
-            `<button class="pin-delete-btn" data-pin-id="${id}" data-action="delete-init">Delete</button>`;
-          marker.getPopup().update();
+      }
+    }
+    // Every buoy in LoRa range of a shore station gets a link to land: this is
+    // the mesh's exit to the internet and the reason an SOS ever arrives.
+    initialBuoys.forEach(function (buoy) {
+      shoreStations.forEach(function (station) {
+        if (_metresBetween(buoy.lat, buoy.lng, station.lat, station.lng) <= buoy.loraRadius) {
+          links.push([buoy.name, station.name]);
         }
       });
     });
-
-    pinLayer.addLayer(marker);
-    pinMarkers[id] = marker;
-    marker.openPopup();
-    void createdAt;
-    return marker;
-  }
-
-  function activatePinMode() {
-    pinModeActive = true;
-    pinBtn.classList.add('pin-mode-active');
-    mapEl.classList.add('pin-mode');
-    deactivatePanMode();
-    if (activePanel) closePanel();
-  }
-
-  function deactivatePinMode() {
-    pinModeActive = false;
-    pinBtn.classList.remove('pin-mode-active');
-    mapEl.classList.remove('pin-mode');
-  }
-
-  function activatePanMode() {
-    panModeActive = true;
-    panBtn.classList.add('active');
-  }
-
-  function deactivatePanMode() {
-    panModeActive = false;
-    panBtn.classList.remove('active');
-  }
-
-
-  // ===== MEASURE TOOL =====
-  const MEASURE_COLOR   = '#2ecc71';
-  const MEASURE_PREVIEW = 'rgba(46,204,113,0.55)';
-
-  function haversineKm(a, b) {
-    const R = 6371;
-    const dLat = (b.lat - a.lat) * Math.PI / 180;
-    const dLng = (b.lng - a.lng) * Math.PI / 180;
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const c = sinDLat * sinDLat +
-              Math.cos(a.lat * Math.PI / 180) *
-              Math.cos(b.lat * Math.PI / 180) *
-              sinDLng * sinDLng;
-    return R * 2 * Math.atan2(Math.sqrt(c), Math.sqrt(1 - c));
-  }
-
-  function fmtKm(km) { return km.toFixed(3) + ' km'; }
-
-  let measureActive   = false;
-  let measureFinished = false;
-  const measurePts    = [];
-  const measureLayer  = L.layerGroup().addTo(map);
-
-  let mPolyline   = null;
-  let mPreview    = null;
-  let mTooltips   = [];
-  let mVertices   = [];
-
-  const measureBtn  = document.getElementById('rail-btn-measure');
-  const measureHud  = document.getElementById('measure-hud');
-  const hudTotal    = document.getElementById('measure-hud-total');
-  const panelTotal  = document.getElementById('measure-total');
-  const panelCount  = document.getElementById('measure-point-count');
-  const btnFinish   = document.getElementById('btn-measure-finish');
-  const btnClear    = document.getElementById('btn-measure-clear');
-
-  let mDblClickGuard = false;
-
-  function measureUpdateUI() {
-    const n   = measurePts.length;
-    let total = 0;
-    for (let i = 1; i < n; i++) total += haversineKm(measurePts[i - 1], measurePts[i]);
-    const fmt = fmtKm(total);
-
-    panelTotal.textContent = fmt;
-    hudTotal.textContent   = fmt;
-    panelCount.textContent = n + (n === 1 ? ' pt' : ' pts');
-
-    btnFinish.disabled = n < 2 || measureFinished;
-    btnClear.disabled  = n === 0;
-  }
-
-  function measureAddVertexMarker(latlng, isFirst) {
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="measure-vertex${isFirst ? ' measure-vertex-first' : ''}"></div>`,
-      iconSize: [10, 10],
-      iconAnchor: [5, 5]
-    });
-    const m = L.marker(latlng, { icon, interactive: false, zIndexOffset: 500 });
-    measureLayer.addLayer(m);
-    mVertices.push(m);
-  }
-
-  function measureAddSegmentLabel(a, b, distKm) {
-    const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
-    const tt  = L.tooltip({
-      permanent: true,
-      direction: 'center',
-      offset: [0, 0],
-      className: 'measure-label',
-      interactive: false
-    })
-      .setLatLng(mid)
-      .setContent(fmtKm(distKm))
-      .addTo(map);
-    mTooltips.push(tt);
-  }
-
-  function measureRedrawPolyline() {
-    if (mPolyline) { measureLayer.removeLayer(mPolyline); mPolyline = null; }
-    if (measurePts.length < 2) return;
-    mPolyline = L.polyline(measurePts, {
-      color: MEASURE_COLOR,
-      weight: 3,
-      opacity: 0.9,
-      dashArray: measureFinished ? null : '8 5',
-      lineCap: 'round',
-      lineJoin: 'round'
-    });
-    measureLayer.addLayer(mPolyline);
-  }
-
-  function measureClearLabels() {
-    mTooltips.forEach(t => map.removeLayer(t));
-    mTooltips = [];
-  }
-
-  function measureClearVertices() {
-    mVertices.forEach(m => measureLayer.removeLayer(m));
-    mVertices = [];
-  }
-
-  function measureRebuildLabels() {
-    measureClearLabels();
-    for (let i = 1; i < measurePts.length; i++) {
-      measureAddSegmentLabel(measurePts[i - 1], measurePts[i], haversineKm(measurePts[i - 1], measurePts[i]));
-    }
-  }
-
-  function measureAddPoint(latlng) {
-    if (measureFinished) return;
-    const isFirst = measurePts.length === 0;
-    measurePts.push(latlng);
-    measureAddVertexMarker(latlng, isFirst);
-    if (measurePts.length >= 2) {
-      measureRebuildLabels();
-    }
-    measureRedrawPolyline();
-    measureUpdateUI();
-  }
-
-  function measureClearPreview() {
-    if (mPreview) { measureLayer.removeLayer(mPreview); mPreview = null; }
-  }
-
-  function measureUpdatePreview(latlng) {
-    if (!measureActive || measureFinished || measurePts.length === 0) { measureClearPreview(); return; }
-    const last = measurePts[measurePts.length - 1];
-    measureClearPreview();
-    mPreview = L.polyline([last, latlng], {
-      color: MEASURE_PREVIEW,
-      weight: 2,
-      dashArray: '5 6',
-      interactive: false
-    });
-    measureLayer.addLayer(mPreview);
-  }
-
-  function measureClearAll() {
-    measurePts.length = 0;
-    measureFinished   = false;
-    measureClearPreview();
-    measureClearLabels();
-    measureClearVertices();
-    if (mPolyline) { measureLayer.removeLayer(mPolyline); mPolyline = null; }
-    measureUpdateUI();
-  }
-
-  function measureFinish() {
-    if (measurePts.length < 2 || measureFinished) return;
-    measureFinished = true;
-    measureClearPreview();
-    measureRedrawPolyline();
-    measureUpdateUI();
-    map.off('mousemove', onMeasureMouseMove);
-  }
-
-  function activateMeasureMode() {
-    measureActive = true;
-    measureFinished = false;
-    measureBtn.classList.add('measure-mode-active');
-    mapEl.classList.add('measure-mode');
-    measureHud.classList.add('visible');
-    deactivatePanMode();
-    map.on('mousemove', onMeasureMouseMove);
-    measureUpdateUI();
-  }
-
-  function deactivateMeasureMode() {
-    measureActive = false;
-    measureBtn.classList.remove('measure-mode-active');
-    mapEl.classList.remove('measure-mode');
-    measureHud.classList.remove('visible');
-    measureClearPreview();
-    map.off('mousemove', onMeasureMouseMove);
-  }
-
-  function onMeasureMouseMove(e) {
-    measureUpdatePreview(e.latlng);
-  }
-
-  btnFinish.addEventListener('click', measureFinish);
-  btnClear.addEventListener('click', () => {
-    measureClearAll();
-    if (measureActive) {
-      map.on('mousemove', onMeasureMouseMove);
-    }
-  });
-
-
-  // ===== LAYER SWITCHER =====
-  function switchLayer(name) {
-    if (currentBase === name) return;
-    map.removeLayer(tileLayers[currentBase]);
-    if (currentBase === 'hybrid') map.removeLayer(tileLayers.hybridLabels);
-    tileLayers[name].addTo(map);
-    if (name === 'hybrid') tileLayers.hybridLabels.addTo(map);
-    currentBase = name;
-    document.querySelectorAll('.layer-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.layer === name);
-    });
-  }
-
-  document.querySelectorAll('.layer-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchLayer(btn.dataset.layer));
-  });
-
-
-  // ===== RAIL PANEL SYSTEM =====
-  const toolPanelCard  = document.getElementById('tool-panel-card');
-  const toolPanelTitle = document.getElementById('tool-panel-title');
-  const railBtns       = document.querySelectorAll('.rail-btn');
-  const panelContents  = document.querySelectorAll('.rail-panel-content');
-  const panelCloseBtns = document.querySelectorAll('.rail-panel-close');
-
-  let activePanel = null;
-
-
-  // ===== TOOLBOX SCROLL OVERFLOW =====
-  (function initToolboxScroll() {
-    var toolboxBody = document.querySelector('.toolbox-body');
-    var toolboxCard = document.querySelector('.toolbox-card');
-    if (!toolboxBody || !toolboxCard) return;
-
-    function checkOverflow() {
-      var hasOverflow = toolboxBody.scrollWidth > toolboxBody.clientWidth + 2;
-      toolboxCard.classList.toggle('has-overflow', hasOverflow);
-    }
-
-    function updateFade() {
-      var atEnd = toolboxBody.scrollLeft + toolboxBody.clientWidth >= toolboxBody.scrollWidth - 4;
-      toolboxCard.classList.toggle('has-overflow', !atEnd && toolboxBody.scrollWidth > toolboxBody.clientWidth + 2);
-    }
-
-    toolboxBody.addEventListener('scroll', updateFade, { passive: true });
-    toolboxBody.addEventListener('wheel', function (e) {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        toolboxBody.scrollLeft += e.deltaY;
-      }
-    }, { passive: false });
-    window.addEventListener('resize', checkOverflow);
-    checkOverflow();
+    return links;
   })();
 
-  const PANEL_TITLES = { layers: 'Operational Layers', measure: 'Measure Distance', buoys: 'Buoy Network Health', advisories: 'Maritime Advisories' };
+  // Incidents occur at sea within the service area. The Boracay entry was
+  // ~50 km outside New Washington and has been removed.
+  const incidents = [
+    { name: 'Overdue Vessel — San Pedro', lat: 11.766, lng: 122.53, severity: 'danger', date: '2026-08-04', type: 'Overdue Vessel' },
+    { name: 'Squall Watch — Sibuyan Sea N', lat: 11.7213, lng: 122.5736, severity: 'warning', date: '2026-08-04', type: 'Squall Nowcast' },
+    { name: 'Overdue Vessel — Maria Gracia', lat: 11.6152, lng: 122.5175, severity: 'warning', date: '2026-08-04', type: 'Overdue Vessel' },
+  ];
 
-  function openPanel(panelId) {
-    panelContents.forEach(el => el.classList.toggle('active', el.id === 'panel-' + panelId));
-    railBtns.forEach(btn => {
-      if (btn.dataset.panel === 'layers' || btn.dataset.panel === 'buoys' || btn.dataset.panel === 'advisories') {
-        btn.classList.toggle('active', btn.dataset.panel === panelId);
-      }
-    });
-    toolPanelTitle.textContent = PANEL_TITLES[panelId] || 'Tool Panel';
-    toolPanelCard.classList.remove('collapsed');
-    activePanel = panelId;
-    if (panelId === 'advisories') renderAdvisoryList();
-    if (panelId === 'buoys') updateBuoySync();
-  }
+  // Service area = New Washington municipal waters. Mirrors WATER_POLYGON in
+  // backend/app/geo.py. The previous ring spanned the whole province, from
+  // Boracay in the west to Batan in the east.
+  const opsBoundary = [
+    [11.6703, 122.4157], [11.6177, 122.4380], [11.5902, 122.4914],
+    [11.5911, 122.6286], [11.6330, 122.6721], [11.6813, 122.6355],
+    [11.7414, 122.5924], [11.7731, 122.5408], [11.7662, 122.4574],
+    [11.7223, 122.4061], [11.6703, 122.4157]
+  ];
 
-  function closePanel() {
-    toolPanelCard.classList.add('collapsed');
-    railBtns.forEach(btn => {
-      if (btn.dataset.panel === 'layers' || btn.dataset.panel === 'buoys' || btn.dataset.panel === 'advisories') btn.classList.remove('active');
-    });
-    if (panModeActive) panBtn.classList.add('active');
-    panelContents.forEach(el => el.classList.remove('active'));
-    activePanel = null;
-  }
 
-  railBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const panelId = btn.dataset.panel;
-
-      if (panelId === 'pan') {
-        if (!panModeActive) {
-          if (pinModeActive) { deactivatePinMode(); }
-          if (measureActive) {
-            deactivateMeasureMode();
-            measureClearAll();
-            if (activePanel === 'measure') closePanel();
-          }
-          activatePanMode();
-        }
-        return;
-      }
-
-      if (panelId === 'pin') {
-        if (pinModeActive) {
-          deactivatePinMode();
-          activatePanMode();
-        } else {
-          if (measureActive) {
-            deactivateMeasureMode();
-            measureClearAll();
-            if (activePanel === 'measure') closePanel();
-          }
-          activatePinMode();
-        }
-        return;
-      }
-
-      if (panelId === 'measure') {
-        if (activePanel === 'measure') {
-          closePanel();
-          deactivateMeasureMode();
-          measureClearAll();
-          activatePanMode();
-        } else {
-          if (pinModeActive) { deactivatePinMode(); }
-          openPanel('measure');
-          activateMeasureMode();
-        }
-        return;
-      }
-
-      if (!panelId) return;
-
-      if (activePanel === panelId) {
-        closePanel();
-      } else {
-        openPanel(panelId);
-      }
-    });
+  // ===== MAP INIT =====
+  const map = L.map('map', {
+    center: OPS_CENTER,
+    zoom: OPS_ZOOM,
+    zoomControl: true,
+    attributionControl: true,
+    maxBounds: [[5, 115], [25, 130]],
+    minZoom: 5,
+    maxZoom: 18
   });
 
-  panelCloseBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (activePanel === 'measure') { deactivateMeasureMode(); activatePanMode(); }
-      closePanel();
+  const tileLayers = {
+    streets: L.tileLayer(TILES.streets.url, { attribution: TILES.streets.attr, maxZoom: 18 }),
+    satellite: L.tileLayer(TILES.satellite.url, { attribution: TILES.satellite.attr, maxZoom: 18 }),
+    hybrid: L.tileLayer(TILES.hybrid.url, { attribution: TILES.hybrid.attr, maxZoom: 18 }),
+    hybridLabels: L.tileLayer(TILES.hybrid.labels, { attribution: TILES.hybrid.labelsAttr, maxZoom: 18, pane: 'shadowPane' })
+  };
+
+  let currentBase = 'streets';
+  tileLayers.streets.addTo(map);
+
+
+  // ===== LAYER GROUPS =====
+  const gatewayLayer   = L.layerGroup();
+  const incidentLayer  = L.layerGroup();
+  const buoyLayer      = L.layerGroup();
+  const boundaryLayer  = L.layerGroup();
+  const pinLayer       = L.layerGroup();
+  const vesselLayer    = L.layerGroup();
+  const coverageLayer  = L.layerGroup();
+  const meshLayer      = L.layerGroup();
+  const squallLayer    = L.layerGroup();
+  const driftLayer     = L.layerGroup();
+
+  map.createPane('aiContoursPane');
+  map.getPane('aiContoursPane').style.zIndex = 430;
+  map.createPane('aiTrackPane');
+  map.getPane('aiTrackPane').style.zIndex = 440;
+  map.createPane('aiSquallPane');
+  map.getPane('aiSquallPane').style.zIndex = 450;
+  const dangerZoneLayer = L.layerGroup();
+
+
+  // ===== MARKER CREATION =====
+  function createMarkerIcon(type) {
+    // Vessels are slate, not green.
+    //
+    // Every other colour here encodes a status - blue facility, red incident,
+    // purple buoy, and green for "safe" throughout the rest of the dashboard.
+    // A vessel is an entity, not a verdict, and painting it green made boats
+    // indistinguishable from the safe-route layer. Slate reads as neutral and
+    // keeps green meaning only one thing.
+    const colors = { facility: '#3498db', incident: '#e74c3c', buoy: '#9b59b6', vessel: '#334155' };
+    const color = colors[type] || '#3498db';
+    return L.divIcon({
+      className: 'custom-marker',
+      html: `<div class="marker-pin marker-${type}" style="background:${color}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          ${type === 'facility'
+            ? '<path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/>'
+            : type === 'incident'
+            ? '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'
+            : type === 'vessel'
+            ? '<path d="M2 20l2-1h16l2 1"/><path d="M4 20V14l8-6 8 6v6"/><path d="M12 8V4m-4 0h8"/>'
+            : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/>'
+          }
+        </svg>
+      </div>`,
+      iconSize: [32, 42],
+      iconAnchor: [16, 42],
+      popupAnchor: [0, -44]
     });
+  }
+
+  function createOverdueIcon() {
+    return L.divIcon({
+      className: '',
+      html: '<div style="position:relative; width:32px; height:32px;">' +
+        '<div class="overdue-pulse-ring"></div>' +
+        '<div class="overdue-marker-dot"></div>' +
+      '</div>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  }
+
+  function makePopup(title, rows, badge) {
+    let html = `<div class="popup-title">${title}</div>`;
+    rows.forEach(([label, val]) => {
+      html += `<div class="popup-row"><span>${label}</span><span>${val}</span></div>`;
+    });
+    if (badge) {
+      html += `<div style="margin-top:6px"><span class="popup-badge badge-${badge.cls}">${badge.text}</span></div>`;
+    }
+    return html;
+  }
+
+
+  // ===== GATEWAY MARKERS =====
+  shoreStations.forEach(s => {
+    const marker = L.marker([s.lat, s.lng], { icon: createMarkerIcon('facility') })
+      .bindPopup(makePopup(s.name, [
+        ['Type', s.type],
+        ['Role', s.role],
+        ['Status', s.status.charAt(0).toUpperCase() + s.status.slice(1)]
+      ], { cls: s.status, text: s.status }));
+    gatewayLayer.addLayer(marker);
   });
 
-  // Map click
-  map.on('click', function (e) {
-    if (mDblClickGuard) return;
-    if (pinModeActive) {
-      dropLocalPin(e.latlng);
-      deactivatePinMode();
-      activatePanMode();
-    } else if (measureActive && !measureFinished) {
-      measureAddPoint(e.latlng);
-    } else if (activePanel && !measureActive) {
-      closePanel();
+
+  // ===== BUOY MARKERS =====
+  initialBuoys.forEach(b => {
+    var extraRows = b.isGateway
+      ? [['Role', 'LoRa gateway — mesh exit to shore']]
+      : [];
+    var pressureRow = b.pressure != null
+      ? [['Pressure', b.pressure.toFixed(1) + ' hPa (' + (b.pressureTrend > 0 ? '+' : '') + b.pressureTrend + ')']]
+      : [];
+    // These readings (battery, signal, pressure, current) are the fixed
+    // sample values in initialBuoys above, not live telemetry from hardware -
+    // no buoy in this deployment reports them yet. Rule 4 of
+    // docs/20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md bans presenting
+    // that as if it were live, so every buoy popup says so explicitly.
+    const marker = L.marker([b.lat, b.lng], { icon: createMarkerIcon('buoy') })
+      .bindPopup(makePopup(b.name, [
+        ['Status', b.status.charAt(0).toUpperCase() + b.status.slice(1)],
+        ['Battery', b.battery + '% (simulated)'],
+        ['Signal', b.signal + ' (simulated)']
+      ].concat(pressureRow, extraRows), { cls: b.status, text: b.status }));
+    buoyLayer.addLayer(marker);
+  });
+
+
+  // ===== COVERAGE CIRCLES =====
+  // Two layers per buoy. The large LoRa rings overlap into a continuous relay
+  // fabric; the small WiFi bubbles inside them show where a phone can actually
+  // reach a buoy. Drawing only one radius was misleading either way: LoRa alone
+  // implies phones connect from 7 km out, WiFi alone makes the mesh look
+  // disconnected.
+  var coverageCircles = {};
+  initialBuoys.forEach(function (b) {
+    // LoRa relay range - drawn first so it sits beneath the WiFi bubble.
+    var lora = L.circle([b.lat, b.lng], {
+      radius: b.loraRadius || 7000,
+      color: '#22d3ee',
+      fillColor: '#22d3ee',
+      fillOpacity: 0.05,
+      weight: 1,
+      dashArray: '2 6',
+      opacity: 0.35
+    }).bindTooltip(b.name + ' — LoRa relay range ' + ((b.loraRadius || 7000) / 1000).toFixed(1) + ' km', { sticky: true });
+    coverageLayer.addLayer(lora);
+
+    // WiFi SoftAP bubble - where a phone can hand over an SOS.
+    var wifi = L.circle([b.lat, b.lng], {
+      radius: b.wifiRadius || 1200,
+      color: '#60a5fa',
+      fillColor: '#60a5fa',
+      fillOpacity: 0.14,
+      weight: 1.5,
+      dashArray: '6 4',
+      opacity: 0.55
+    }).bindTooltip(b.name + ' — phone contact range ' + ((b.wifiRadius || 1200) / 1000).toFixed(1) + ' km', { sticky: true });
+    coverageLayer.addLayer(wifi);
+
+    // Pulse animation targets the WiFi bubble: it marks a phone check-in.
+    coverageCircles[b.name] = wifi;
+  });
+
+  function pulseCoverageCircle(buoyName) {
+    var c = coverageCircles[buoyName];
+    if (!c) return;
+    c.setStyle({ weight: 4, opacity: 0.9, fillOpacity: 0.2 });
+    setTimeout(function () {
+      c.setStyle({ weight: 1.5, opacity: 0.4, fillOpacity: 0.08, dashArray: '6 4' });
+    }, 2500);
+  }
+
+
+  // ===== MESH NETWORK =====
+  var meshPolylines = [];
+  function findNode(name) {
+    return initialBuoys.find(function (b) { return b.name === name; }) ||
+           shoreStations.find(function (s) { return s.name === name; });
+  }
+
+  meshLinks.forEach(function (link) {
+    var n1 = findNode(link[0]);
+    var n2 = findNode(link[1]);
+    if (!n1 || !n2) return;
+    // The mesh is the product. Drawn at 1.5px and 45% opacity it was
+    // effectively invisible against the basemap, which made a correctly
+    // connected array look like scattered unconnected buoys.
+    var line = L.polyline([[n1.lat, n1.lng], [n2.lat, n2.lng]], {
+      color: '#22d3ee',
+      weight: 2.5,
+      opacity: 0.85,
+      dashArray: '6 6',
+      smoothFactor: 1
+    });
+    line.bindTooltip(
+      link[0] + ' ↔ ' + link[1] + ' · ' +
+      (_metresBetween(n1.lat, n1.lng, n2.lat, n2.lng) / 1000).toFixed(1) + ' km LoRa link',
+      { sticky: true, className: 'drift-incident-label' }
+    );
+    meshLayer.addLayer(line);
+    meshPolylines.push(line);
+  });
+
+  var gatewayBuoy = initialBuoys.find(function (b) { return b.isGateway; });
+  if (gatewayBuoy) {
+    var ringIcon = L.divIcon({
+      className: '',
+      html: '<div class="gateway-ring"></div>',
+      iconSize: [44, 44],
+      iconAnchor: [22, 22]
+    });
+    var ringMarker = L.marker([gatewayBuoy.lat, gatewayBuoy.lng], { icon: ringIcon });
+    meshLayer.addLayer(ringMarker);
+  }
+
+  var meshPath = [];
+  meshLinks.forEach(function (link) {
+    var n1 = findNode(link[0]);
+    var n2 = findNode(link[1]);
+    if (!n1 || !n2) return;
+    var steps = 25;
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      meshPath.push([
+        n1.lat + (n2.lat - n1.lat) * t,
+        n1.lng + (n2.lng - n1.lng) * t
+      ]);
     }
   });
 
-  map.on('dblclick', function (e) {
-    if (!measureActive || measureFinished) return;
-    mDblClickGuard = true;
-    setTimeout(() => { mDblClickGuard = false; }, 300);
-    measureFinish();
-    L.DomEvent.stopPropagation(e);
+  var meshDot = L.circleMarker([0, 0], {
+    radius: 3.5,
+    color: '#99f6e4',
+    fillColor: '#22d3ee',
+    fillOpacity: 0.9,
+    weight: 2,
+    opacity: 1
+  });
+  meshLayer.addLayer(meshDot);
+  var dotIdx = 0;
+  var meshDotInterval = setInterval(function () {
+    if (!map.hasLayer(meshLayer)) return;
+    dotIdx = (dotIdx + 1) % meshPath.length;
+    meshDot.setLatLng(meshPath[dotIdx]);
+  }, 60);
+
+
+  // ===== INCIDENT MARKERS =====
+  const incidentDrawerData = [
+    { alertType: 'overdue', headerText: 'OVERDUE VESSEL — MISSED EXPECTED CONTACT',
+      vesselId: 'V-002', owner: 'Ramon Flores',
+      position: '11.7141\u00B0 N, 122.4166\u00B0 E', lat: 11.7141, lng: 122.4166,
+      buoy: 'Buoy-B', coverage: 'Last seen within Buoy-B coverage radius \u2014 flagged as overdue',
+      confidence: 88, stage: 'Stage 3 \u2014 SCORED ALERT', nextContact: 'Buoy-C \u00b7 10:05 (missed \u2014 47 min)',
+      timerBaseline: 47 * 60 },
+    { alertType: 'squall', headerText: 'RETURN NOW — SQUALL NOWCAST',
+      vesselId: 'ALL', owner: 'Broadcast \u2014 all vessels in contact range',
+      position: 'Approach NE \u2014 arrival est. 14:20', lat: 11.7383, lng: 122.5324,
+      buoy: 'Buoy-B / Buoy-C', coverage: 'Alert propagated across LoRa mesh \u2014 waiting at every buoy',
+      confidence: 88, stage: 'Squall nowcast \u2014 45 min lead', nextContact: 'Delivered to phones on next contact',
+      timerBaseline: 12 * 60 },
+    { alertType: 'overdue', headerText: 'OVERDUE VESSEL — ESCALATING',
+      vesselId: 'V-005', owner: 'Felix Tambong',
+      position: '11.6768\u00B0 N, 122.4757\u00B0 E', lat: 11.6768, lng: 122.4757,
+      buoy: 'Buoy-A', coverage: 'Last seen within Buoy-A coverage radius \u2014 check-in request outstanding',
+      confidence: 64, stage: 'Stage 2 \u2014 check-in requested', nextContact: 'Buoy-A \u00b7 09:15 (missed)',
+      timerBaseline: 72 * 60 },
+  ];
+
+  const incidentMarkers = [];
+
+  incidents.forEach((inc, idx) => {
+    const marker = L.marker([inc.lat, inc.lng], { icon: createMarkerIcon('incident') });
+    const drawerData = incidentDrawerData[idx];
+    if (drawerData) {
+      marker.on('click', function () { openIncidentDrawer(drawerData, marker); });
+    }
+    incidentLayer.addLayer(marker);
+    incidentMarkers.push(marker);
   });
 
+  let apiBuoys = [];
+  var dangerZoneRequestId = 0;
+  var lastDangerZoneResult = null;
+  var dangerZoneCacheKey = 'aqone-last-danger-zone-result-new-washington-grid-v2';
 
-  // ===== TOGGLE LAYERS =====
-  function toggleLayer(checkboxId, layer) {
-    const el = document.getElementById(checkboxId);
-    if (!el) return;
-    el.addEventListener('change', function () {
-      if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
-    });
+  function readCachedDangerZoneResult() {
+    try {
+      var cached = JSON.parse(localStorage.getItem(dangerZoneCacheKey));
+      return cached && Array.isArray(cached.predictions) ? cached : null;
+    } catch (error) {
+      return null;
+    }
   }
 
-  toggleLayer('toggle-gateways',  gatewayLayer);
-  toggleLayer('toggle-vessels',   vesselLayer);
-  toggleLayer('toggle-incidents', incidentLayer);
-  toggleLayer('toggle-danger-zones', dangerZoneLayer);
-  toggleLayer('toggle-buoys',     buoyLayer);
-  toggleLayer('toggle-coverage',  coverageLayer);
-  toggleLayer('toggle-mesh',      meshLayer);
-  toggleLayer('toggle-squall',    squallLayer);
-  toggleLayer('toggle-drift',     driftLayer);
-  toggleLayer('toggle-boundary',  boundaryLayer);
-  toggleLayer('toggle-pins',      pinLayer);
-
-  var dangerZoneRefresh = document.getElementById('danger-zone-refresh');
-  if (dangerZoneRefresh) {
-    dangerZoneRefresh.addEventListener('click', function () {
-      refreshDangerZones();
-    });
+  function cacheDangerZoneResult(result) {
+    try {
+      localStorage.setItem(dangerZoneCacheKey, JSON.stringify(result));
+    } catch (error) {
+      console.warn('[AqOne] Could not cache the latest danger-zone scan');
+    }
   }
+
+  function escapeDangerZoneText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderDangerZones(result) {
+    var predictions = result.predictions;
+    var alertPredictions = predictions.filter(function (prediction) {
+      return prediction.level !== 'low';
+    });
+
+    dangerZoneLayer.clearLayers();
+    var firstPredictionMarker = null;
+    predictions.forEach(function (prediction) {
+      var circle = L.circle([prediction.lat, prediction.lng], {
+        radius: prediction.radius,
+        color: prediction.color,
+        fillColor: prediction.color,
+        fillOpacity: prediction.level === 'danger' ? 0.2 : prediction.level === 'watch' ? 0.12 : 0.05,
+        opacity: prediction.level === 'low' ? 0.55 : 0.95,
+        weight: prediction.level === 'danger' ? 3 : prediction.level === 'watch' ? 2 : 1.5,
+        dashArray: prediction.level === 'danger' ? null : prediction.level === 'watch' ? '7 5' : '4 7',
+        className: 'danger-zone-circle danger-zone-circle-' + prediction.level
+      });
+      var icon = L.divIcon({
+        className: '',
+        html: '<div class="danger-zone-map-icon danger-zone-map-icon-' + prediction.level + '">' +
+          '<span>' + (prediction.level === 'low' ? '&check;' : '!') + '</span><i></i></div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+      var marker = L.marker([prediction.lat, prediction.lng], {
+        icon: icon,
+        interactive: true,
+        zIndexOffset: 700
+      });
+      var reasons = prediction.reasons.map(escapeDangerZoneText).join(' &middot; ');
+      var popup = '<div class="popup-title" style="color:' + prediction.color + ';">' +
+        escapeDangerZoneText(prediction.label) + ' Zone</div>' +
+        '<div class="popup-row"><span>Area</span><span>' + escapeDangerZoneText(prediction.name) + '</span></div>' +
+        '<div class="popup-row"><span>Coordinates</span><span>' + prediction.lat.toFixed(3) + '\u00b0, ' + prediction.lng.toFixed(3) + '\u00b0</span></div>' +
+        '<div class="popup-row"><span>Hazard probability</span><span style="font-weight:800;color:' + prediction.color + ';">' + prediction.score + '%</span></div>' +
+        '<div class="popup-row"><span>Model probability</span><span>' + prediction.modelProbability + '%</span></div>' +
+        '<div class="popup-row"><span>Live wind / gust</span><span>' + Number(prediction.features.wind_speed_10m).toFixed(1) + ' / ' + Number(prediction.features.wind_gusts_10m).toFixed(1) + ' km/h</span></div>' +
+        '<div class="popup-row"><span>Live wave / period</span><span>' + Number(prediction.features.wave_height).toFixed(2) + ' m / ' + Number(prediction.features.wave_period).toFixed(1) + ' s</span></div>' +
+        '<div class="popup-row"><span>GEBCO depth</span><span>' + prediction.depthM.toFixed(0) + ' m</span></div>' +
+        '<div class="popup-row"><span>Radius</span><span>' + (prediction.radius / 1000).toFixed(1) + ' km</span></div>' +
+        '<div class="popup-row"><span>Warning trigger</span><span>' + escapeDangerZoneText(prediction.trigger) + '</span></div>' +
+        '<div class="popup-divider"></div>' +
+        '<div style="font-size:11px;line-height:1.45;color:#d1d5db;">' + reasons + '</div>' +
+        '<div style="margin-top:7px;font-size:10px;color:#9ca3af;">' + escapeDangerZoneText(prediction.source) + '<br>' +
+        escapeDangerZoneText(result.modelType) + ' · ' + escapeDangerZoneText(result.modelVersion) + '<br>' +
+        '2025 holdout F1: ' + Number(result.metrics.f1).toFixed(3) + ' · ' + escapeDangerZoneText(result.buoySource) + '</div>' +
+        '<div style="margin-top:7px"><span class="popup-badge badge-danger">EXPERIMENTAL · NOT FOR NAVIGATION</span></div>';
+
+      circle.bindPopup(popup);
+      marker.bindPopup(popup);
+      circle.bindTooltip(prediction.name + ' · ' + prediction.score + '%', {
+        direction: 'top',
+        sticky: true
+      });
+      dangerZoneLayer.addLayer(circle);
+      dangerZoneLayer.addLayer(marker);
+      if (!firstPredictionMarker) firstPredictionMarker = marker;
+    });
+
+    if (firstPredictionMarker && new URLSearchParams(window.location.search).get('previewDangerZone') === '1') {
+      firstPredictionMarker.openPopup();
+    }
+
+    var statusText = document.getElementById('danger-zone-status-text');
+    if (statusText) {
+      var dangerCount = alertPredictions.filter(function (prediction) {
+        return prediction.level === 'danger';
+      }).length;
+      var watchCount = alertPredictions.length - dangerCount;
+      var updatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      statusText.textContent = dangerCount + ' danger · ' + watchCount + ' watch · ' + predictions.length + ' zones · Live ' + updatedAt;
+    }
+    if (statusText) {
+      var scanUpdatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      statusText.textContent = result.dangerCount + ' danger · ' + result.watchCount + ' watch · ' +
+        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · Live ' + scanUpdatedAt;
+    }
+  }
+
+  async function refreshDangerZones() {
+    var statusText = document.getElementById('danger-zone-status-text');
+    var statusCard = document.getElementById('danger-zone-status');
+    var refreshButton = document.getElementById('danger-zone-refresh');
+    var requestId = ++dangerZoneRequestId;
+    if (!lastDangerZoneResult) lastDangerZoneResult = readCachedDangerZoneResult();
+    if (lastDangerZoneResult) {
+      renderDangerZones(lastDangerZoneResult);
+    } else {
+      dangerZoneLayer.clearLayers();
+    }
+    if (statusText) statusText.textContent = lastDangerZoneResult ?
+      'Refreshing live data \u00b7 Existing real-data zones remain visible' :
+      'Loading live weather and marine observations...';
+    if (statusCard) statusCard.classList.remove('danger-zone-status-error');
+    if (refreshButton) refreshButton.classList.add('is-refreshing');
+    try {
+      var result = await window.AqOneDangerZonePredictor.predictLive(apiBuoys);
+      if (requestId !== dangerZoneRequestId) return;
+      lastDangerZoneResult = result;
+      cacheDangerZoneResult(result);
+      renderDangerZones(result);
+    } catch (error) {
+      if (requestId !== dangerZoneRequestId) return;
+      if (lastDangerZoneResult) {
+        renderDangerZones(lastDangerZoneResult);
+        if (statusText) statusText.textContent = 'Live refresh unavailable \u00b7 Showing last successful real-data scan';
+        if (statusCard) statusCard.classList.add('danger-zone-status-error');
+        console.warn('[AqOne] Danger-zone refresh unavailable:', error.message);
+        return;
+      }
+      dangerZoneLayer.clearLayers();
+      if (statusText) statusText.textContent = 'Live data unavailable · No hazard zones shown';
+      if (statusCard) statusCard.classList.add('danger-zone-status-error');
+      console.warn('[AqOne] Danger-zone model unavailable:', error.message);
+    } finally {
+      if (requestId === dangerZoneRequestId && refreshButton) {
+        refreshButton.classList.remove('is-refreshing');
+      }
+    }
+  }
+
+
+  // ===== BOUNDARY =====
+  const boundaryPoly = L.polygon(opsBoundary, {
+    color: '#2ecc71',
+    weight: 2.5,
+    fillColor: '#2ecc71',
+    fillOpacity: 0.06,
+    dashArray: '8 6',
+    className: 'ops-boundary'
+  }).bindTooltip('Municipal Waters \u2014 Aqone Coverage Area', { permanent: true, direction: 'center', className: 'boundary-tooltip' });
+  boundaryLayer.addLayer(boundaryPoly);
+
+  // Add layers to map (checked toggles by default)
+  gatewayLayer.addTo(map);
+  incidentLayer.addTo(map);
+  buoyLayer.addTo(map);
+  pinLayer.addTo(map);
+  vesselLayer.addTo(map);
+  coverageLayer.addTo(map);
+  squallLayer.addTo(map);
+  driftLayer.addTo(map);
+  boundaryLayer.addTo(map);
+  dangerZoneLayer.addTo(map);
+  refreshDangerZones();
 
 
   // ===== STATS PANEL =====
@@ -3563,6 +3739,24 @@
    // than kept in sync by hand: updateSyncStatus() already writes
    // .banner-time every second from the one real timestamp
    // (lastSosSuccessMs), so a second writer here could only drift from it.
+
+
+   // ===== TOAST =====
+   function showToast(title, msg, isError) {
+     var container = document.getElementById('toast-container');
+     var toast = document.createElement('div');
+     toast.className = 'toast';
+     if (isError) toast.classList.add('toast-error');
+     // title/msg can carry server-provided SOS text (boat name, position) -
+     // see the loadActiveSos() call site - so both must be escaped.
+     toast.innerHTML = '<div class="toast-title">' + escapeHtml(title) + '</div><div class="toast-msg">' + escapeHtml(msg) + '</div>';
+     container.appendChild(toast);
+     setTimeout(function () {
+       toast.classList.add('toast-leave');
+       setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+     }, 4000);
+   }
+
 
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});
