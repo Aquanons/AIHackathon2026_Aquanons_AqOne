@@ -1,27 +1,6 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
-  var dashboardUtils = ns.dashboardUtils;
-  var escapeHtml = ns.escapeHtml;
-  var classifyFreshness = ns.classifyFreshness;
-  var freshnessLabel = ns.freshnessLabel;
-  var alertBadge = ns.alertBadge;
-  var OPS_CENTER = ns.OPS_CENTER;
-  var OPS_ZOOM = ns.OPS_ZOOM;
-  var TILES = ns.TILES;
-  var PIN_POLL_INTERVAL_MS = ns.PIN_POLL_INTERVAL_MS;
-  var API_BASE = ns.API_BASE;
-  var TOKEN_KEY = ns.TOKEN_KEY;
-  var USER_KEY = ns.USER_KEY;
-  var LOGIN_URL = ns.LOGIN_URL;
-  var getToken = ns.getToken;
-  var clearSession = ns.clearSession;
-  var redirectToLogin = ns.redirectToLogin;
-  var authFetch = ns.authFetch;
-  var CURRENT_USER = ns.CURRENT_USER;
-  var PIN_PALETTE = ns.PIN_PALETTE;
-  var hashUserId = ns.hashUserId;
-  var CURRENT_USER_COLOR = ns.CURRENT_USER_COLOR;
   var shoreStations = ns.shoreStations;
   var initialBuoys = ns.initialBuoys;
   var _metresBetween = ns._metresBetween;
@@ -29,8 +8,6 @@
   var incidents = ns.incidents;
   var opsBoundary = ns.opsBoundary;
   var map = ns.map;
-  var tileLayers = ns.tileLayers;
-  var currentBase = ns.currentBase;
   var gatewayLayer = ns.gatewayLayer;
   var incidentLayer = ns.incidentLayer;
   var buoyLayer = ns.buoyLayer;
@@ -42,7 +19,6 @@
   var squallLayer = ns.squallLayer;
   var driftLayer = ns.driftLayer;
   var dangerZoneLayer = ns.dangerZoneLayer;
-  var showToast = ns.showToast;
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
@@ -282,7 +258,7 @@
     const marker = L.marker([inc.lat, inc.lng], { icon: createMarkerIcon('incident') });
     const drawerData = incidentDrawerData[idx];
     if (drawerData) {
-      marker.on('click', function () { openIncidentDrawer(drawerData, marker); });
+      marker.on('click', function () { ns.openIncidentDrawer(drawerData, marker); });
     }
     incidentLayer.addLayer(marker);
     incidentMarkers.push(marker);
@@ -467,48 +443,6 @@
   dangerZoneLayer.addTo(map);
   refreshDangerZones();
 
-  ns.dashboardUtils = dashboardUtils;
-  ns.escapeHtml = escapeHtml;
-  ns.classifyFreshness = classifyFreshness;
-  ns.freshnessLabel = freshnessLabel;
-  ns.alertBadge = alertBadge;
-  ns.OPS_CENTER = OPS_CENTER;
-  ns.OPS_ZOOM = OPS_ZOOM;
-  ns.TILES = TILES;
-  ns.PIN_POLL_INTERVAL_MS = PIN_POLL_INTERVAL_MS;
-  ns.API_BASE = API_BASE;
-  ns.TOKEN_KEY = TOKEN_KEY;
-  ns.USER_KEY = USER_KEY;
-  ns.LOGIN_URL = LOGIN_URL;
-  ns.getToken = getToken;
-  ns.clearSession = clearSession;
-  ns.redirectToLogin = redirectToLogin;
-  ns.authFetch = authFetch;
-  ns.CURRENT_USER = CURRENT_USER;
-  ns.PIN_PALETTE = PIN_PALETTE;
-  ns.hashUserId = hashUserId;
-  ns.CURRENT_USER_COLOR = CURRENT_USER_COLOR;
-  ns.shoreStations = shoreStations;
-  ns.initialBuoys = initialBuoys;
-  ns._metresBetween = _metresBetween;
-  ns.meshLinks = meshLinks;
-  ns.incidents = incidents;
-  ns.opsBoundary = opsBoundary;
-  ns.map = map;
-  ns.tileLayers = tileLayers;
-  ns.currentBase = currentBase;
-  ns.gatewayLayer = gatewayLayer;
-  ns.incidentLayer = incidentLayer;
-  ns.buoyLayer = buoyLayer;
-  ns.boundaryLayer = boundaryLayer;
-  ns.pinLayer = pinLayer;
-  ns.vesselLayer = vesselLayer;
-  ns.coverageLayer = coverageLayer;
-  ns.meshLayer = meshLayer;
-  ns.squallLayer = squallLayer;
-  ns.driftLayer = driftLayer;
-  ns.dangerZoneLayer = dangerZoneLayer;
-  ns.showToast = showToast;
   ns.createMarkerIcon = createMarkerIcon;
   ns.createOverdueIcon = createOverdueIcon;
   ns.makePopup = makePopup;

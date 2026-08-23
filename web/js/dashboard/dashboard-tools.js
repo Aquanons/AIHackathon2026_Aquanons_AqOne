@@ -1,6 +1,23 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
+  var CURRENT_USER = ns.CURRENT_USER;
+  var CURRENT_USER_COLOR = ns.CURRENT_USER_COLOR;
+  var map = ns.map;
+  var tileLayers = ns.tileLayers;
+  var currentBase = ns.currentBase;
+  var gatewayLayer = ns.gatewayLayer;
+  var incidentLayer = ns.incidentLayer;
+  var buoyLayer = ns.buoyLayer;
+  var boundaryLayer = ns.boundaryLayer;
+  var pinLayer = ns.pinLayer;
+  var vesselLayer = ns.vesselLayer;
+  var coverageLayer = ns.coverageLayer;
+  var meshLayer = ns.meshLayer;
+  var squallLayer = ns.squallLayer;
+  var driftLayer = ns.driftLayer;
+  var dangerZoneLayer = ns.dangerZoneLayer;
+  var refreshDangerZones = ns.refreshDangerZones;
 
   // ===== PIN TOOL (local-only, no backend dependency) =====
   let pinModeActive = false;
@@ -367,8 +384,8 @@
     toolPanelTitle.textContent = PANEL_TITLES[panelId] || 'Tool Panel';
     toolPanelCard.classList.remove('collapsed');
     activePanel = panelId;
-    if (panelId === 'advisories') renderAdvisoryList();
-    if (panelId === 'buoys') updateBuoySync();
+    if (panelId === 'advisories') ns.renderAdvisoryList();
+    if (panelId === 'buoys') ns.updateBuoySync();
   }
 
   function closePanel() {
@@ -495,13 +512,16 @@
     });
   }
 
-  ns.pinModeActive = pinModeActive;
-  ns.panModeActive = panModeActive;
+  Object.defineProperties(ns, {
+    pinModeActive: { get: function () { return pinModeActive; } },
+    panModeActive: { get: function () { return panModeActive; } },
+    measureActive: { get: function () { return measureActive; } },
+    activePanel: { get: function () { return activePanel; } }
+  });
   ns.pinBtn = pinBtn;
   ns.panBtn = panBtn;
   ns.mapEl = mapEl;
   ns.pinMarkers = pinMarkers;
-  ns.relativeTime = relativeTime;
   ns.createPinIcon = createPinIcon;
   ns.dropLocalPin = dropLocalPin;
   ns.activatePinMode = activatePinMode;
@@ -512,7 +532,6 @@
   ns.MEASURE_PREVIEW = MEASURE_PREVIEW;
   ns.haversineKm = haversineKm;
   ns.fmtKm = fmtKm;
-  ns.measureActive = measureActive;
   ns.measureFinished = measureFinished;
   ns.measurePts = measurePts;
   ns.measureLayer = measureLayer;
@@ -549,7 +568,6 @@
   ns.railBtns = railBtns;
   ns.panelContents = panelContents;
   ns.panelCloseBtns = panelCloseBtns;
-  ns.activePanel = activePanel;
   ns.PANEL_TITLES = PANEL_TITLES;
   ns.openPanel = openPanel;
   ns.closePanel = closePanel;

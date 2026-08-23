@@ -1,7 +1,6 @@
 (function (ns) {
   'use strict';
 
-  ns.ready = false;
 
   // Failsafe: never leave the operator staring at the loading spinner.
   //
@@ -295,7 +294,7 @@
    }
 
 
-  ns.ready = true;  ns.dashboardUtils = dashboardUtils;
+  ns.dashboardUtils = dashboardUtils;
   ns.escapeHtml = escapeHtml;
   ns.classifyFreshness = classifyFreshness;
   ns.freshnessLabel = freshnessLabel;
