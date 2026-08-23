@@ -1,5 +1,7 @@
 import 'package:aqone/core/l10n_fallback.dart';
+import 'package:aqone/core/validators.dart';
 import 'package:aqone/l10n/app_localizations.dart';
+import 'package:aqone/models/license_type.dart';
 import 'package:aqone/models/sea_condition.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -110,7 +112,8 @@ void main() {
   testWidgets('MDRRMO free text is passed through, never translated',
       (WidgetTester tester) async {
     const reason = 'Habagat surge, 2m waves off Jawili';
-    const condition = SeaCondition(status: SeaStatus.notAdvised, reason: reason);
+    const condition =
+        SeaCondition(status: SeaStatus.notAdvised, reason: reason);
 
     await tester.pumpWidget(
       _app(
@@ -123,5 +126,69 @@ void main() {
     );
 
     expect(find.text(reason), findsOneWidget);
+  });
+
+  testWidgets('registration flow translates in every locale',
+      (WidgetTester tester) async {
+    final headings = <String>{};
+    final fieldLabels = <String>{};
+    final registrationLabels = <String>{};
+    final validationMessages = <String>{};
+
+    for (final code in <String>['en', 'fil', 'akl']) {
+      await tester.pumpWidget(
+        _app(
+          Locale(code),
+          Builder(
+            builder: (BuildContext context) {
+              final t = AppLocalizations.of(context);
+              headings.add(t.onboardingRegisterBoat);
+              fieldLabels.add(t.fieldFullName);
+              registrationLabels.add(LicenseType.none.label(t));
+              validationMessages.add(Validators.skipperName('', t)!);
+              return Text(t.onboardingRegisterBoat);
+            },
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    }
+
+    expect(headings.length, 3);
+    expect(fieldLabels.length, 3);
+    expect(registrationLabels.length, 3);
+    expect(validationMessages.length, 3);
+  });
+
+  testWidgets('profile and settings labels translate in every locale',
+      (WidgetTester tester) async {
+    final boatLabels = <String>{};
+    final settingsLabels = <String>{};
+    final darkModeLabels = <String>{};
+    final logoutLabels = <String>{};
+
+    for (final code in <String>['en', 'fil', 'akl']) {
+      await tester.pumpWidget(
+        _app(
+          Locale(code),
+          Builder(
+            builder: (BuildContext context) {
+              final t = AppLocalizations.of(context);
+              boatLabels.add(t.profileBoatName);
+              settingsLabels.add(t.settingsTitle);
+              darkModeLabels.add(t.darkMode);
+              logoutLabels.add(t.logoutAction);
+              return Text(t.profileBoatName);
+            },
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    }
+
+    expect(boatLabels.length, 3);
+    expect(settingsLabels.length, 2);
+    expect(darkModeLabels.length, 2);
+    expect(logoutLabels.length, 3);
   });
 }
