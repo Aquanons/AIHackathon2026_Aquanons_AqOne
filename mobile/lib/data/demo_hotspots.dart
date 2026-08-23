@@ -23,41 +23,19 @@ import '../models/hotspot_cell.dart';
 class DemoHotspots {
   const DemoHotspots._();
 
-  /// Spread across the municipal waters rather than clustered, so the
-  /// demonstration shows the range of the opacity scale rather than one blob.
+  /// Clustered around New Washington's municipal waters so the demo surface
+  /// reads as a local example rather than a generic map overlay.
   static const HotspotSurface surface = HotspotSurface(
     isDemo: true,
     minReporters: 5,
     modelVersion: 'example',
     cells: <HotspotCell>[
-      HotspotCell(
-        centerLat: 11.7250,
-        centerLon: 122.3600,
-        cellSizeDegrees: 0.05,
-        score: 0.85,
-        observations: 34,
-      ),
-      HotspotCell(
-        centerLat: 11.6900,
-        centerLon: 122.4250,
-        cellSizeDegrees: 0.05,
-        score: 0.62,
-        observations: 18,
-      ),
-      HotspotCell(
-        centerLat: 11.7700,
-        centerLon: 122.3350,
-        cellSizeDegrees: 0.05,
-        score: 0.44,
-        observations: 11,
-      ),
-      HotspotCell(
-        centerLat: 11.6600,
-        centerLon: 122.4650,
-        cellSizeDegrees: 0.05,
-        score: 0.28,
-        observations: 6,
-      ),
+      HotspotCell(centerLat: 11.7000, centerLon: 122.4500, cellSizeDegrees: 0.012, score: 0.62, observations: 18),
+      HotspotCell(centerLat: 11.6900, centerLon: 122.4800, cellSizeDegrees: 0.012, score: 0.72, observations: 22),
+      HotspotCell(centerLat: 11.6800, centerLon: 122.5100, cellSizeDegrees: 0.012, score: 0.58, observations: 16),
+      HotspotCell(centerLat: 11.6600, centerLon: 122.4900, cellSizeDegrees: 0.012, score: 0.84, observations: 34),
+      HotspotCell(centerLat: 11.6500, centerLon: 122.4600, cellSizeDegrees: 0.012, score: 0.68, observations: 24),
+      HotspotCell(centerLat: 11.6600, centerLon: 122.4300, cellSizeDegrees: 0.012, score: 0.42, observations: 11),
     ],
     // Deliberately null. An "updated 2 minutes ago" stamp on invented data
     // would be the one detail that makes it read as real.

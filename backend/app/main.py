@@ -14,6 +14,7 @@ from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
 from app.api.drift import router as drift_router
+from app.api.hotspots import router as hotspots_router
 from app.api.metrics import router as metrics_router
 from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
@@ -66,6 +67,7 @@ app.include_router(spots_router)
 # ingest is: the fisherman app has no account by design, so anything it needs
 # in an emergency cannot sit behind a token. See app/api/public.py.
 app.include_router(public_router)
+app.include_router(hotspots_router)
 # Vessel-device pairing + token lifecycle. Some routes are public
 # (enrollment), others require an operator or vessel-device token per-route.
 app.include_router(vessel_auth_router)

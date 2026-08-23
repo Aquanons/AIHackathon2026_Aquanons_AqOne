@@ -75,6 +75,7 @@ class CatchService {
     required double estimatedQuantityKg,
     String? method,
     String? notes,
+    bool shareForHotspots = false,
     double? fallbackLat,
     double? fallbackLon,
   }) async {
@@ -99,6 +100,7 @@ class CatchService {
       catchDate: _isoDate(now),
       clientTs: now.millisecondsSinceEpoch ~/ 1000,
       state: SyncState.pending,
+      shareForHotspots: shareForHotspots,
       lat: fix?.lat ?? fallbackLat,
       lon: fix?.lon ?? fallbackLon,
       method: method?.trim().isEmpty ?? true ? null : method!.trim(),

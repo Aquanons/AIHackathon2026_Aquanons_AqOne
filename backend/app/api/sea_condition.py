@@ -32,6 +32,40 @@ def _serialise(row) -> dict[str, object]:
     }
 
 
+async def _buoy_telemetry(conn) -> dict[str, object] | None:
+    rows = await conn.fetch(
+        '''
+        SELECT DISTINCT ON (co.buoy_id)
+               co.observed_at, co.observed_u_mps, co.observed_v_mps
+        FROM current_observations co
+        WHERE co.is_synthetic = FALSE
+        ORDER BY co.buoy_id, co.observed_at DESC
+        '''
+    )
+    if not rows:
+        return None
+    import math
+
+    speed = sum(
+        math.hypot(float(row['observed_u_mps']), float(row['observed_v_mps']))
+        for row in rows
+    ) / len(rows)
+    direction = math.degrees(
+        math.atan2(
+            sum(float(row['observed_u_mps']) for row in rows),
+            sum(float(row['observed_v_mps']) for row in rows),
+        )
+    ) % 360
+    observed_at = max(row['observed_at'] for row in rows)
+    return {
+        'source': 'buoy',
+        'buoy_count': len(rows),
+        'current_speed_mps': round(speed, 2),
+        'current_direction_deg': round(direction, 1),
+        'observed_at': observed_at.isoformat(),
+    }
+
+
 @router.get('')
 async def read_current() -> dict[str, object]:
     pool = get_pool()
@@ -39,7 +73,11 @@ async def read_current() -> dict[str, object]:
         row = await conn.fetchrow(
             'SELECT * FROM sea_conditions ORDER BY created_at DESC, id DESC LIMIT 1'
         )
-    return {'current': _serialise(row) if row else None}
+        telemetry = await _buoy_telemetry(conn)
+    current = _serialise(row) if row else {'status': 'unknown'}
+    if telemetry:
+        current['buoy_telemetry'] = telemetry
+    return {'current': current}
 
 
 @router.post('', status_code=201)

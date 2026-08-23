@@ -102,3 +102,13 @@ than taken on trust.
   whole handset-facing API already runs on for SOS ingest, and fixing it
   properly means adding accounts for fishermen, which product scope
   deliberately rejects (see "Accounts and passwords" above).
+
+- **Aggregated catch-activity heatmap.** Fish-hotspot prediction was removed
+  from v3.0 and is now amended back into scope as a privacy-preserving recent
+  activity surface, not a guaranteed-catch prediction. A catch contributes
+  only after explicit per-entry consent. The public API returns coarse cells,
+  never exact points or vessel ids, and withholds cells below the independent-
+  reporter threshold. The contract is `GET /api/public/hotspots` in
+  `docs/05_PUBLIC_API.md`; the backend implementation is
+  `backend/app/api/hotspots.py` and the handset renderer is
+  `mobile/lib/models/hotspot_cell.dart`.

@@ -105,6 +105,18 @@ class LocationService {
   /// rather than silently showing a map with no boat on it.
   Future<LocationResult> locate() async {
     try {
+      return await _locateInternal().timeout(
+        AqOneConfig.locationTimeout + const Duration(seconds: 2),
+        onTimeout: () =>
+            const LocationResult.failed(LocationFailure.timeout),
+      );
+    } catch (_) {
+      return const LocationResult.failed(LocationFailure.timeout);
+    }
+  }
+
+  Future<LocationResult> _locateInternal() async {
+    try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         return const LocationResult.failed(LocationFailure.servicesDisabled);
       }

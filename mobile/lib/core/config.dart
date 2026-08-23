@@ -67,8 +67,8 @@ class AqOneConfig {
   /// This is where the camera sits before a GPS fix exists. It must never be
   /// submitted as the user's position - an SOS carrying a default coordinate
   /// would send responders to the wrong place.
-  static const double defaultMapLat = 11.7580;
-  static const double defaultMapLon = 122.3900;
+  static const double defaultMapLat = 11.7000;
+  static const double defaultMapLon = 122.4400;
   static const double defaultMapZoom = 11.5;
   static const double locatedMapZoom = 14.5;
 
