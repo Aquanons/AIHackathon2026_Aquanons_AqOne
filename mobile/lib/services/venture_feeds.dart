@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
-import '../data/demo_hotspots.dart';
 import '../data/map_snapshot_store.dart';
 import '../data/welcome_advisory.dart';
 import '../models/advisory.dart';
@@ -130,26 +129,19 @@ class VentureFeeds {
     return BuoyMarker.parseList(decoded);
   }
 
-  /// The modelled fish-hotspot surface.
+  /// The privacy-preserving recent catch-activity surface.
   ///
-  /// Returns null when the endpoint does not exist yet, which is the current
-  /// state and the reason the map simply draws no layer rather than falling
-  /// back to something weaker. There is no device-side substitute here, unlike
-  /// the weather outlook: a hotspot needs other fishers' consented catch data
-  /// joined with environmental history, and a handset has neither.
+  /// There is no device-side substitute: this needs consented records from
+  /// several vessels, and a handset only has its owner's local history.
   Future<HotspotSurface?> hotspots() async {
     final Object? decoded = await _cachedJson(
       MapSnapshotStore.feedHotspots,
       () => _backend.getJson(AqOneConfig.publicHotspotsPath),
     );
-    // Illustrative cells only while the endpoint does not exist. Real output
-    // replaces them wholesale the moment it answers - the demo surface is
-    // never merged with real cells, because a mixed layer could not be
-    // honestly labelled.
     if (decoded == null) {
-      return DemoHotspots.surface;
+      return null;
     }
-    return HotspotCell.parse(decoded) ?? DemoHotspots.surface;
+    return HotspotCell.parse(decoded);
   }
 
   /// DEPRECATED, and no longer called from anywhere.

@@ -46,6 +46,7 @@ class CatchRecord {
     required this.catchDate,
     required this.clientTs,
     required this.state,
+    this.shareForHotspots = false,
     this.quantityKg,
     this.quantityConfirmedAt,
     this.quantitySyncedAt,
@@ -90,6 +91,7 @@ class CatchRecord {
 
   final int clientTs;
   final SyncState state;
+  final bool shareForHotspots;
   final double? lat;
   final double? lon;
   final String? method;
@@ -134,6 +136,7 @@ class CatchRecord {
       catchDate: catchDate,
       clientTs: clientTs,
       state: state ?? this.state,
+      shareForHotspots: shareForHotspots,
       quantityKg: quantityKg ?? this.quantityKg,
       quantityConfirmedAt: quantityConfirmedAt ?? this.quantityConfirmedAt,
       quantitySyncedAt: quantitySyncedAt ?? this.quantitySyncedAt,
@@ -159,6 +162,7 @@ class CatchRecord {
         'catch_date': catchDate,
         'client_ts': clientTs,
         'state': state.wire,
+        'share_for_hotspots': shareForHotspots ? 1 : 0,
         'lat': lat,
         'lon': lon,
         'method': method,
@@ -180,6 +184,8 @@ class CatchRecord {
         catchDate: row['catch_date'] as String,
         clientTs: row['client_ts'] as int,
         state: SyncState.fromWire(row['state'] as String?),
+        shareForHotspots:
+            ((row['share_for_hotspots'] as num?)?.toInt() ?? 0) == 1,
         lat: (row['lat'] as num?)?.toDouble(),
         lon: (row['lon'] as num?)?.toDouble(),
         method: row['method'] as String?,
@@ -207,6 +213,7 @@ class CatchRecord {
       'species_name': speciesName,
       'catch_date': catchDate,
       'estimated_quantity_kg': estimatedQuantityKg,
+      'share_for_hotspots': shareForHotspots,
     };
     if (lat != null) {
       payload['latitude'] = lat;
