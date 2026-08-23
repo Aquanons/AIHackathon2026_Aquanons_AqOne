@@ -56,9 +56,15 @@ class ChatService extends ChangeNotifier {
   ChatService({
     this.host = '192.168.4.1',
     required this.displayName,
+    this.backendUrl = 'https://aqone-backend.up.railway.app',
   });
 
   final String host;
+
+  /// Cloud backend the dashboard reads from. Chat lines are relayed here in
+  /// addition to the Heltec broadcast so a dispatcher on shore can see the
+  /// mesh conversation without being on the Aquan WiFi.
+  final String backendUrl;
 
   /// What this handset announces itself as on the hub. It MUST identify this
   /// boat and not this handset's point of view: the hub broadcasts the name
@@ -334,6 +340,23 @@ class ChatService extends ChangeNotifier {
     return retained;
   }
 
+  /// Fire-and-forget POST to the backend mesh chat endpoint.
+  /// Errors are silently ignored — the local Heltec relay is the primary path.
+  void _relayToBackend(String sender, String text) {
+    // .then<void> before .catchError is deliberate: catchError must return the
+    // future's own type, so attaching it straight to a Future<Response> throws
+    // at runtime on the exact failure this is meant to swallow.
+    http
+        .post(
+          Uri.parse('$backendUrl/api/mesh/chat'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'sender': sender, 'text': text}),
+        )
+        .timeout(const Duration(seconds: 5))
+        .then<void>((_) {})
+        .catchError((Object _) {});
+  }
+
   // ----- Outgoing messages ------------------------------------------------
 
   Future<void> sendMessage(String text) async {
@@ -357,6 +380,9 @@ class ChatService extends ChangeNotifier {
       _pendingQueue.add(trimmed);
       _persistQueue();
     }
+
+    // Also relay to the cloud backend so the dashboard can display it.
+    _relayToBackend(displayName, trimmed);
   }
 
   /// Puts one chat line on the wire and records it for [_isSelfEcho]. Every
@@ -521,6 +547,39 @@ class ChatService extends ChangeNotifier {
 }
 
 // ---------------------------------------------------------------------------
+// Avatars
+// ---------------------------------------------------------------------------
+
+/// First letter of [name], upper-cased. That letter is the entire avatar:
+/// there are no profile pictures to fetch once this runs over LoRa.
+String initialOf(String name) {
+  final trimmed = name.trim();
+  return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+}
+
+/// A stable colour per participant - the same name always lands on the same
+/// hue, so a neighbour is recognisable before you read the letter. Matters
+/// once LoRa makes the roster longer than a couple of boats, and two of them
+/// share an initial. Top-level (rather than a private helper on the state)
+/// so the bubble, wheel and header all derive avatars the same way instead
+/// of each doing its own `name[0]`.
+Color avatarColorOf(String name) {
+  const palette = <Color>[
+    Color(0xFF38BDF8),
+    Color(0xFF34D399),
+    Color(0xFFF59E0B),
+    Color(0xFFF472B6),
+    Color(0xFFA78BFA),
+    Color(0xFF22D3EE),
+  ];
+  var hash = 0;
+  for (final unit in name.trim().codeUnits) {
+    hash = (hash * 31 + unit) & 0x7FFFFFFF;
+  }
+  return palette[hash % palette.length];
+}
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
@@ -619,21 +678,18 @@ class _ChathubbState extends State<Chathubb> {
                   color: isDark ? Colors.white : Colors.black87),
               onPressed: () => Navigator.of(context).pop(),
             ),
-            title: Text(
-              'Chat',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            titleSpacing: 0,
+            title: _buildHeaderTitle(isDark),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: Tooltip(
-                  message: _onAquan ? 'Connected to Aquan' : 'Not on Aquan',
+                  message: _service.connected
+                      ? 'Connected to Aquan'
+                      : (_onAquan ? 'On Aquan - connecting…' : 'Not on Aquan'),
                   child: Icon(
                     Icons.wifi,
-                    color: _onAquan
+                    color: (_service.connected || _onAquan)
                         ? const Color(0xFF16A34A)
                         : const Color(0xFF94A3B8),
                     size: 22,
@@ -657,16 +713,97 @@ class _ChathubbState extends State<Chathubb> {
     );
   }
 
+  // ---- Header ------------------------------------------------------------
+
+  /// Everyone on the hub roster except this handset.
+  List<String> get _peers => _service.clients
+      .where((String name) => name != _service.displayName)
+      .toList(growable: false);
+
+  /// Who you are talking to. One peer shows their name; a fuller roster shows
+  /// the first two and a count, the way a group thread does, so the title
+  /// never overflows the app bar on a phone.
+  String get _headerName {
+    final peers = _peers;
+    if (peers.isEmpty) return 'Chat';
+    if (peers.length == 1) return peers.first;
+    if (peers.length == 2) return '${peers[0]}, ${peers[1]}';
+    return '${peers[0]}, ${peers[1]} +${peers.length - 2}';
+  }
+
+  Widget _buildHeaderTitle(bool isDark) {
+    final peers = _peers;
+    final String status;
+    if (!_service.connected) {
+      status = _onAquan ? 'Connecting…' : 'Offline';
+    } else if (peers.isEmpty) {
+      status = 'Waiting for others…';
+    } else if (peers.length == 1) {
+      status = 'On the mesh';
+    } else {
+      status = '${peers.length} on the mesh';
+    }
+
+    return Row(
+      children: [
+        if (peers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: avatarColorOf(peers.first),
+              child: Text(
+                initialOf(peers.first),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _headerName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              Text(
+                status,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _service.connected
+                      ? const Color(0xFF16A34A)
+                      : (isDark ? Colors.white54 : Colors.black45),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ---- Client wheel ------------------------------------------------------
 
   Widget _buildClientWheel(bool isDark) {
-    // The hub's roster includes the name we announced, so our own boat is
-    // dropped before "You" is prepended - otherwise a real boat name would
-    // put the same fisher on the wheel twice.
-    final users = <String>[
-      'You',
-      ..._service.clients.where((name) => name != _service.displayName),
-    ];
+    // The hub's roster already contains this handset under its own name -
+    // it is added when we send 'hello'. No need to prepend a literal "You":
+    // displayName is now derived from the vessel identity (see
+    // ChatService.displayNameFor), so a name never collides across boats.
+    final users = _service.clients;
     return Container(
       height: 92,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -687,7 +824,7 @@ class _ChathubbState extends State<Chathubb> {
                   const SizedBox(width: 16),
               itemBuilder: (context, index) {
                 final name = users[index];
-                final isSelf = name == _service.displayName || name == 'You';
+                final isSelf = name == _service.displayName;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -695,9 +832,9 @@ class _ChathubbState extends State<Chathubb> {
                       radius: 22,
                       backgroundColor: isSelf
                           ? const Color(0xFF0F69C9)
-                          : const Color(0xFF38BDF8),
+                          : avatarColorOf(name),
                       child: Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?',
+                        initialOf(name),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
@@ -781,8 +918,7 @@ class _ChathubbState extends State<Chathubb> {
       bottomRight: Radius.circular(isMine ? 4 : 16),
     );
 
-    final initial =
-        msg.from.isNotEmpty ? msg.from[0].toUpperCase() : '?';
+    final initial = initialOf(msg.from);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -796,7 +932,7 @@ class _ChathubbState extends State<Chathubb> {
               padding: const EdgeInsets.only(right: 8, top: 4),
               child: CircleAvatar(
                 radius: 14,
-                backgroundColor: const Color(0xFF38BDF8),
+                backgroundColor: avatarColorOf(msg.from),
                 child: Text(
                   initial,
                   style: const TextStyle(

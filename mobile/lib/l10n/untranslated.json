@@ -1,0 +1,43 @@
+{
+  "akl": [
+    "forecastStripTitle",
+    "forecastAsOf",
+    "forecastToday",
+    "forecastDisclaimerNoSeaState",
+    "forecastDisclaimer",
+    "riskLevelSafe",
+    "riskLevelCaution",
+    "riskLevelDanger",
+    "riskLevelUnknown",
+    "compassNorth",
+    "compassEast",
+    "compassSouth",
+    "compassWest",
+    "compassUnavailable",
+    "compassNeedsCalibration",
+    "compassHeading",
+    "hotspotLegendTitle",
+    "hotspotLegendDisclaimer"
+  ],
+
+  "fil": [
+    "forecastStripTitle",
+    "forecastAsOf",
+    "forecastToday",
+    "forecastDisclaimerNoSeaState",
+    "forecastDisclaimer",
+    "riskLevelSafe",
+    "riskLevelCaution",
+    "riskLevelDanger",
+    "riskLevelUnknown",
+    "compassNorth",
+    "compassEast",
+    "compassSouth",
+    "compassWest",
+    "compassUnavailable",
+    "compassNeedsCalibration",
+    "compassHeading",
+    "hotspotLegendTitle",
+    "hotspotLegendDisclaimer"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  // TEMPORARY - delete this line once the ESP32 core is installed.
+  //
+  // .vscode/c_cpp_properties.json already points at where the ESP32 core and
+  // the Arduino sketchbook libraries land on this machine. Until they are
+  // actually installed, those paths do not exist, so cpptools cannot find
+  // Arduino.h, WiFi.h, Adafruit_SSD1306.h and the rest, and reports ~13
+  // "cannot open source file" errors that say nothing about the code.
+  //
+  // The default "enabledIfIncludesResolve" does NOT help here: it suppresses
+  // the downstream squiggles but still reports the unresolved #includes, which
+  // is the noise. "disabled" is what silences them.
+  //
+  // Install the core (Boards Manager -> esp32) plus the WebSockets, ArduinoJson
+  // and Adafruit SSD1306 libraries, then remove this line - the includePath
+  // above will resolve and you get REAL diagnostics instead of silence.
+  "C_Cpp.errorSquiggles": "disabled",
+
+  // .ino is Arduino C++; keeps highlighting and Go-to-Definition working.
+  "files.associations": {
+    "*.ino": "cpp"
+  }
+}

@@ -182,7 +182,8 @@ Recorded per Hard Reset rule 5 — commands run, not assumed:
 ## Non-sensitive secret finding (Hard Reset rule 6)
 
 `firmware/buoy/AqOneBuoy/AqOneBuoy.ino:60-61` hardcodes a real upstream WiFi
-password: `UPLINK_PASS = "#Sams212024"` for `UPLINK_SSID = "Sams21_Hotel"`.
+password: set `UPLINK_PASS` and `UPLINK_SSID` in the sketch to the
+uplink network for your demo. Do not commit real credentials.
 Per rule 6 this is reported, not copied further or repeated elsewhere; it
 should be moved out of source (e.g. `Preferences`/NVS set at flash time or a
 build-time define) before this file is shared publicly. Not fixed in this

@@ -42,8 +42,16 @@ via Boards Manager.
 |---|---|
 | `ArduinoJson` (v7+) | Benoit Blanchon |
 | `WebSockets` | Markus Sattler |
+| `Adafruit GFX Library` | Adafruit |
+| `Adafruit SSD1306` | Adafruit |
 
-`WiFi`, `WebServer`, `HTTPClient` and `Preferences` ship with the ESP32 core.
+`WiFi`, `WebServer`, `HTTPClient`, `Preferences`, `Wire` and `DNSServer` ship
+with the ESP32 core.
+
+The two Adafruit libraries drive the board's built-in 128x64 OLED. Installing
+`Adafruit SSD1306` will prompt to pull in `Adafruit BusIO` as a dependency —
+accept it, or the sketch fails to link. Skipping either one produces
+`Adafruit_SSD1306.h: No such file or directory` at compile time.
 
 ### `build_opt.h` is part of the sketch — do not delete it
 
