@@ -103,6 +103,7 @@
         var next = isDark ? 'light' : 'dark';
         applyTheme(next);
         localStorage.setItem(STORAGE_KEY, next);
+        localStorage.setItem(PROFILE_KEY, next === 'dark' ? 'true' : 'false');
       });
     }
 
@@ -112,6 +113,7 @@
         var next = prefDarkToggle.checked ? 'dark' : 'light';
         applyTheme(next);
         localStorage.setItem(STORAGE_KEY, next);
+        localStorage.setItem(PROFILE_KEY, next === 'dark' ? 'true' : 'false');
       });
     }
   })();
@@ -314,99 +316,6 @@
     var savedLang = localStorage.getItem('aqone_lang') || 'en';
     applyLanguage(savedLang);
   })();
-
-
-  // TODO(luna): no matching DOM elements found in dashboard.html — appears unreachable, confirm with Lenard
-  // ===== PROFILE PAGE: TABS, SAVE HANDLERS, LOGOUT (from profile.html) =====
-  (function () {
-    var tabs = document.querySelectorAll('.profile-tab');
-    var contents = document.querySelectorAll('.profile-tab-content');
-
-    tabs.forEach(function (tab) {
-      tab.addEventListener('click', function () {
-        tabs.forEach(function (t) { t.classList.remove('active'); });
-        contents.forEach(function (c) { c.classList.remove('active'); });
-        tab.classList.add('active');
-        var target = document.getElementById('tab-' + tab.dataset.tab);
-        if (target) target.classList.add('active');
-      });
-    });
-
-    var btnSavePersonal = document.getElementById('btn-save-personal');
-    if (btnSavePersonal) {
-      btnSavePersonal.addEventListener('click', function () {
-        var name = document.getElementById('pf-fullname').value.trim();
-        showToast('Profile Updated', name ? name + '\u2019s info was saved.' : 'Your info was saved.');
-      });
-    }
-
-    var btnCancelPersonal = document.getElementById('btn-cancel-personal');
-    if (btnCancelPersonal) {
-      btnCancelPersonal.addEventListener('click', function () {
-        showToast('Changes Discarded', 'No changes were saved.');
-      });
-    }
-
-    var btnSaveSecurity = document.getElementById('btn-save-security');
-    if (btnSaveSecurity) {
-      btnSaveSecurity.addEventListener('click', function () {
-        var current = document.getElementById('pf-current-password').value;
-        var next = document.getElementById('pf-new-password').value;
-        var confirmVal = document.getElementById('pf-confirm-password').value;
-
-        if (!current || !next || !confirmVal) {
-          showToast('Missing Fields', 'Please fill in all password fields.');
-          return;
-        }
-        if (next !== confirmVal) {
-          showToast('Password Mismatch', 'New password and confirmation do not match.');
-          return;
-        }
-        showToast('Password Updated', 'Your password has been changed.');
-        document.getElementById('pf-current-password').value = '';
-        document.getElementById('pf-new-password').value = '';
-        document.getElementById('pf-confirm-password').value = '';
-      });
-    }
-
-    var btnCancelSecurity = document.getElementById('btn-cancel-security');
-    if (btnCancelSecurity) {
-      btnCancelSecurity.addEventListener('click', function () {
-        document.getElementById('pf-current-password').value = '';
-        document.getElementById('pf-new-password').value = '';
-        document.getElementById('pf-confirm-password').value = '';
-      });
-    }
-
-    var btnEditAvatar = document.getElementById('btn-edit-avatar');
-    if (btnEditAvatar) {
-      btnEditAvatar.addEventListener('click', function () {
-        showToast('Coming Soon', 'Photo upload isn\u2019t wired up yet.');
-      });
-    }
-
-    var btnLogout = document.getElementById('btn-logout');
-    if (btnLogout) {
-      btnLogout.addEventListener('click', function () {
-        if (confirm('Are you sure you want to log out?')) {
-          window.location.href = 'login.html';
-        }
-      });
-    }
-
-    var lastActiveEl = document.getElementById('profile-last-active');
-    if (lastActiveEl) {
-      lastActiveEl.textContent = 'Active now';
-    }
-
-    var statAdvisories = document.getElementById('stat-advisories');
-    var statZones = document.getElementById('stat-zones');
-    var statAlertsAck = document.getElementById('stat-alerts-ack');
-    if (statAdvisories) statAdvisories.textContent = '12';
-    if (statZones) statZones.textContent = '6';
-    if (statAlertsAck) statAlertsAck.textContent = '34';
-  })();
-
   ns.userProfilePill = userProfilePill;
   ns.btnExport = btnExport;
   ns.hideLoadingOverlay = hideLoadingOverlay;
