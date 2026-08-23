@@ -105,7 +105,7 @@
 
     return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }))
       .then(function (res) {
-        if (res.status === 401) {
+        if (res.status === 401 && sessionStorage.getItem('aqoneDemoBypassActive') !== '1') {
           redirectToLogin();
           throw new Error('Session expired');
         }
