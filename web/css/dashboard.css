@@ -4986,6 +4986,62 @@ h3.buoy-drawer-title {
 .stats-body { scrollbar-color: #c9d3df transparent; }
 .stats-body::-webkit-scrollbar-thumb { background: #c9d3df; }
 
+/* Dashboard layout refresh: AI operations cards */
+.squall-card .panel-card-header,
+.drift-card .panel-card-header { min-height: 44px; }
+
+.squall-status {
+  min-height: 20px;
+  padding: 3px 9px;
+  border: 1px solid #d4f0de;
+  border-radius: 20px;
+  background: #eefbf2;
+  color: #16a34a;
+  font-size: 10px;
+  letter-spacing: 0.45px;
+}
+
+.squall-status.squall-watch {
+  border-color: #f5dfb6;
+  background: #fff8e8;
+  color: #b7791f;
+}
+
+.squall-status.squall-return {
+  border-color: #f6cdcf;
+  background: #fdeced;
+  color: #c8383d;
+}
+
+.squall-card .panel-card-body,
+.drift-card .panel-card-body { padding: 14px; }
+
+.squall-hero {
+  border-left-color: #d97706;
+  background: #fff8e8;
+}
+
+.ai-trace-card {
+  border-color: var(--border);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.ai-drift-select {
+  border-radius: 8px;
+  background: #f7f9fb;
+}
+
+.ai-meta-line {
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.drift-replay-badge,
+.drift-degraded { color: #b7791f; }
+
 /* ══════════════════════════════════════════════════════════════
    ACKNOWLEDGE MODAL — responder ETA capture
    ══════════════════════════════════════════════════════════════ */
