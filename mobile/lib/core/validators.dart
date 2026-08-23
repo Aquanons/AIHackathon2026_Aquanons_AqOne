@@ -1,3 +1,5 @@
+import 'package:aqone/l10n/app_localizations.dart';
+
 import '../models/license_type.dart';
 import 'config.dart';
 
@@ -45,41 +47,41 @@ class Validators {
     return '';
   }
 
-  static String? skipperName(String? value) {
+  static String? skipperName(String? value, AppLocalizations t) {
     final name = normalizeName(value ?? '');
     if (name.isEmpty) {
-      return 'Please enter your full name';
+      return t.validatorFullNameRequired;
     }
     if (name.length < 2) {
-      return 'That name looks too short';
+      return t.validatorNameTooShort;
     }
     if (name.length > AqOneConfig.maxNameLength) {
-      return 'Please keep this under ${AqOneConfig.maxNameLength} characters';
+      return t.validatorMaxCharacters(AqOneConfig.maxNameLength);
     }
     if (!_letter.hasMatch(name)) {
-      return 'Please enter your name, not a number';
+      return t.validatorNameNotNumber;
     }
     return null;
   }
 
-  static String? boatName(String? value) {
+  static String? boatName(String? value, AppLocalizations t) {
     final boat = normalizeName(value ?? '');
     if (boat.isEmpty) {
-      return 'Please enter your boat name';
+      return t.validatorBoatRequired;
     }
     if (boat.length > AqOneConfig.maxBoatLength) {
-      return 'Please keep this under ${AqOneConfig.maxBoatLength} characters';
+      return t.validatorMaxCharacters(AqOneConfig.maxBoatLength);
     }
     return null;
   }
 
-  static String? phone(String? value) {
+  static String? phone(String? value, AppLocalizations t) {
     final raw = (value ?? '').trim();
     if (raw.isEmpty) {
-      return 'Please enter a mobile number';
+      return t.validatorMobileRequired;
     }
     if (normalizePhone(raw).isEmpty) {
-      return 'Enter a PH mobile number, e.g. 0912 345 6789';
+      return t.validatorMobileInvalid;
     }
     return null;
   }
@@ -88,29 +90,35 @@ class Validators {
   ///
   /// FishR numbers are numeric; BoatR and CFVGL references vary by office and
   /// by year, so anything alphanumeric of a plausible length is accepted.
-  static String? license(String? value, LicenseType type) {
+  static String? license(
+    String? value,
+    LicenseType type,
+    AppLocalizations t,
+  ) {
     if (!type.requiresNumber) {
       return null;
     }
     final number = normalizeLicense(value ?? '');
     if (number.isEmpty) {
-      return 'Enter your ${type.label} number, or choose '
-          '"${LicenseType.none.label}"';
+      return t.validatorLicenseRequired(
+        type.label(t),
+        LicenseType.none.label(t),
+      );
     }
     if (number.length < AqOneConfig.minLicenseLength) {
-      return 'That ${type.label} number looks too short';
+      return t.validatorLicenseTooShort(type.label(t));
     }
     if (number.length > AqOneConfig.maxLicenseLength) {
-      return 'That ${type.label} number looks too long';
+      return t.validatorLicenseTooLong(type.label(t));
     }
     if (!_licenceAllowed.hasMatch(number)) {
-      return 'Use letters, numbers and dashes only';
+      return t.validatorLicenseCharacters;
     }
     if (!_digit.hasMatch(number)) {
-      return 'A ${type.label} number contains at least one digit';
+      return t.validatorLicenseDigit(type.label(t));
     }
     if (type == LicenseType.fishr && _letter.hasMatch(number)) {
-      return 'FishR numbers are digits only';
+      return t.validatorFishrDigitsOnly;
     }
     return null;
   }

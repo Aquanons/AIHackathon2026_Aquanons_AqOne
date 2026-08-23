@@ -1,3 +1,4 @@
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
 import '../core/locale_controller.dart';
@@ -10,15 +11,12 @@ import 'info_page.dart';
 import 'widgets/language_picker.dart';
 
 const Color _brandPrimary = Color(0xFF0F69C9);
-const Color _brandDeepLight = Color(0xFF0958A6);
 const Color _brandDeepDark = Color(0xFFBFE3FF);
-const Color _authTextLight = Color(0xFF2C4960);
 const Color _authTextDark = Color(0xFFF0F4F8);
 const Color _authLabelLight = Color(0xFF4A6B82);
 const Color _authLabelDark = Color(0xFFB9CBD8);
-const Color _authHintLight = Color(0xFF7A97AC);
+const Color _authSubtitleDark = Color(0xFF082B45);
 const Color _authHintDark = Color(0xFF8CA3B5);
-const Color _authFillLight = Color(0xFFCFE8F9);
 const Color _authFillDark = Color(0xFF334155);
 const Color _noticeBgLight = Color(0xFFFFF4E0);
 const Color _noticeBgDark = Color(0xFF3A2E12);
@@ -107,6 +105,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   Future<void> _submit() async {
+    final t = AppLocalizations.of(context);
     if (_saving) {
       return;
     }
@@ -138,7 +137,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       }
       setState(() {
         _saving = false;
-        _error = 'Could not save your details. Please try again.';
+        _error = t.onboardingSaveError;
       });
     }
   }
@@ -157,13 +156,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final mediaQuery = MediaQuery.of(context);
     final isWide = mediaQuery.size.width > 600;
     final tier = widget.initialIdentity?.trustTier;
+    final t = AppLocalizations.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final palette = AqPalette.of(context);
-    final brandDeep = isDark ? _brandDeepDark : _brandDeepLight;
-    final authText = isDark ? _authTextDark : _authTextLight;
-    final authLabel = isDark ? _authLabelDark : _authLabelLight;
-    final authHint = isDark ? _authHintDark : _authHintLight;
-    final authFill = isDark ? _authFillDark : _authFillLight;
+    const brandDeep = _brandDeepDark;
+    const authText = _authTextDark;
+    const authLabel = _authLabelDark;
+    const authHint = _authHintDark;
+    const authFill = _authFillDark;
 
     return Scaffold(
       backgroundColor: palette.canvas,
@@ -173,37 +173,28 @@ class _OnboardingPageState extends State<OnboardingPage> {
             child: Image.asset(
               'assets/images/background.png',
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => DecoratedBox(
+              errorBuilder: (_, __, ___) => const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: isDark
-                        ? const <Color>[
-                            Color(0xFF0F172A),
-                            Color(0xFF1E293B),
-                            Color(0xFF0F172A),
-                          ]
-                        : const <Color>[
-                            Color(0xFFE8F8FF),
-                            Color(0xFFF4F8FA),
-                            Color(0xFFCFE8F9),
-                          ],
+                    colors: <Color>[
+                      Color(0xFF020B20),
+                      Color(0xFF062B68),
+                      Color(0xFF0750C4),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-          // Keep the light gradient visible while preserving contrast for the
-          // registration form.
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.12),
-                ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.12),
               ),
             ),
+          ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -234,9 +225,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         ],
                         const SizedBox(height: 24),
                         Text(
-                          _isReturning ? 'Welcome back' : 'Register your boat',
+                          _isReturning
+                              ? t.onboardingWelcomeBack
+                              : t.onboardingRegisterBoat,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
                             color: brandDeep,
@@ -245,14 +238,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         const SizedBox(height: 8),
                         Text(
                           _isReturning
-                              ? 'Check your details are still correct. Update '
-                                  'them here if anything has changed.'
-                              : 'No password. These details travel with your '
-                                  'SOS so the MDRRMO knows who to look for.',
+                              ? t.onboardingReturningBody
+                              : t.onboardingIntroBody,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
-                            color: authLabel,
+                            fontWeight: FontWeight.w700,
+                            color: _authSubtitleDark,
                             height: 1.4,
                           ),
                         ),
@@ -266,19 +258,20 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           maxLength: 64,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
-                            'Full name',
+                            t.fieldFullName,
                             Icons.person_outline_rounded,
                             isDark: isDark,
                             authHint: authHint,
                             authFill: authFill,
                             authLabel: authLabel,
                           ),
-                          validator: Validators.skipperName,
+                          validator: (value) =>
+                              Validators.skipperName(value, t),
                         ),
                         const SizedBox(height: 14),
                         TextFormField(
@@ -286,30 +279,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           maxLength: 32,
                           textCapitalization: TextCapitalization.characters,
                           textInputAction: TextInputAction.next,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
-                            'Boat name or registration',
+                            t.fieldBoatNameOrRegistration,
                             Icons.sailing_outlined,
                             isDark: isDark,
                             authHint: authHint,
                             authFill: authFill,
                             authLabel: authLabel,
                           ),
-                          validator: Validators.boatName,
+                          validator: (value) => Validators.boatName(value, t),
                         ),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<LicenseType>(
                           initialValue: _licenseType,
                           isExpanded: true,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
-                            'Registration type',
+                            t.fieldRegistrationType,
                             Icons.badge_outlined,
                             isDark: isDark,
                             authHint: authHint,
@@ -321,7 +314,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                               DropdownMenuItem<LicenseType>(
                                 value: type,
                                 child: Text(
-                                  type.label,
+                                  type.label(t),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -343,8 +336,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         Padding(
                           padding: const EdgeInsets.only(top: 6, left: 4),
                           child: Text(
-                            _licenseType.hint,
-                            style: TextStyle(
+                            _licenseType.hint(t),
+                            style: const TextStyle(
                               fontSize: 11.5,
                               color: authLabel,
                               height: 1.3,
@@ -361,20 +354,25 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             keyboardType: _licenseType == LicenseType.fishr
                                 ? TextInputType.number
                                 : TextInputType.text,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: authText,
                               fontSize: 15,
                             ),
                             decoration: _decoration(
-                              '${_licenseType.label} number',
+                              t.fieldRegistrationNumber(
+                                _licenseType.label(t),
+                              ),
                               Icons.confirmation_number_outlined,
                               isDark: isDark,
                               authHint: authHint,
                               authFill: authFill,
                               authLabel: authLabel,
                             ),
-                            validator: (value) =>
-                                Validators.license(value, _licenseType),
+                            validator: (value) => Validators.license(
+                              value,
+                              _licenseType,
+                              t,
+                            ),
                           ),
                         ],
                         const SizedBox(height: 14),
@@ -384,19 +382,19 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _submit(),
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: authText,
                             fontSize: 15,
                           ),
                           decoration: _decoration(
-                            'Mobile number',
+                            t.fieldMobileNumber,
                             Icons.phone_iphone_rounded,
                             isDark: isDark,
                             authHint: authHint,
                             authFill: authFill,
                             authLabel: authLabel,
                           ),
-                          validator: Validators.phone,
+                          validator: (value) => Validators.phone(value, t),
                         ),
                         const SizedBox(height: 16),
                         _UnverifiedNotice(isDark: isDark),
@@ -441,9 +439,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text(
-                                  'Continue',
-                                  style: TextStyle(
+                              : Text(
+                                  t.actionContinue,
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -459,7 +457,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                   icon: Icons.help_outline_rounded,
                                   isDark: isDark,
                                   onTap: () => _openInfo(
-                                    'Help & Support',
+                                    t.helpSupport,
                                     InfoCopy.help,
                                   ),
                                 ),
@@ -468,7 +466,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                   icon: Icons.info_outline_rounded,
                                   isDark: isDark,
                                   onTap: () => _openInfo(
-                                    'About AqOne',
+                                    t.aboutAqOne,
                                     InfoCopy.about,
                                   ),
                                 ),
@@ -476,12 +474,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             ),
                             GestureDetector(
                               onTap: () => _openInfo(
-                                'Safety Notice',
+                                t.safetyNotice,
                                 InfoCopy.terms,
                               ),
-                              child: const Text(
-                                'Safety notice',
-                                style: TextStyle(
+                              child: Text(
+                                t.safetyNotice,
+                                style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   color: _brandPrimary,
@@ -495,8 +493,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         Column(
                           children: <Widget>[
                             Text(
-                              'By continuing you agree to the',
-                              style: TextStyle(
+                              t.agreementPrefix,
+                              style: const TextStyle(
                                 fontSize: 12,
                                 color: authLabel,
                               ),
@@ -508,12 +506,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
                               children: <Widget>[
                                 GestureDetector(
                                   onTap: () => _openInfo(
-                                    'Privacy Policy',
+                                    t.privacyPolicy,
                                     InfoCopy.privacy,
                                   ),
-                                  child: const Text(
-                                    'Privacy Policy',
-                                    style: TextStyle(
+                                  child: Text(
+                                    t.privacyPolicy,
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: _brandPrimary,
                                       fontWeight: FontWeight.w600,
@@ -521,20 +519,20 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                   ),
                                 ),
                                 Text(
-                                  ' and ',
-                                  style: TextStyle(
+                                  t.agreementAnd,
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     color: authLabel,
                                   ),
                                 ),
                                 GestureDetector(
                                   onTap: () => _openInfo(
-                                    'Terms of Use',
+                                    t.termsOfUse,
                                     InfoCopy.terms,
                                   ),
-                                  child: const Text(
-                                    'Terms of Use',
-                                    style: TextStyle(
+                                  child: Text(
+                                    t.termsOfUse,
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: _brandPrimary,
                                       fontWeight: FontWeight.w600,
@@ -615,6 +613,7 @@ class _RememberMeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () => onChanged(!value),
@@ -634,7 +633,7 @@ class _RememberMeRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              'Remember me on this device',
+              t.rememberDevice,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -660,6 +659,7 @@ class _UnverifiedNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     final noticeBg = isDark ? _noticeBgDark : _noticeBgLight;
     final noticeFg = isDark ? _noticeFgDark : _noticeFgLight;
     return Container(
@@ -676,10 +676,7 @@ class _UnverifiedNotice extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'AqOne cannot check these details against BFAR or your LGU. '
-              'They are recorded as your own declaration and shown to the '
-              'MDRRMO with your SOS. Sending a false distress call is an '
-              'offence.',
+              t.identityUnverifiedNotice,
               style: TextStyle(
                 fontSize: 11.5,
                 color: noticeFg,
@@ -702,6 +699,7 @@ class _TierChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     final confirmed = tier == TrustTier.confirmedByResponder;
     final authLabel = isDark ? _authLabelDark : _authLabelLight;
     final color = confirmed ? const Color(0xFF1B7F4B) : authLabel;
@@ -725,7 +723,7 @@ class _TierChip extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              tier.label,
+              tier.label(t),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,

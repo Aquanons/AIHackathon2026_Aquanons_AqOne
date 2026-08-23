@@ -112,6 +112,7 @@ flutter:
 
   assets:
     - assets/images/background.png
+    - assets/images/register_background_dark.png
     - assets/images/aqone_logo.png
     - assets/images/aqoneLogo1.png
     - assets/images/aqoneLogo2.png
