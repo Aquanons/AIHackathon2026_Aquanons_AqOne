@@ -103,6 +103,7 @@
         var next = isDark ? 'light' : 'dark';
         applyTheme(next);
         localStorage.setItem(STORAGE_KEY, next);
+        localStorage.setItem(PROFILE_KEY, next === 'dark' ? 'true' : 'false');
       });
     }
 
@@ -112,6 +113,7 @@
         var next = prefDarkToggle.checked ? 'dark' : 'light';
         applyTheme(next);
         localStorage.setItem(STORAGE_KEY, next);
+        localStorage.setItem(PROFILE_KEY, next === 'dark' ? 'true' : 'false');
       });
     }
   })();
