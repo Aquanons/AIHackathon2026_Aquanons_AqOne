@@ -21,7 +21,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.ai.squall import build_buoys, current_detection, event_detection_summary, load_bundle
-from app.api.sea_condition import _serialise
+from app.api.sea_condition import _buoy_telemetry, _serialise
 from app.api.squall import _load_rows
 from app.db import get_pool
 from app.geo import SHORE_STATIONS
@@ -111,7 +111,11 @@ async def public_sea_condition() -> dict[str, object]:
         row = await conn.fetchrow(
             'SELECT * FROM sea_conditions ORDER BY created_at DESC, id DESC LIMIT 1'
         )
-    return {'current': _serialise(row) if row else None}
+        telemetry = await _buoy_telemetry(conn)
+    current = _serialise(row) if row else {'status': 'unknown'}
+    if telemetry:
+        current['buoy_telemetry'] = telemetry
+    return {'current': current}
 
 
 @router.get('/squall')

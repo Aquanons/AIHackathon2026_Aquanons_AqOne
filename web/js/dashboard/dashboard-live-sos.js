@@ -1,0 +1,251 @@
+(function (ns) {
+  'use strict';
+  if (!ns.ready) return;
+  var escapeHtml = ns.escapeHtml;
+  var classifyFreshness = ns.classifyFreshness;
+  var freshnessLabel = ns.freshnessLabel;
+  var authFetch = ns.authFetch;
+  var map = ns.map;
+  var showToast = ns.showToast;
+
+  // ===== LIVE SOS FEED =====
+  //
+  // The dashboard previously rendered only the hardcoded demo rows above, so a
+  // real distress call could sit in the database while the screen showed three
+  // fictional vessels. This is the path that makes a pressed button visible.
+  //
+  // Polling rather than SSE: /api/sos/active already exists and needs no
+  // reconnect logic. Three seconds keeps the LGU screen feeling live, and a
+  // missed poll self-heals on the next tick.
+  const LIVE_SOS_POLL_MS = 3000;
+  const liveSosLayer = L.layerGroup().addTo(map);
+  const liveSosMarkers = {};
+  let liveSosFirstLoad = true;
+  let knownSosIds = Object.create(null);
+
+
+  // ===== FEED FRESHNESS (LIVE / STALE / OFFLINE) =====
+  //
+  // Previously the "LIVE" badge in the header was static markup - it read
+  // LIVE even while loadActiveSos() had been failing silently, and the "Last
+  // updated" banner text was an independent 30-second counter with no
+  // connection to whether a poll had actually succeeded. Both were fake
+  // operational state (Hard Reset rule 4). This tracks the one fact that
+  // matters - when a poll last actually succeeded - and both indicators are
+  // now driven from it.
+  let lastSosSuccessMs = null;
+  const syncStatusEl = document.getElementById('sync-status');
+  const syncTextEl = document.getElementById('sync-text');
+  const bannerTimeEl = document.querySelector('.banner-time');
+  const statsFeedStatusEl = document.getElementById('stats-feed-status');
+
+  function updateSyncStatus() {
+    const state = classifyFreshness(lastSosSuccessMs, Date.now(), {
+      pollIntervalMs: LIVE_SOS_POLL_MS
+    });
+
+    if (syncStatusEl) {
+      syncStatusEl.classList.toggle('is-stale', state === 'stale');
+      syncStatusEl.classList.toggle('is-offline', state === 'offline');
+    }
+    if (syncTextEl) {
+      syncTextEl.textContent = freshnessLabel(state);
+    }
+    if (statsFeedStatusEl) {
+      statsFeedStatusEl.textContent = freshnessLabel(state);
+      statsFeedStatusEl.className = 'metric-status metric-status-feed metric-status-' + state;
+    }
+    if (syncStatusEl) {
+      syncStatusEl.title = lastSosSuccessMs == null
+        ? 'The live SOS feed has not loaded successfully yet'
+        : 'Live SOS feed last refreshed ' + Math.max(0, Math.round((Date.now() - lastSosSuccessMs) / 1000)) + 's ago';
+    }
+    if (bannerTimeEl) {
+      bannerTimeEl.textContent = lastSosSuccessMs == null
+        ? 'never'
+        : Math.max(0, Math.round((Date.now() - lastSosSuccessMs) / 1000)) + 's ago';
+    }
+  }
+
+  updateSyncStatus();
+  // Ticks independently of the poll interval so STALE/OFFLINE appears
+  // promptly even between polls, instead of only updating when a poll
+  // happens to run.
+  setInterval(updateSyncStatus, 1000);
+
+  function liveSosIcon() {
+    return L.divIcon({
+      className: 'live-sos-marker',
+      html: '<span class="live-sos-pulse"></span><span class="live-sos-core">SOS</span>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+  }
+
+  function relativeTime(iso) {
+    const then = new Date(iso).getTime();
+    if (!isFinite(then)) return 'unknown time';
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 60) return secs + ' seconds ago';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+    const hrs = Math.floor(mins / 60);
+    return hrs + (hrs === 1 ? ' hour ' : ' hours ') + (mins % 60) + ' minutes ago';
+  }
+
+  // How the SOS reached us, stated plainly. The dispatcher needs to know
+  // whether the mesh carried this or whether the handset had signal, because
+  // it changes what they can assume about the vessel's situation.
+  function deliveryPath(ev) {
+    const paths = [];
+    if (ev.delivered_via_buoy) paths.push('LoRa mesh' + (ev.buoy_id ? ' via ' + ev.buoy_id : ''));
+    if (ev.delivered_direct) paths.push('direct internet');
+    if (!paths.length) return 'Path unrecorded';
+    return paths.join(' + ');
+  }
+
+  function sosPosition(ev) {
+    if (typeof ev.latitude !== 'number' || typeof ev.longitude !== 'number') {
+      return 'No GPS fix reported';
+    }
+    return ev.latitude.toFixed(4) + '° N, ' + ev.longitude.toFixed(4) + '° E';
+  }
+
+  function liveAlertFromEvent(ev) {
+    const boat = ev.boat || ev.vessel_id || 'Unidentified vessel';
+    const hasFix = typeof ev.latitude === 'number' && typeof ev.longitude === 'number';
+    const alert = {
+      isLive: true,
+      sosEventId: ev.id,
+      type: 'sos',
+      desc: 'SOS — ' + boat + (ev.note ? ' — “' + ev.note + '”' : ''),
+      time: relativeTime(ev.created_at),
+      lat: hasFix ? Number(ev.latitude.toFixed(4)) : null,
+      lng: hasFix ? Number(ev.longitude.toFixed(4)) : null,
+      status: ev.acknowledged_at ? 'acknowledged' : 'active',
+      vesselId: ev.vessel_id || null,
+      confidence: null,
+      stage: 'DISTRESS CALL — ' + deliveryPath(ev)
+    };
+    alert.drawerData = {
+      alertType: 'sos',
+      headerText: 'SOS — DISTRESS CALL RECEIVED',
+      sosEventId: ev.id,
+      vesselId: ev.vessel_id || 'Unknown',
+      owner: boat,
+      position: sosPosition(ev),
+      lat: alert.lat,
+      lng: alert.lng,
+      buoy: ev.buoy_id || 'Not relayed by a buoy',
+      coverage: deliveryPath(ev) + (ev.trust_tier ? ' · trust tier ' + ev.trust_tier : ''),
+      confidence: null,
+      stage: 'DISTRESS CALL — human pressed the button',
+      nextContact: ev.note || 'No message attached',
+      timerBaseline: Math.max(0, Math.floor((Date.now() - new Date(ev.created_at).getTime()) / 1000))
+    };
+    return alert;
+  }
+
+  function syncLiveSosMarkers() {
+    const seen = Object.create(null);
+    liveAlerts.forEach(function (a) {
+      if (a.lat == null || a.lng == null) return;
+      seen[a.sosEventId] = true;
+      let marker = liveSosMarkers[a.sosEventId];
+      if (!marker) {
+        marker = L.marker([a.lat, a.lng], { icon: liveSosIcon(), zIndexOffset: 1000 });
+        // Leaflet renders tooltip content as innerHTML, not textContent - see
+        // https://leafletjs.com/reference.html#tooltip. a.desc carries the
+        // fisher's own note text, so it must be escaped here too.
+        marker.bindTooltip(escapeHtml(a.desc), { direction: 'top', offset: [0, -14] });
+        liveSosLayer.addLayer(marker);
+        liveSosMarkers[a.sosEventId] = marker;
+      } else {
+        marker.setLatLng([a.lat, a.lng]);
+      }
+      marker.off('click');
+      marker.on('click', function () { ns.openIncidentDrawer(a.drawerData, marker); });
+    });
+
+    // Acknowledged events leave /active, so their markers must go too.
+    Object.keys(liveSosMarkers).forEach(function (id) {
+      if (!seen[id]) {
+        liveSosLayer.removeLayer(liveSosMarkers[id]);
+        delete liveSosMarkers[id];
+      }
+    });
+  }
+
+  function loadActiveSos() {
+    return authFetch('/api/sos/active')
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        const events = (data && data.events) || [];
+        liveAlerts = events.map(liveAlertFromEvent);
+
+        // Announce genuinely new calls, but never on the first load - a
+        // dispatcher opening the dashboard should not be hit with a klaxon for
+        // events they already handled before the page refreshed.
+        if (!liveSosFirstLoad) {
+          events.forEach(function (ev) {
+            if (!knownSosIds[ev.id]) {
+              showToast(
+                'SOS received',
+                (ev.boat || ev.vessel_id || 'A vessel') + ' · ' + sosPosition(ev),
+                true
+              );
+            }
+          });
+        }
+        knownSosIds = Object.create(null);
+        events.forEach(function (ev) { knownSosIds[ev.id] = true; });
+        liveSosFirstLoad = false;
+
+        // The one fact updateSyncStatus() needs: this poll actually
+        // succeeded, right now. Everything the LIVE/STALE/OFFLINE indicator
+        // shows is derived from this single timestamp.
+        lastSosSuccessMs = Date.now();
+        updateSyncStatus();
+
+        syncLiveSosMarkers();
+        ns.syncAlertIndicators();
+        ns.renderIncidentFeed();
+      })
+      .catch(function (err) {
+        // A failed poll must not blank the list. The last known set of live
+        // alerts stays on screen rather than a distress call silently
+        // vanishing because one request timed out. It must, however, be
+        // visible in the sync indicator - updateSyncStatus() will move to
+        // STALE/OFFLINE on its own once enough time has passed without a
+        // fresh lastSosSuccessMs, which this call makes immediate instead of
+        // waiting up to a second for the next tick.
+        console.warn('[AqOne] Live SOS poll failed:', err.message);
+        updateSyncStatus();
+      });
+  }
+
+  loadActiveSos();
+  setInterval(loadActiveSos, LIVE_SOS_POLL_MS);
+
+  ns.relativeTime = relativeTime;
+  ns.LIVE_SOS_POLL_MS = LIVE_SOS_POLL_MS;
+  ns.liveSosLayer = liveSosLayer;
+  ns.liveSosMarkers = liveSosMarkers;
+  ns.liveSosFirstLoad = liveSosFirstLoad;
+  ns.knownSosIds = knownSosIds;
+  ns.lastSosSuccessMs = lastSosSuccessMs;
+  ns.syncStatusEl = syncStatusEl;
+  ns.syncTextEl = syncTextEl;
+  ns.bannerTimeEl = bannerTimeEl;
+  ns.updateSyncStatus = updateSyncStatus;
+  ns.liveSosIcon = liveSosIcon;
+  ns.deliveryPath = deliveryPath;
+  ns.sosPosition = sosPosition;
+  ns.liveAlertFromEvent = liveAlertFromEvent;
+  ns.syncLiveSosMarkers = syncLiveSosMarkers;
+  ns.loadActiveSos = loadActiveSos;
+
+})(window.AqOneDashboard = window.AqOneDashboard || {});

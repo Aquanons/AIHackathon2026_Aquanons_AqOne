@@ -31,6 +31,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <DNSServer.h>
+#include <time.h>
 
 // Built-in 128x64 SSD1306 OLED on the Heltec WiFi LoRa 32 V3.
 #include <Wire.h>
@@ -59,6 +60,22 @@ static const char* BUOY_ID      = "BUOY01";
 // in seconds. The alternative failure — a real SOS that never sends because
 // someone forgot a password — is not recoverable.
 static const int MAX_AP_CLIENTS = 10;
+
+// The WebSockets library sizes its client table at compile time and defaults
+// to 5 - half the AP's capacity. Boats 6 through 10 would associate, get the
+// portal, and then silently never reach chat.
+//
+// It cannot be raised with a #define here: WebSocketsServer holds its client
+// array by value in the header, so a value set only in this sketch would give
+// the library's own .cpp a different object layout - corruption, not a bigger
+// table. The flag has to reach every translation unit, which is what the
+// build_opt.h beside this sketch does. If that file is not being picked up,
+// this assert stops the build instead of letting a 5-boat cap ship quietly.
+static_assert(
+    WEBSOCKETS_SERVER_CLIENT_MAX >= MAX_AP_CLIENTS,
+    "WEBSOCKETS_SERVER_CLIENT_MAX is below MAX_AP_CLIENTS. build_opt.h in this "
+    "sketch folder sets it; see firmware/buoy/README.md if your IDE is not "
+    "reading that file.");
 
 // Upstream internet. On a real buoy this is the shore gateway link; for a demo
 // a phone hotspot is fine.
@@ -153,6 +170,11 @@ void setupWiFi() {
     channel  = WiFi.channel();
     Serial.printf("[wifi] uplink ok  ip=%s  ch=%d\n",
                   WiFi.localIP().toString().c_str(), channel);
+
+    // UTC, no offset: the only consumer is the chat history timestamp, and
+    // the app renders in the phone's own zone. Non-blocking - lines said
+    // before this lands are stored with no time rather than a wrong one.
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   } else {
     // No internet is not fatal. Chat still works, and SOS still queues — the
     // fisher is not told "failed", because the buoy genuinely still has it.
@@ -390,9 +412,75 @@ void handleStatus() {
   http.send(200, "application/json", body);
 }
 
-// GET /history — unchanged; the Flutter chat page backfills from here.
-String chatHistory = "[]";
-void handleHistory() { http.send(200, "application/json", chatHistory); }
+// ---------------------------------------------------------------------------
+// Chat history
+//
+// A phone that joins mid-trip should see what was already said. The last
+// MAX_HISTORY lines live in RAM only: chat is conversation, not distress
+// traffic, and it is not worth the flash wear that the SOS queue earns. A
+// reboot loses the backlog, and that is the right trade.
+// ---------------------------------------------------------------------------
+
+static const int MAX_HISTORY = 20;
+
+struct ChatLine {
+  char   from[33];
+  char   text[65];
+  time_t at;        // 0 when the buoy had no clock; see clockValid()
+  bool   used;
+};
+
+ChatLine history[MAX_HISTORY];
+int      historyHead = 0;   // next slot to write == oldest line once wrapped
+
+// Whether NTP has actually given us wall-clock time. Before that, millis() is
+// all we have, and an uptime is not a timestamp. Any epoch after 2023 means
+// the clock was really set.
+bool clockValid() { return time(nullptr) > 1700000000; }
+
+String isoUtc(time_t at) {
+  struct tm tm;
+  gmtime_r(&at, &tm);
+  char buf[24];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+  return String(buf);
+}
+
+void historyAdd(const char* from, const char* text) {
+  ChatLine& line = history[historyHead];
+  memset(&line, 0, sizeof(line));
+  strncpy(line.from, from, sizeof(line.from) - 1);
+  strncpy(line.text, text, sizeof(line.text) - 1);
+  line.at   = clockValid() ? time(nullptr) : 0;
+  line.used = true;
+  historyHead = (historyHead + 1) % MAX_HISTORY;
+}
+
+// GET /history — the Flutter chat page backfills from here on connect.
+//
+// The shape is {"messages":[...]}, which is what the app parses. It used to
+// answer with a bare "[]" that was never written to, so the app - which drops
+// anything that is not a JSON object - silently backfilled nothing.
+//
+// `time` is omitted rather than faked when the buoy has no clock. The app
+// falls back to arrival time for those, which is honest: we genuinely do not
+// know when the line was said, and stamping 1970 on it would sort the whole
+// backlog out of the app's 24-hour retention window.
+void handleHistory() {
+  JsonDocument doc;
+  JsonArray arr = doc["messages"].to<JsonArray>();
+  for (int i = 0; i < MAX_HISTORY; i++) {
+    const ChatLine& line = history[(historyHead + i) % MAX_HISTORY];
+    if (!line.used) continue;
+    JsonObject entry = arr.add<JsonObject>();
+    entry["from"] = line.from;
+    entry["text"] = line.text;
+    if (line.at > 0) entry["time"] = isoUtc(line.at);
+  }
+  String body;
+  serializeJson(doc, body);
+  http.send(200, "application/json", body);
+}
 
 // ---------------------------------------------------------------------------
 // Connectivity probes — the thing that makes or breaks an open network
@@ -494,13 +582,27 @@ void onWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len) {
     if (num < MAX_AP_CLIENTS) clientNames[num] = String((const char*)(in["name"] | "?"));
     broadcastClients();
   } else if (strcmp(kind, "msg") == 0) {
+    const char* from = in["from"] | "?";
+    const char* text = in["text"] | "";
+    if (!text[0]) return;
+
+    historyAdd(from, text);
+
     JsonDocument out;
     out["type"] = "msg";
-    out["from"] = in["from"] | "?";
-    out["text"] = in["text"] | "";
+    out["from"] = from;
+    out["text"] = text;
     String s;
     serializeJson(out, s);
-    ws.broadcastTXT(s);
+
+    // Relay to everyone EXCEPT the phone that sent it. The app draws its own
+    // message the instant the fisher hits send - it cannot wait for a round
+    // trip through a buoy that may have no uplink - so broadcasting back to
+    // the sender put every message on their screen twice, which reads as
+    // having sent it twice. sendTXT to a slot with no client is a no-op.
+    for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) {
+      if (i != num) ws.sendTXT(i, s);
+    }
   }
 }
 

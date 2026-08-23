@@ -53,6 +53,24 @@ The two Adafruit libraries drive the board's built-in 128x64 OLED. Installing
 accept it, or the sketch fails to link. Skipping either one produces
 `Adafruit_SSD1306.h: No such file or directory` at compile time.
 
+### `build_opt.h` is part of the sketch — do not delete it
+
+It contains one line, `-DWEBSOCKETS_SERVER_CLIENT_MAX=10`. The WebSockets
+library defaults that to 5 while the AP accepts 10 phones, so without it boats
+6–10 associate, get the captive portal, and never reach chat.
+
+It has to be a build flag rather than a `#define` in the `.ino`:
+`WebSocketsServer` holds its client table by value in its header, so a value
+visible only to the sketch would give the library's own `.cpp` a different
+object layout — corruption, not a bigger table. The Arduino IDE passes this
+file's contents to every compilation unit, which is what makes it safe.
+
+The file is fed straight to the compiler as a response file, so it may contain
+flags only — **no comments**. `AqOneBuoy.ino` `static_assert`s on the value, so
+a build that misses the flag fails with an explanatory message instead of
+silently capping at 5 boats. On PlatformIO the equivalent is
+`build_flags = -DWEBSOCKETS_SERVER_CLIENT_MAX=10` in `platformio.ini`.
+
 ## What it exposes
 
 **To phones on the AP (`192.168.4.1`):**
@@ -62,8 +80,8 @@ accept it, or the sketch fails to link. Skipping either one produces
 | `POST /v1/sos` | Accept an SOS. Replies immediately, delivers in the background. |
 | `GET /v1/sos/status?vessel_id=` | The dispatcher's ETA once acknowledged. |
 | `GET /v1/status` | Buoy health, queue depth, whether the uplink is alive. |
-| `GET /history` | Chat backfill (unchanged). |
-| `ws://192.168.4.1:81` | Chat WebSocket (unchanged protocol). |
+| `GET /history` | Chat backfill — `{"messages":[{"from","text","time"}]}`, last 20 lines, RAM only. |
+| `ws://192.168.4.1:81` | Chat WebSocket. Relayed to every phone **except** the sender. |
 | `GET /portal` | Captive-portal page showing whether the shore link is up. |
 | `/generate_204`, `/ncsi.txt`, `/hotspot-detect.html` | OS connectivity probes. |
 
@@ -156,6 +174,12 @@ currently forward to a neighbour — it queues until its own uplink returns.
 
 **One WiFi radio.** AP and station share a channel. Joining the uplink can
 briefly drop connected phones. Bring the uplink up before fishers connect.
+
+**Chat history is RAM only, last 20 lines.** A reboot loses the backlog. Chat is
+conversation, not distress traffic, and it does not earn the flash wear the SOS
+queue does. Timestamps come from NTP once the uplink is up; lines heard before
+that are served without a `time` and the app dates them to when it received
+them, rather than the buoy inventing a clock reading.
 
 **Queue holds 12 SOS.** Beyond that `POST /v1/sos` returns 503. Raise `MAX_QUEUE`
 if you expect more, watching NVS size.

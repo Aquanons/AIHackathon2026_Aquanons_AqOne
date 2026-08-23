@@ -1,3 +1,5 @@
+import 'package:aqone/l10n/app_localizations.dart';
+
 /// How much confidence anyone downstream should place in a vessel's claimed
 /// identity.
 ///
@@ -6,36 +8,20 @@
 /// The app never withholds an SOS on the basis of a tier.
 enum TrustTier {
   /// The skipper typed their own details. Format-checked, nothing more.
-  selfDeclared('self_declared', 'Self-declared'),
+  selfDeclared('self_declared'),
 
   /// A one-time code reached the phone number on the record. Reserved: the
   /// app does not send codes yet, so nothing sets this today.
-  phoneVerified('phone_verified', 'Phone verified'),
+  phoneVerified('phone_verified'),
 
   /// A responder physically met this vessel and confirmed it. Only the
   /// MDRRMO side can grant this; the handset never sets it locally.
-  confirmedByResponder('confirmed_by_responder', 'Confirmed by responder');
+  confirmedByResponder('confirmed_by_responder');
 
-  const TrustTier(this.wire, this.label);
+  const TrustTier(this.wire);
 
   /// Stable string used in sqlite and on the wire.
   final String wire;
-
-  /// Short human label for the UI.
-  final String label;
-
-  String get description {
-    switch (this) {
-      case TrustTier.selfDeclared:
-        return 'These details were entered on this phone and have not been '
-            'checked against any registry.';
-      case TrustTier.phoneVerified:
-        return 'The phone number on this record has been reached with a '
-            'one-time code.';
-      case TrustTier.confirmedByResponder:
-        return 'A responder has met this vessel and confirmed these details.';
-    }
-  }
 
   /// Higher means more corroborated. Useful for sorting a dispatcher queue.
   int get rank => index;
@@ -48,4 +34,12 @@ enum TrustTier {
     }
     return TrustTier.selfDeclared;
   }
+}
+
+extension TrustTierL10n on TrustTier {
+  String label(AppLocalizations t) => switch (this) {
+        TrustTier.selfDeclared => t.trustSelfDeclared,
+        TrustTier.phoneVerified => t.trustPhoneVerified,
+        TrustTier.confirmedByResponder => t.trustResponderConfirmed,
+      };
 }

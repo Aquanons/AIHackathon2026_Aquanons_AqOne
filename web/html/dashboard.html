@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AqOne - SAR Operations Console</title>
   <link rel="icon" href="../assets/icons/favicon.png" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-fullscreen@1.0.2/dist/leaflet.fullscreen.css" />
+  <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="../vendor/leaflet/leaflet.fullscreen.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
 
 </head>
@@ -122,12 +122,39 @@
        LIVE ALERT BANNER
        ══════════════════════════════════════════════════════════════ -->
   <div class="live-alert-banner" id="live-alert-banner">
-    <span class="banner-pulse"></span>
-    <span class="banner-text">Live SOS: <strong id="banner-alert-count">0</strong></span>
-    <span class="banner-sep"></span>
-    <span class="banner-text">RETURN NOW: <strong class="banner-squall-count" id="banner-squall-count">0</strong></span>
-    <span class="banner-sep"></span>
-    <span class="banner-text">Last updated: <strong class="banner-time">0s ago</strong></span>
+    <article class="metric-card">
+      <div class="metric-card-topline">
+        <span class="metric-label">LIVE SOS</span>
+        <span class="metric-status metric-status-clear" id="stats-sos-status">ALL CLEAR</span>
+      </div>
+      <div class="metric-card-main">
+        <strong class="metric-value" id="banner-alert-count">0</strong>
+        <svg class="metric-sparkline" viewBox="0 0 92 24" aria-hidden="true"><path d="M2 17h88" /></svg>
+      </div>
+      <span class="metric-caption">Active distress calls in the network</span>
+    </article>
+    <article class="metric-card">
+      <div class="metric-card-topline">
+        <span class="metric-label">RETURN NOW</span>
+        <span class="metric-status metric-status-watch" id="stats-squall-status">MONITORING</span>
+      </div>
+      <div class="metric-card-main">
+        <strong class="metric-value banner-squall-count" id="banner-squall-count">0</strong>
+        <svg class="metric-sparkline" viewBox="0 0 92 24" aria-hidden="true"><path d="M2 17h90" /></svg>
+      </div>
+      <span class="metric-caption">Squall detections above the return threshold</span>
+    </article>
+    <article class="metric-card">
+      <div class="metric-card-topline">
+        <span class="metric-label">LAST UPDATED</span>
+        <span class="metric-status metric-status-feed metric-status-offline" id="stats-feed-status">OFFLINE</span>
+      </div>
+      <div class="metric-card-main">
+        <strong class="metric-value metric-value-time banner-time">never</strong>
+        <svg class="metric-sparkline" viewBox="0 0 92 24" aria-hidden="true"><path d="M2 17h90" /></svg>
+      </div>
+      <span class="metric-caption">Live SOS feed freshness</span>
+    </article>
   </div>
 
   <div class="demo-data-banner">
@@ -141,48 +168,52 @@
 
     <!-- ─── MAP COLUMN (left 68%) ─── -->
     <div class="map-column">
-      <div id="map"></div>
+      <div class="map-card">
+        <!-- AI danger zone scan -->
+        <div class="danger-zone-status" id="danger-zone-status" aria-live="polite">
+          <span class="danger-zone-status-icon">!</span>
+          <span class="danger-zone-status-copy">
+            <strong>Live near-shore danger scan</strong>
+            <span id="danger-zone-status-text">Loading live weather and marine observations...</span>
+            <span class="danger-zone-disclosure">Experimental · Not for navigation</span>
+          </span>
+          <button type="button" class="danger-zone-refresh" id="danger-zone-refresh" title="Recalculate danger zones">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+              <path d="M20 4v7h-7" />
+            </svg>
+          </button>
+        </div>
 
-      <!-- Measure HUD -->
-      <div class="measure-hud" id="measure-hud">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          style="flex-shrink:0">
-          <path d="M3 17l4-8 4 4 4-6 4 5" />
-        </svg>
-        <span id="measure-hud-total">0.000 km</span>
-      </div>
+        <div class="map-stage">
+          <div id="map"></div>
 
-      <!-- Compass / Home button -->
-      <div class="compass-widget" id="compass-widget" title="Reset to Region Center">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
-          <path d="M9 21V12h6v9"/>
-        </svg>
-      </div>
+          <!-- Measure HUD -->
+          <div class="measure-hud" id="measure-hud">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              style="flex-shrink:0">
+              <path d="M3 17l4-8 4 4 4-6 4 5" />
+            </svg>
+            <span id="measure-hud-total">0.000 km</span>
+          </div>
 
-      <!-- Coordinates display -->
-      <div class="coords-display" id="coords-display">
-        <span id="coords-lat">11.7010° N</span>
-        <span class="coords-sep">|</span>
-        <span id="coords-lng">122.3610° E</span>
-        <span class="coords-sep">|</span>
-        <span id="coords-zoom">Zoom: 11</span>
-      </div>
+          <!-- Compass / Home button -->
+          <div class="compass-widget" id="compass-widget" title="Reset to Region Center">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
+              <path d="M9 21V12h6v9"/>
+            </svg>
+          </div>
 
-      <!-- AI danger zone scan (DangerzoneFeature) -->
-      <div class="danger-zone-status" id="danger-zone-status" aria-live="polite">
-        <span class="danger-zone-status-icon">!</span>
-        <span class="danger-zone-status-copy">
-          <strong>Live near-shore danger scan</strong>
-          <span id="danger-zone-status-text">Loading live weather and marine observations...</span>
-          <span class="danger-zone-disclosure">Experimental · Not for navigation</span>
-        </span>
-        <button type="button" class="danger-zone-refresh" id="danger-zone-refresh" title="Recalculate danger zones">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-            <path d="M20 4v7h-7" />
-          </svg>
-        </button>
+          <!-- Coordinates display -->
+          <div class="coords-display" id="coords-display">
+            <span id="coords-lat">11.7010° N</span>
+            <span class="coords-sep">|</span>
+            <span id="coords-lng">122.3610° E</span>
+            <span class="coords-sep">|</span>
+            <span id="coords-zoom">Zoom: 11</span>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -979,13 +1010,25 @@
   <!-- Toast Notification -->
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-fullscreen@1.0.2/dist/leaflet.fullscreen.js"></script>
+  <script src="../vendor/leaflet/leaflet.js"></script>
+  <script src="../vendor/leaflet/leaflet.fullscreen.js"></script>
   <script src="../js/advisoryService.js"></script>
   <script src="../js/dangerZoneModel.js"></script>
   <script src="../js/dangerZonePredictor.js"></script>
   <script src="../js/dashboard-utils.js"></script>
-  <script src="../js/dashboard.js"></script>
+  <script src="../js/dashboard/dashboard-core.js"></script>
+  <script src="../js/dashboard/dashboard-markers.js"></script>
+  <script src="../js/dashboard/dashboard-tools.js"></script>
+  <script src="../js/dashboard/dashboard-panels.js"></script>
+  <script src="../js/dashboard/dashboard-vessels-alerts.js"></script>
+  <script src="../js/dashboard/dashboard-live-sos.js"></script>
+  <script src="../js/dashboard/dashboard-sar.js"></script>
+  <script src="../js/dashboard/dashboard-incidents.js"></script>
+  <script src="../js/dashboard/dashboard-buoy-health.js"></script>
+  <script src="../js/dashboard/dashboard-ai-ops.js"></script>
+  <script src="../js/dashboard/dashboard-profile-pill.js"></script>
+  <script src="../js/dashboard/dashboard-shortcuts-weather.js"></script>
+  <script src="../js/dashboard/dashboard-emergency-advisory.js"></script>
 </body>
 
 </html>

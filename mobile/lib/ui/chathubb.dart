@@ -7,7 +7,9 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/config.dart';
 import '../core/endpoint_guard.dart';
+import '../data/identity_store.dart';
 
 // ---------------------------------------------------------------------------
 // Model
@@ -27,6 +29,15 @@ class ChatMessage {
   final DateTime time;
 }
 
+/// One line this handset sent, remembered only long enough to recognise the
+/// hub's echo of it.
+class _SelfSend {
+  const _SelfSend(this.text, this.at);
+
+  final String text;
+  final DateTime at;
+}
+
 // ---------------------------------------------------------------------------
 // Service — WebSocket chat client for the Heltec WiFi-relay hub
 //
@@ -44,17 +55,50 @@ class ChatMessage {
 class ChatService extends ChangeNotifier {
   ChatService({
     this.host = '192.168.4.1',
-    this.displayName = 'You',
+    required this.displayName,
     this.backendUrl = 'https://aqone-backend.up.railway.app',
   });
 
   final String host;
-  final String displayName;
+
+  /// Cloud backend the dashboard reads from. Chat lines are relayed here in
+  /// addition to the Heltec broadcast so a dispatcher on shore can see the
+  /// mesh conversation without being on the Aquan WiFi.
   final String backendUrl;
+
+  /// What this handset announces itself as on the hub. It MUST identify this
+  /// boat and not this handset's point of view: the hub broadcasts the name
+  /// verbatim to every other phone, and it is also how the roster and the
+  /// echo guard below tell our own traffic apart. A generic "You" here made
+  /// every boat on the hub announce the same name, which put every other
+  /// fisher's message in our own bubble. Derive it with [displayNameFor].
+  final String displayName;
 
   static const int maxMessageLength = 50;
   static const int _maxMessages = 50;
   static const Duration _messageRetention = Duration(hours: 24);
+
+  /// How long a message we sent stays eligible to be recognised as the hub's
+  /// echo of itself. Generous, because the flush path can lag a reconnect.
+  static const Duration _echoWindow = Duration(seconds: 10);
+
+  /// The boat name is what a fisher on another banca recognises over the
+  /// radio, so it wins over the skipper's own name. Both are optional in the
+  /// profile, hence the final fallback.
+  static String displayNameFor(VesselIdentity identity) {
+    for (final String candidate in <String>[
+      identity.boat,
+      identity.skipperName,
+    ]) {
+      final String trimmed = candidate.trim();
+      if (trimmed.isNotEmpty) {
+        return trimmed.length <= AqOneConfig.maxBoatLength
+            ? trimmed
+            : trimmed.substring(0, AqOneConfig.maxBoatLength);
+      }
+    }
+    return 'Fisher';
+  }
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
@@ -64,13 +108,9 @@ class ChatService extends ChangeNotifier {
   final List<String> _clients = [];
   final List<String> _pendingQueue = [];
 
-  // Texts just put on the wire that the hub will echo back.
-  //
-  // The Heltec relay broadcasts every 'msg' to ALL clients INCLUDING the
-  // sender, while sendMessage already shows the line optimistically. Without
-  // this the sender sees everything twice. Registered at send time rather than
-  // queue time, so a message that sat offline for an hour still matches.
-  final List<MapEntry<String, DateTime>> _awaitingEcho = [];
+  /// Messages we put on the wire and have already drawn locally, kept so the
+  /// hub's broadcast of them can be recognised and dropped. See [_isSelfEcho].
+  final List<_SelfSend> _selfSends = [];
 
   bool _connected = false;
   bool _connecting = false;
@@ -183,8 +223,17 @@ class ChatService extends ChangeNotifier {
         final name = json['from'] as String? ?? '?';
         final text = json['text'] as String? ?? '';
         if (text.isEmpty) return;
-        // Our own line bouncing off the hub broadcast - already on screen.
-        if (name == displayName && _consumeEcho(text)) return;
+        // The hub broadcasts to every socket it holds, so a buoy running
+        // firmware that does not skip the sender hands us back the message we
+        // drew the moment the fisher hit send. Drawing it twice reads as the
+        // message having been sent twice - the last thing you want a person
+        // to believe about a call for help. Matching on (name, text, recency)
+        // rather than on the name alone keeps a same-named boat's genuinely
+        // separate message visible.
+        if (name == displayName && _isSelfEcho(text)) return;
+        // Attribution is by announced name only. An older handset that still
+        // announces the generic "You" is a different boat, not us, and must
+        // not land in our own bubble.
         _messages.add(ChatMessage(
           text: text,
           from: name,
@@ -197,38 +246,76 @@ class ChatService extends ChangeNotifier {
       case 'history':
         final list = json['messages'] as List<dynamic>?;
         if (list == null) break;
-        _messages.clear();
-        for (final entry in list) {
-          if (entry is! Map<String, dynamic>) continue;
-          _messages.add(ChatMessage(
-            text: entry['text'] as String? ?? '',
-            from: entry['from'] as String? ?? '?',
-            isMine: (entry['from'] as String?) == displayName,
-            time: DateTime.tryParse(entry['time'] as String? ?? '') ??
-                DateTime.now(),
-          ));
-        }
-        _trimMessages();
-        _persistMessages();
-        _notify();
+        _adoptHistory(list);
     }
   }
 
-  void _expectEcho(String text) {
-    _awaitingEcho.add(MapEntry(text, DateTime.now()));
-    // Bounded: a hub that never echoes must not grow this without limit.
-    if (_awaitingEcho.length > 50) _awaitingEcho.removeAt(0);
+  /// Folds the hub's backlog into the scrollback.
+  ///
+  /// This used to clear [_messages] and take the backlog wholesale, which is
+  /// unsafe now that the hub does not echo a line back to the phone that sent
+  /// it: a message sent while offline lives only on this handset until the
+  /// queue flushes, and wiping it would take it off the sender's screen while
+  /// every other boat still saw it. So:
+  ///
+  /// * nothing on screen — take the lot; this phone just arrived.
+  /// * every backlog line carries a time — take only other boats' lines newer
+  ///   than our newest, i.e. exactly what was said while we were away. Our own
+  ///   lines are never adopted, so buoy/phone clock skew cannot duplicate them.
+  /// * any line came back untimed (the buoy had no clock yet) — take none.
+  ///   Without a time there is no way to tell a missed message from one
+  ///   already on screen, and showing it twice is worse than not backfilling.
+  void _adoptHistory(List<dynamic> list) {
+    final List<ChatMessage> backlog = [];
+    bool everyLineTimed = true;
+
+    for (final entry in list) {
+      if (entry is! Map<String, dynamic>) continue;
+      final String text = entry['text'] as String? ?? '';
+      if (text.isEmpty) continue;
+      final String from = entry['from'] as String? ?? '?';
+      final DateTime? at = DateTime.tryParse(entry['time'] as String? ?? '');
+      if (at == null) everyLineTimed = false;
+      backlog.add(ChatMessage(
+        text: text,
+        from: from,
+        isMine: from == displayName,
+        time: at ?? DateTime.now(),
+      ));
+    }
+    final List<ChatMessage>? merged = mergeHistory(
+      _messages,
+      backlog,
+      everyLineTimed: everyLineTimed,
+    );
+    if (merged == null) return;
+
+    _messages
+      ..clear()
+      ..addAll(merged);
+    _trimMessages();
+    _persistMessages();
+    _notify();
   }
 
-  /// True if [text] is our own message coming back, which the caller drops.
-  bool _consumeEcho(String text) {
-    final now = DateTime.now();
-    _awaitingEcho.removeWhere(
-        (e) => now.difference(e.value) > const Duration(minutes: 2));
-    final i = _awaitingEcho.indexWhere((e) => e.key == text);
-    if (i == -1) return false;
-    _awaitingEcho.removeAt(i);
-    return true;
+  /// The merge rules described on [_adoptHistory], as a pure function so they
+  /// can be tested without a socket. Returns null when the backlog changes
+  /// nothing and the scrollback should be left alone.
+  static List<ChatMessage>? mergeHistory(
+    List<ChatMessage> current,
+    List<ChatMessage> backlog, {
+    required bool everyLineTimed,
+  }) {
+    if (backlog.isEmpty) return null;
+    if (current.isEmpty) return List<ChatMessage>.of(backlog);
+    if (!everyLineTimed) return null;
+
+    final DateTime newest = current.last.time;
+    final List<ChatMessage> missed = backlog
+        .where((ChatMessage m) => !m.isMine && m.time.isAfter(newest))
+        .toList();
+    if (missed.isEmpty) return null;
+    return <ChatMessage>[...current, ...missed];
   }
 
   void _trimMessages() {
@@ -288,12 +375,7 @@ class ChatService extends ChangeNotifier {
     _notify();
 
     if (_connected) {
-      _expectEcho(trimmed);
-      _safeSend(jsonEncode({
-        'type': 'msg',
-        'from': displayName,
-        'text': trimmed,
-      }));
+      _sendChat(trimmed);
     } else {
       _pendingQueue.add(trimmed);
       _persistQueue();
@@ -301,6 +383,30 @@ class ChatService extends ChangeNotifier {
 
     // Also relay to the cloud backend so the dashboard can display it.
     _relayToBackend(displayName, trimmed);
+  }
+
+  /// Puts one chat line on the wire and records it for [_isSelfEcho]. Every
+  /// outgoing `msg` goes through here so no send path can forget to.
+  void _sendChat(String text) {
+    _selfSends.add(_SelfSend(text, DateTime.now()));
+    _safeSend(jsonEncode({
+      'type': 'msg',
+      'from': displayName,
+      'text': text,
+    }));
+  }
+
+  /// Whether [text] is the hub echoing back something we just sent, in which
+  /// case it is already on screen. Consumes the record, so a fisher who sends
+  /// the same word twice still sees it twice.
+  bool _isSelfEcho(String text) {
+    final DateTime cutoff = DateTime.now().subtract(_echoWindow);
+    _selfSends.removeWhere((_SelfSend sent) => sent.at.isBefore(cutoff));
+    final int index =
+        _selfSends.indexWhere((_SelfSend sent) => sent.text == text);
+    if (index < 0) return false;
+    _selfSends.removeAt(index);
+    return true;
   }
 
   // ----- History backfill -------------------------------------------------
@@ -315,20 +421,7 @@ class ChatService extends ChangeNotifier {
       if (json is! Map<String, dynamic>) return;
       final list = json['messages'] as List<dynamic>?;
       if (list == null) return;
-      _messages.clear();
-      for (final entry in list) {
-        if (entry is! Map<String, dynamic>) continue;
-        _messages.add(ChatMessage(
-          text: entry['text'] as String? ?? '',
-          from: entry['from'] as String? ?? '?',
-          isMine: (entry['from'] as String?) == displayName,
-          time: DateTime.tryParse(entry['time'] as String? ?? '') ??
-              DateTime.now(),
-        ));
-      }
-      _trimMessages();
-      _persistMessages();
-      _notify();
+      _adoptHistory(list);
     } catch (_) {
       // Hub offline — not an error on mobile.
     }
@@ -341,12 +434,7 @@ class ChatService extends ChangeNotifier {
     final batch = List<String>.from(_pendingQueue);
     _pendingQueue.clear();
     for (final text in batch) {
-      _expectEcho(text);
-      _safeSend(jsonEncode({
-        'type': 'msg',
-        'from': displayName,
-        'text': text,
-      }));
+      _sendChat(text);
       // Small delay so the Heltec relay can keep up.
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
@@ -472,7 +560,9 @@ String initialOf(String name) {
 /// A stable colour per participant - the same name always lands on the same
 /// hue, so a neighbour is recognisable before you read the letter. Matters
 /// once LoRa makes the roster longer than a couple of boats, and two of them
-/// share an initial.
+/// share an initial. Top-level (rather than a private helper on the state)
+/// so the bubble, wheel and header all derive avatars the same way instead
+/// of each doing its own `name[0]`.
 Color avatarColorOf(String name) {
   const palette = <Color>[
     Color(0xFF38BDF8),
@@ -494,21 +584,21 @@ Color avatarColorOf(String name) {
 // ---------------------------------------------------------------------------
 
 class Chathubb extends StatefulWidget {
-  const Chathubb({super.key, this.displayName = 'You'});
+  const Chathubb({super.key, required this.identity});
 
-  /// Who this handset appears as to the rest of the mesh. Venture passes the
-  /// skipper or boat name so the wheel shows something a neighbour recognises
-  /// rather than "You" on every phone.
-  final String displayName;
+  /// Whose boat this is. Only the name is used, but taking the identity keeps
+  /// the derivation ([ChatService.displayNameFor]) in one place rather than
+  /// letting each call site invent its own fallback.
+  final VesselIdentity identity;
 
   @override
   State<Chathubb> createState() => _ChathubbState();
 }
 
 class _ChathubbState extends State<Chathubb> {
-  // Built in initState, not as a field initialiser: the name comes from
-  // `widget`, which is not available while fields are being initialised.
-  late final ChatService _service;
+  late final ChatService _service = ChatService(
+    displayName: ChatService.displayNameFor(widget.identity),
+  );
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _onAquan = false;
@@ -516,7 +606,6 @@ class _ChathubbState extends State<Chathubb> {
   @override
   void initState() {
     super.initState();
-    _service = ChatService(displayName: widget.displayName);
     _service.start();
     _checkWifi();
     // Poll WiFi status every 5 s.
@@ -534,16 +623,6 @@ class _ChathubbState extends State<Chathubb> {
   }
 
   Future<void> _checkWifi() async {
-    // A live socket is the only proof that matters: if chat is connected we
-    // are on the hub's network, whatever the platform says the SSID is.
-    // getWifiName() cannot be the primary signal - it needs location
-    // permission (and location switched ON) from Android 10, returns the SSID
-    // wrapped in quotes on some builds, and is unsupported on web.
-    if (_service.connected) {
-      if (mounted && !_onAquan) setState(() => _onAquan = true);
-      return;
-    }
-
     bool onAq = false;
     try {
       final info = NetworkInfo();
@@ -622,7 +701,7 @@ class _ChathubbState extends State<Chathubb> {
           body: Column(
             children: [
               // Clients wheel
-              _buildClientWheel(isDark),
+              if (_service.clients.isNotEmpty) _buildClientWheel(isDark),
               // Messages
               Expanded(child: _buildMessageList(isDark)),
               // Input
@@ -721,13 +800,14 @@ class _ChathubbState extends State<Chathubb> {
 
   Widget _buildClientWheel(bool isDark) {
     // The hub's roster already contains this handset under its own name -
-    // it is added when we send 'hello'. Prepending a literal "You" gave the
-    // local user two bubbles: one "You" and one under their real name.
+    // it is added when we send 'hello'. No need to prepend a literal "You":
+    // displayName is now derived from the vessel identity (see
+    // ChatService.displayNameFor), so a name never collides across boats.
     final users = _service.clients;
     return Container(
       height: 92,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: users.isEmpty
+      child: users.length == 1
           ? Center(
               child: Text(
                 'Waiting for others to join…',

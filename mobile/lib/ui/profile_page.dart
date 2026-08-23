@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 
 import '../core/locale_controller.dart';
 import '../core/tokens.dart';
@@ -111,6 +112,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _save() async {
     if (_saving || !_formKey.currentState!.validate()) return;
+    final t = AppLocalizations.of(context);
     setState(() => _saving = true);
     try {
       final updated = await widget.identityStore.ensure(
@@ -124,9 +126,9 @@ class _ProfilePageState extends State<ProfilePage> {
       widget.onIdentityUpdated(updated);
       setState(() => _editing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile updated'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(t.profileUpdated),
+          duration: const Duration(seconds: 2),
         ),
       );
     } catch (_) {
@@ -136,18 +138,16 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _confirmLogout() {
+    final t = AppLocalizations.of(context);
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Log out'),
-        content: const Text(
-          'You will need to register again to use AqOne. '
-          'Your SOS history on this device will be kept.',
-        ),
+        title: Text(t.logoutAction),
+        content: Text(t.logoutConfirmation),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(t.actionCancel),
           ),
           TextButton(
             onPressed: () {
@@ -155,7 +155,7 @@ class _ProfilePageState extends State<ProfilePage> {
               widget.onLogout();
             },
             style: TextButton.styleFrom(foregroundColor: _dangerRed),
-            child: const Text('Log out'),
+            child: Text(t.logoutAction),
           ),
         ],
       ),
@@ -234,10 +234,11 @@ class _ProfilePageState extends State<ProfilePage> {
       await _discardAvatarFile(previousPath);
     } catch (_) {
       if (!mounted) return;
+      final t = AppLocalizations.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not update your profile photo.'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(t.avatarUpdateError),
+          duration: const Duration(seconds: 2),
         ),
       );
     } finally {
@@ -306,6 +307,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
     final identity = widget.identity;
+    final t = AppLocalizations.of(context);
 
     return PopScope(
       // Never let the system back gesture pop the shell from a tab either -
@@ -327,7 +329,7 @@ class _ProfilePageState extends State<ProfilePage> {
             onPressed: _handleBack,
           ),
           title: Text(
-            'Profile',
+            t.profileTitle,
             style: TextStyle(
               color: palette.primaryText,
               fontWeight: FontWeight.w700,
@@ -338,7 +340,7 @@ class _ProfilePageState extends State<ProfilePage> {
               IconButton(
                 icon: const Icon(Icons.edit_rounded, size: 20),
                 onPressed: _startEditing,
-                tooltip: 'Edit profile',
+                tooltip: t.profileEdit,
               ),
           ],
         ),
@@ -428,7 +430,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Text(
                 identity.skipperName.isNotEmpty
                     ? identity.skipperName
-                    : 'No name set',
+                    : t.profileNoName,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -467,7 +469,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Settings',
+                  t.settingsTitle,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -487,23 +489,23 @@ class _ProfilePageState extends State<ProfilePage> {
               LanguageSettingTile(controller: widget.localeController!),
             _SettingsTile(
               icon: Icons.info_outline_rounded,
-              label: 'About AqOne',
-              onTap: () => _openInfo('About AqOne', InfoCopy.about),
+              label: t.aboutAqOne,
+              onTap: () => _openInfo(t.aboutAqOne, InfoCopy.about),
             ),
             _SettingsTile(
               icon: Icons.help_outline_rounded,
-              label: 'Help & Support',
-              onTap: () => _openInfo('Help & Support', InfoCopy.help),
+              label: t.helpSupport,
+              onTap: () => _openInfo(t.helpSupport, InfoCopy.help),
             ),
             _SettingsTile(
               icon: Icons.shield_outlined,
-              label: 'Privacy Policy',
-              onTap: () => _openInfo('Privacy Policy', InfoCopy.privacy),
+              label: t.privacyPolicy,
+              onTap: () => _openInfo(t.privacyPolicy, InfoCopy.privacy),
             ),
             _SettingsTile(
               icon: Icons.gavel_rounded,
-              label: 'Terms of Use',
-              onTap: () => _openInfo('Terms of Use', InfoCopy.terms),
+              label: t.termsOfUse,
+              onTap: () => _openInfo(t.termsOfUse, InfoCopy.terms),
             ),
             const SizedBox(height: AqSpace.lg),
             SizedBox(
@@ -511,7 +513,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: OutlinedButton.icon(
                 onPressed: _confirmLogout,
                 icon: const Icon(Icons.logout_rounded, size: 18),
-                label: const Text('Log out'),
+                label: Text(t.logoutAction),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _dangerRed,
                   side: const BorderSide(color: _dangerRed),
@@ -531,7 +533,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   bool get _hasCustomAvatar {
     final path = widget.identity.avatarPath;
-    return !kIsWeb && path != null && path.isNotEmpty && File(path).existsSync();
+    return !kIsWeb &&
+        path != null &&
+        path.isNotEmpty &&
+        File(path).existsSync();
   }
 
   Widget _avatarFallback(AqPalette palette) {
@@ -548,6 +553,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildInfoSection(AqPalette palette, VesselIdentity identity) {
+    final t = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(AqSpace.base),
       decoration: BoxDecoration(
@@ -559,36 +565,37 @@ class _ProfilePageState extends State<ProfilePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _InfoRow(
-            label: 'Full name',
+            label: t.fieldFullName,
             value: identity.skipperName.isNotEmpty ? identity.skipperName : '—',
           ),
           const SizedBox(height: AqSpace.md),
-          _InfoRow(label: 'Boat name', value: identity.boat),
+          _InfoRow(label: t.profileBoatName, value: identity.boat),
           const SizedBox(height: AqSpace.md),
           _InfoRow(
-            label: 'Registration type',
-            value: identity.licenseType.label,
+            label: t.fieldRegistrationType,
+            value: identity.licenseType.label(t),
           ),
           if (identity.hasLicense) ...<Widget>[
             const SizedBox(height: AqSpace.md),
             _InfoRow(
-              label: '${identity.licenseType.label} number',
+              label: t.fieldRegistrationNumber(identity.licenseType.label(t)),
               value: identity.licenseNumber,
             ),
           ],
           const SizedBox(height: AqSpace.md),
           _InfoRow(
-            label: 'Mobile number',
+            label: t.fieldMobileNumber,
             value: identity.phone.isNotEmpty ? identity.phone : '—',
           ),
           const SizedBox(height: AqSpace.md),
-          _InfoRow(label: 'Vessel ID', value: identity.vesselId),
+          _InfoRow(label: t.profileVesselId, value: identity.vesselId),
         ],
       ),
     );
   }
 
   Widget _buildEditForm(AqPalette palette) {
+    final t = AppLocalizations.of(context);
     return Form(
       key: _formKey,
       child: Column(
@@ -609,8 +616,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   textCapitalization: TextCapitalization.words,
                   textInputAction: TextInputAction.next,
                   style: const TextStyle(color: _authText, fontSize: 15),
-                  decoration: _decoration('Full name', Icons.person_outline_rounded),
-                  validator: Validators.skipperName,
+                  decoration: _decoration(
+                      t.fieldFullName, Icons.person_outline_rounded),
+                  validator: (value) => Validators.skipperName(value, t),
                 ),
                 const SizedBox(height: AqSpace.sm),
                 TextFormField(
@@ -620,22 +628,24 @@ class _ProfilePageState extends State<ProfilePage> {
                   textInputAction: TextInputAction.next,
                   style: const TextStyle(color: _authText, fontSize: 15),
                   decoration: _decoration(
-                    'Boat name or registration',
+                    t.fieldBoatNameOrRegistration,
                     Icons.sailing_outlined,
                   ),
-                  validator: Validators.boatName,
+                  validator: (value) => Validators.boatName(value, t),
                 ),
                 const SizedBox(height: AqSpace.sm),
                 DropdownButtonFormField<LicenseType>(
                   initialValue: _licenseType,
                   isExpanded: true,
                   style: const TextStyle(color: _authText, fontSize: 15),
-                  decoration: _decoration('Registration type', Icons.badge_outlined),
+                  decoration: _decoration(
+                      t.fieldRegistrationType, Icons.badge_outlined),
                   items: <DropdownMenuItem<LicenseType>>[
                     for (final type in LicenseType.values)
                       DropdownMenuItem<LicenseType>(
                         value: type,
-                        child: Text(type.label, overflow: TextOverflow.ellipsis),
+                        child: Text(type.label(t),
+                            overflow: TextOverflow.ellipsis),
                       ),
                   ],
                   onChanged: _saving
@@ -651,7 +661,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 4),
                   child: Text(
-                    _licenseType.hint,
+                    _licenseType.hint(t),
                     style: const TextStyle(
                       fontSize: 11.5,
                       color: _authLabel,
@@ -671,10 +681,11 @@ class _ProfilePageState extends State<ProfilePage> {
                         : TextInputType.text,
                     style: const TextStyle(color: _authText, fontSize: 15),
                     decoration: _decoration(
-                      '${_licenseType.label} number',
+                      t.fieldRegistrationNumber(_licenseType.label(t)),
                       Icons.confirmation_number_outlined,
                     ),
-                    validator: (value) => Validators.license(value, _licenseType),
+                    validator: (value) =>
+                        Validators.license(value, _licenseType, t),
                   ),
                 ],
                 const SizedBox(height: AqSpace.sm),
@@ -684,8 +695,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
                   style: const TextStyle(color: _authText, fontSize: 15),
-                  decoration: _decoration('Mobile number', Icons.phone_iphone_rounded),
-                  validator: Validators.phone,
+                  decoration: _decoration(
+                      t.fieldMobileNumber, Icons.phone_iphone_rounded),
+                  validator: (value) => Validators.phone(value, t),
                 ),
               ],
             ),
@@ -698,16 +710,19 @@ class _ProfilePageState extends State<ProfilePage> {
               borderRadius: BorderRadius.circular(AqRadius.small),
               border: Border.all(color: _noticeFg.withValues(alpha: 0.25)),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(Icons.privacy_tip_outlined, size: 18, color: _noticeFg),
-                SizedBox(width: 10),
+                const Icon(
+                  Icons.privacy_tip_outlined,
+                  size: 18,
+                  color: _noticeFg,
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Editing your details resets your trust tier to self-declared. '
-                    'A responder will need to re-confirm your identity.',
-                    style: TextStyle(
+                    t.profileEditTrustNotice,
+                    style: const TextStyle(
                       fontSize: 11.5,
                       color: _noticeFg,
                       height: 1.35,
@@ -729,7 +744,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       borderRadius: BorderRadius.circular(AqRadius.button),
                     ),
                   ),
-                  child: const Text('Cancel'),
+                  child: Text(t.actionCancel),
                 ),
               ),
               const SizedBox(width: AqSpace.md),
@@ -753,9 +768,9 @@ class _ProfilePageState extends State<ProfilePage> {
                             strokeWidth: 2,
                           ),
                         )
-                      : const Text(
-                          'Save changes',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                      : Text(
+                          t.actionSaveChanges,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                 ),
               ),
@@ -836,6 +851,7 @@ class _TierChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     final confirmed = tier == TrustTier.confirmedByResponder;
     final color = confirmed ? const Color(0xFF1B7F4B) : _authLabel;
     return Container(
@@ -855,7 +871,7 @@ class _TierChip extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(
-            tier.label,
+            tier.label(t),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -877,6 +893,7 @@ class _ThemeSwitchTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
+    final t = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: AqSpace.xs),
       child: Material(
@@ -894,7 +911,7 @@ class _ThemeSwitchTile extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Dark mode',
+                  t.darkMode,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -978,6 +995,7 @@ class _AvatarActionSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
+    final t = AppLocalizations.of(context);
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1000,27 +1018,30 @@ class _AvatarActionSheet extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: Icon(Icons.photo_camera_rounded, color: palette.primaryText),
+              leading:
+                  Icon(Icons.photo_camera_rounded, color: palette.primaryText),
               title: Text(
-                'Take a photo',
+                t.avatarTakePhoto,
                 style: TextStyle(color: palette.primaryText),
               ),
               onTap: () => Navigator.pop(context, _AvatarAction.camera),
             ),
             ListTile(
-              leading: Icon(Icons.photo_library_rounded, color: palette.primaryText),
+              leading:
+                  Icon(Icons.photo_library_rounded, color: palette.primaryText),
               title: Text(
-                'Choose from gallery',
+                t.avatarChooseGallery,
                 style: TextStyle(color: palette.primaryText),
               ),
               onTap: () => Navigator.pop(context, _AvatarAction.gallery),
             ),
             if (hasPhoto)
               ListTile(
-                leading: const Icon(Icons.delete_outline_rounded, color: _dangerRed),
-                title: const Text(
-                  'Remove photo',
-                  style: TextStyle(color: _dangerRed),
+                leading:
+                    const Icon(Icons.delete_outline_rounded, color: _dangerRed),
+                title: Text(
+                  t.avatarRemovePhoto,
+                  style: const TextStyle(color: _dangerRed),
                 ),
                 onTap: () => Navigator.pop(context, _AvatarAction.remove),
               ),

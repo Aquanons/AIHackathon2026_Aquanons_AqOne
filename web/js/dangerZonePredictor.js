@@ -1,8 +1,20 @@
 (function () {
   'use strict';
 
-  var WEATHER_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
-  var MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
+  function storedBase(key) {
+    try {
+      return window.localStorage.getItem(key) || '';
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  var WEATHER_ENDPOINT = window.AQONE_WEATHER_BASE ||
+    storedBase('AQONE_WEATHER_BASE') ||
+    'https://api.open-meteo.com/v1/forecast';
+  var MARINE_ENDPOINT = window.AQONE_MARINE_BASE ||
+    storedBase('AQONE_MARINE_BASE') ||
+    'https://marine-api.open-meteo.com/v1/marine';
   var NEW_WASHINGTON_COVERAGE = [
     { id: 'tambak-coastal-waters', name: 'Tambak Coastal Waters', lat: 11.680, lng: 122.414, radius: 600, depth_m: 9, bathymetry_dataset: 'gebco2020' },
     { id: 'poblacion-coastal-waters', name: 'Poblacion Coastal Waters', lat: 11.666, lng: 122.431, radius: 600, depth_m: 9, bathymetry_dataset: 'gebco2020' },

@@ -1,3 +1,5 @@
+import 'package:aqone/l10n/app_localizations.dart';
+
 /// The kind of fishing registration a skipper holds.
 ///
 /// Most users of this app are municipal fisherfolk on boats of 3 gross tons
@@ -7,25 +9,23 @@
 /// Offering only CFVGL would lock out the people this app exists for.
 enum LicenseType {
   /// Municipal fishing vessel registration, 3 GT and below (LGU / BoatR).
-  boatr('boatr', 'BoatR', 'Municipal boat registration (3 GT and below)'),
+  boatr('boatr'),
 
   /// Municipal fisherfolk registration for the person (LGU / FishR).
-  fishr('fishr', 'FishR', 'Municipal fisherfolk registration number'),
+  fishr('fishr'),
 
   /// Commercial Fishing Vessel and Gear Licence, 3.1 GT and above (BFAR).
-  cfvgl('cfvgl', 'CFVGL', 'Commercial vessel licence (3.1 GT and above)'),
+  cfvgl('cfvgl'),
 
   /// Not registered, or registered but the paperwork is not to hand.
   ///
   /// This option exists on purpose. An unregistered fisherman in trouble
   /// still needs the SOS button to work.
-  none('none', 'Not registered yet', 'You can add this later in settings');
+  none('none');
 
-  const LicenseType(this.wire, this.label, this.hint);
+  const LicenseType(this.wire);
 
   final String wire;
-  final String label;
-  final String hint;
 
   bool get requiresNumber => this != LicenseType.none;
 
@@ -37,4 +37,20 @@ enum LicenseType {
     }
     return LicenseType.none;
   }
+}
+
+extension LicenseTypeL10n on LicenseType {
+  String label(AppLocalizations t) => switch (this) {
+        LicenseType.boatr => 'BoatR',
+        LicenseType.fishr => 'FishR',
+        LicenseType.cfvgl => 'CFVGL',
+        LicenseType.none => t.licenseNoneLabel,
+      };
+
+  String hint(AppLocalizations t) => switch (this) {
+        LicenseType.boatr => t.licenseBoatRHint,
+        LicenseType.fishr => t.licenseFishRHint,
+        LicenseType.cfvgl => t.licenseCfvglHint,
+        LicenseType.none => t.licenseNoneHint,
+      };
 }

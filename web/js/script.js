@@ -61,6 +61,14 @@ async function handleLogin(event) {
   }
 }
 
+function handleDemoBypass(event) {
+  event.preventDefault();
+  sessionStorage.setItem('aqoneToken', 'DEMO-OFFLINE-NO-AUTH');
+  sessionStorage.setItem('aqoneUser', JSON.stringify({ id: 'demo-bypass', name: 'Demo Operator' }));
+  sessionStorage.setItem('aqoneDemoBypassActive', '1');
+  window.location.href = 'dashboard.html';
+}
+
 // There is no public sign-up. Dashboard accounts are created by an
 // administrator through html/admin-signup.html, which requires a server-side
 // setup key and is handled by js/admin-signup.js.
@@ -71,6 +79,11 @@ function initAuthForms() {
   const loginForm = document.getElementById('loginForm');
   if (loginForm) {
     loginForm.addEventListener('submit', handleLogin);
+  }
+
+  const demoBypassBtn = document.getElementById('demo-bypass-btn');
+  if (demoBypassBtn) {
+    demoBypassBtn.addEventListener('click', handleDemoBypass);
   }
 }
 

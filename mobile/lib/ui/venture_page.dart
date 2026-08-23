@@ -712,7 +712,7 @@ class _VenturePageState extends State<VenturePage> {
     // caveats, and for demo data the flat statement that nobody reported it -
     // goes to the sheet behind the tap.
     final String summary = demo
-        ? 'Example zones · not real data'
+        ? 'Demo'
         : '${t.hotspotLegendTitle} · $cells areas';
 
     return Semantics(
@@ -729,6 +729,7 @@ class _VenturePageState extends State<VenturePage> {
           observations: observations,
           age: age,
           minReporters: surface.minReporters,
+          windowDays: surface.windowDays,
           title: t.hotspotLegendTitle,
           disclaimer: t.hotspotLegendDisclaimer,
         ),
@@ -780,6 +781,7 @@ class _VenturePageState extends State<VenturePage> {
     required int observations,
     required String? age,
     required int? minReporters,
+    required int? windowDays,
     required String title,
     required String disclaimer,
   }) {
@@ -863,7 +865,8 @@ class _VenturePageState extends State<VenturePage> {
                 Text(
                   '$cells areas · $observations catch reports'
                   '${age == null ? '' : ' · $age'}'
-                  '${minReporters == null ? '' : ' · min $minReporters reporters'}',
+                  '${minReporters == null ? '' : ' · min $minReporters reporters'}'
+                  '${windowDays == null ? '' : ' · last $windowDays days'}',
                   style: TextStyle(fontSize: 13, height: 1.35, color: fg),
                 ),
                 const SizedBox(height: 4),
@@ -1223,6 +1226,7 @@ class _VenturePageState extends State<VenturePage> {
       await widget.catches.logCatch(
         speciesName: last.speciesName,
         estimatedQuantityKg: last.estimatedQuantityKg,
+        shareForHotspots: last.shareForHotspots,
       );
       if (!mounted) {
         return;
@@ -2114,6 +2118,7 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
   String? _selectedSpecies;
   bool _enteringCustomWeight = false;
   bool _detailsOpen = false;
+  bool _shareForHotspots = false;
   bool _saving = false;
   String? _speciesError;
   String? _weightError;
@@ -2170,6 +2175,7 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
         estimatedQuantityKg: estimatedKg,
         method: _method.text,
         notes: _notes.text,
+        shareForHotspots: _shareForHotspots,
       );
       if (mounted) {
         Navigator.pop(context, true);
@@ -2279,6 +2285,27 @@ class _CatchLogSheetState extends State<_CatchLogSheet> {
                 ),
               ],
               const SizedBox(height: 18),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _shareForHotspots,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _shareForHotspots = value),
+                title: Text(
+                  'Share anonymously with the heatmap',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
+                subtitle: Text(
+                  'Your exact location and vessel are never shown. Only '
+                  'coarse areas backed by several fishers can appear.',
+                  style: TextStyle(fontSize: 11.5, color: dim, height: 1.3),
+                ),
+              ),
+              const SizedBox(height: 10),
               Text(
                 'Tap a weight to log the catch',
                 style: TextStyle(

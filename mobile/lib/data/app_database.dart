@@ -23,7 +23,7 @@ class AppDatabase {
     final path = _overridePath ?? await defaultDatabasePath('aqone_outbox.db');
     return openDatabase(
       path,
-      version: 11,
+      version: 12,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onUpgrade: (db, oldVersion, newVersion) async {
         // Each step is wrapped in try/catch so a partially-applied migration
@@ -101,6 +101,12 @@ class AppDatabase {
           // holds the last good response per feed so the map is usable with
           // no signal at all.
           await _createMapSnapshot(db);
+        }
+        if (oldVersion < 12) {
+          await db.execute(
+            'ALTER TABLE catch_outbox ADD COLUMN '
+            'share_for_hotspots INTEGER NOT NULL DEFAULT 0',
+          );
         }
       },
       onCreate: (db, version) async {
@@ -234,6 +240,7 @@ class AppDatabase {
         catch_date            TEXT NOT NULL,
         client_ts             INTEGER NOT NULL,
         state                 TEXT NOT NULL,
+        share_for_hotspots    INTEGER NOT NULL DEFAULT 0,
         lat                   REAL,
         lon                   REAL,
         method                TEXT,
