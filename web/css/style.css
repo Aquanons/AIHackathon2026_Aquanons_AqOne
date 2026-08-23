@@ -80,10 +80,27 @@ body::after {
   border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
+.logo-lockup {
+  width: min(100%, 350px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .logo {
-  width: 350px;
+  width: 100%;
   height: auto;
   display: block;
+}
+
+.logo-tagline {
+  margin: -2px 0 0;
+  color: #6d9fc7;
+  font-size: clamp(10px, 2.5vw, 15px);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .auth-actions {
