@@ -4737,7 +4737,7 @@ h3.buoy-drawer-title {
 }
 
 /* Dashboard layout refresh: three live metric cards */
-:root { --stats-h: 104px; }
+:root { --banner-h: 0px; --stats-h: 104px; }
 
 .app-body {
   margin-top: calc(var(--header-h) + var(--banner-h) + var(--demo-banner-h) + var(--stats-h));
