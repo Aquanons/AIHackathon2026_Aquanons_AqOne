@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from app.api.advisories import public_router as public_advisories_router
-from app.api.advisories import router as advisories_router  # <-- ONLY ADDED THIS IMPORT
+from app.api.advisories import router as advisories_router
 from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
