@@ -700,6 +700,10 @@ body {
   text-transform: uppercase;
 }
 
+.toggle-label small#hotspot-status-text {
+  color: var(--text-secondary);
+}
+
 .danger-zone-status {
   position: absolute;
   top: 12px;
@@ -847,6 +851,15 @@ body {
 
 .danger-zone-circle-danger {
   animation: danger-zone-fill-pulse 2.4s ease-in-out infinite;
+}
+
+.hotspot-cell {
+  transition: fill-opacity 160ms ease, stroke-width 160ms ease;
+}
+
+.hotspot-cell:hover {
+  fill-opacity: 0.5 !important;
+  stroke-width: 2;
 }
 
 @keyframes danger-zone-ring {

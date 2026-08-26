@@ -17,6 +17,7 @@
   var squallLayer = ns.squallLayer;
   var driftLayer = ns.driftLayer;
   var dangerZoneLayer = ns.dangerZoneLayer;
+  var hotspotLayer = ns.hotspotLayer;
   var refreshDangerZones = ns.refreshDangerZones;
 
   // ===== PIN TOOL (local-only, no backend dependency) =====
@@ -504,6 +505,7 @@
   toggleLayer('toggle-drift',     driftLayer);
   toggleLayer('toggle-boundary',  boundaryLayer);
   toggleLayer('toggle-pins',      pinLayer);
+  toggleLayer('toggle-hotspots', hotspotLayer);
 
   var dangerZoneRefresh = document.getElementById('danger-zone-refresh');
   if (dangerZoneRefresh) {

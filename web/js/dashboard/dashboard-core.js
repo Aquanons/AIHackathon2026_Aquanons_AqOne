@@ -269,6 +269,7 @@
   const meshLayer      = L.layerGroup();
   const squallLayer    = L.layerGroup();
   const driftLayer     = L.layerGroup();
+  const hotspotLayer   = L.layerGroup();
 
   map.createPane('aiContoursPane');
   map.getPane('aiContoursPane').style.zIndex = 430;
@@ -338,6 +339,7 @@
   ns.squallLayer = squallLayer;
   ns.driftLayer = driftLayer;
   ns.dangerZoneLayer = dangerZoneLayer;
+  ns.hotspotLayer = hotspotLayer;
   ns.showToast = showToast;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});
