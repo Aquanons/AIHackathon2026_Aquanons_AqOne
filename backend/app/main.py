@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.advisories import public_router as public_advisories_router
 from app.api.advisories import router as advisories_router
 from app.api.anomaly import router as anomaly_router
+from app.api.anomaly_cases import router as anomaly_cases_router
 from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
@@ -105,6 +106,7 @@ app.include_router(public_advisories_router)
 # direction to fail.
 _protected = [Depends(require_user)]
 app.include_router(anomaly_router, dependencies=_protected)
+app.include_router(anomaly_cases_router, dependencies=_protected)
 app.include_router(drift_router, dependencies=_protected)
 app.include_router(squall_router, dependencies=_protected)
 app.include_router(sea_condition_router, dependencies=_protected)

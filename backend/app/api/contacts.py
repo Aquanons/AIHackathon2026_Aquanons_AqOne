@@ -61,6 +61,20 @@ async def ingest_contact(payload: ContactEventIn) -> dict[str, object]:
     """
     pool = get_pool()
     async with pool.acquire() as conn:
+        # A vessel may be seen here before it is ever seen anywhere else -
+        # vessel_profiles/vessel_anomaly_scores (and this phase's
+        # anomaly_cases) all carry a FK to vessels(id), so scoring would
+        # otherwise fail the first time a genuinely new vessel's only
+        # activity is a routine contact rather than an SOS. Mirrors
+        # app/api/sos.py's own "vessel may be unknown" upsert.
+        await conn.execute(
+            '''
+            INSERT INTO vessels (id, boat_name)
+            VALUES ($1, $1)
+            ON CONFLICT (id) DO NOTHING
+            ''',
+            payload.vessel_id,
+        )
         try:
             row = await conn.fetchrow(
                 '''

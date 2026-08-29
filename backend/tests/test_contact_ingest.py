@@ -117,6 +117,7 @@ class _FakePool:
     def __init__(self) -> None:
         self.contacts: dict[str, dict[str, object]] = {}
         self.known_buoys = {'BUOY01'}
+        self.vessels: set[str] = set()
         self._next_id = 1
 
     def acquire(self):
@@ -127,6 +128,12 @@ class _FakePool:
 
     async def __aexit__(self, exc_type, exc, tb):
         return None
+
+    async def execute(self, query: str, *args):
+        if 'INSERT INTO vessels' in query:
+            (vessel_id,) = args[:1]
+            self.vessels.add(vessel_id)
+        return 'OK'
 
     async def fetchrow(self, query: str, *args):
         if 'INSERT INTO buoy_contacts' in query:
@@ -164,6 +171,26 @@ def test_first_submission_inserts_and_retry_returns_the_same_contact(monkeypatch
     # Same logical contact both times - the whole point of the idempotency key.
     assert first_body['contact_id'] == second_body['contact_id']
     assert len(pool.contacts) == 1
+
+
+def test_a_previously_unseen_vessel_is_registered(monkeypatch):
+    """Scoring later needs vessels.id to exist (vessel_profiles,
+    vessel_anomaly_scores and anomaly_cases all FK to it) - a vessel whose
+    only activity so far is a routine contact must not be silently dropped
+    from that chain.
+    """
+    monkeypatch.setenv('GATEWAY_API_KEY', 'correct-key')
+    pool = _FakePool()
+    monkeypatch.setattr(app_db, 'get_pool', lambda: pool)
+    monkeypatch.setattr(contacts_api, 'get_pool', lambda: pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/v1/contacts', json=_payload(vessel_id='NEW-VESSEL'), headers={'X-Api-Key': 'correct-key'}
+        )
+
+    assert response.status_code == 200
+    assert 'NEW-VESSEL' in pool.vessels
 
 
 def test_unknown_buoy_id_is_rejected(monkeypatch):

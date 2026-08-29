@@ -458,6 +458,7 @@
             <button class="stats-tab" data-tab="vessels">Vessels <span class="tab-badge badge-red" id="badge-vessels">2</span></button>
             <button class="stats-tab" data-tab="alerts">Alerts <span class="tab-badge badge-red" id="badge-alerts">2</span></button>
             <button class="stats-tab" data-tab="sar">SAR Metrics <span class="tab-badge badge-orange" id="badge-sar">2</span></button>
+            <button class="stats-tab" data-tab="tripchecks">Trip Checks <span class="tab-badge badge-red" id="badge-tripchecks">0</span></button>
           </div>
           <button id="stats-minimize" class="stats-minimize-btn">-</button>
         </div>
@@ -533,6 +534,10 @@
 
           <div class="tab-content" id="tab-alerts">
             <div class="alert-list" id="alert-list"></div>
+          </div>
+
+          <div class="tab-content" id="tab-tripchecks">
+            <div class="trip-checks-list" id="trip-checks-list"></div>
           </div>
 
           <div class="tab-content" id="tab-sar">
@@ -1031,6 +1036,7 @@
   <script src="../js/dashboard/dashboard-panels.js"></script>
   <script src="../js/dashboard/dashboard-vessels-alerts.js"></script>
   <script src="../js/dashboard/dashboard-live-sos.js"></script>
+  <script src="../js/dashboard/dashboard-trip-checks.js"></script>
   <script src="../js/dashboard/dashboard-sar.js"></script>
   <script src="../js/dashboard/dashboard-incidents.js"></script>
   <script src="../js/dashboard/dashboard-buoy-health.js"></script>

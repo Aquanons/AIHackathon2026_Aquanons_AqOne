@@ -204,4 +204,51 @@ async def evaluate_and_persist(conn, *, as_of: datetime, include_synthetic: bool
             datetime.now(UTC),
             is_synthetic,
         )
+        if score.status != 'normal':
+            await _upsert_case(conn, vessel_id, trip_id, score, contacts, as_of=as_of, is_synthetic=is_synthetic)
     return score_rows
+
+
+async def _upsert_case(
+    conn, vessel_id: str, trip_id: str, score, contacts, *, as_of: datetime, is_synthetic: bool
+) -> None:
+    """Create or refresh the persistent review case for a non-normal score
+    (docs/38 Phase 3). Only the score-derived snapshot columns are written
+    here - acknowledged/dismissed/escalated/resolved are never touched by
+    evaluation, only by app/api/anomaly_cases.py, so a later refresh cannot
+    erase a responder's decision.
+
+    Per the acceptance boundary ("Low-confidence results enter a
+    verification queue. High-confidence results request responder
+    attention."), case_type follows the model's own confidence in the
+    vessel's profile, not the score's severity tier.
+    """
+    case_type = 'verification' if score.low_confidence else 'responder_attention'
+    await conn.execute(
+        '''
+        INSERT INTO anomaly_cases (
+          vessel_id, trip_id, case_type, score, status, reasons, source,
+          score_evaluated_at, last_contact_at, is_synthetic, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, NOW())
+        ON CONFLICT (vessel_id, trip_id) DO UPDATE SET
+          case_type = EXCLUDED.case_type,
+          score = EXCLUDED.score,
+          status = EXCLUDED.status,
+          reasons = EXCLUDED.reasons,
+          source = EXCLUDED.source,
+          score_evaluated_at = EXCLUDED.score_evaluated_at,
+          last_contact_at = EXCLUDED.last_contact_at,
+          is_synthetic = EXCLUDED.is_synthetic,
+          updated_at = NOW()
+        ''',
+        vessel_id,
+        trip_id,
+        case_type,
+        score.score,
+        score.status,
+        [factor.__dict__ for factor in score.factors],
+        'synthetic' if is_synthetic else 'live',
+        as_of,
+        contacts[-1].observed_at,
+        is_synthetic,
+    )
