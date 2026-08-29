@@ -14,11 +14,59 @@ There is no database in the test environment, so the routes answer 503 from
 get_pool(). That is fine - what is being asserted is which layer answered.
 """
 
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
+from app.api import mesh as mesh_api
 from app.main import app
 
 CHAT = '/api/mesh/chat'
+
+
+class _FakeMeshPool:
+    """Enough of asyncpg's pool surface to exercise the real insert/query SQL
+    in mesh.py without a database - see test_vessel_auth.py::_FakePool for
+    the pattern this follows."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, object]] = []
+        self._next_id = 1
+
+    def acquire(self):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def fetchrow(self, query: str, *args):
+        assert 'INSERT INTO mesh_chat' in query
+        sender, text, origin = args
+        row = {
+            'id': self._next_id,
+            'sender': sender,
+            'text': text,
+            'origin': origin,
+            'created_at': datetime.now(UTC),
+        }
+        self._next_id += 1
+        self.rows.append(row)
+        return row
+
+    async def fetch(self, query: str, *args):
+        assert 'FROM mesh_chat' in query
+        if 'WHERE id > $1' in query:
+            since_id, limit = args
+            return [row for row in self.rows if row['id'] > since_id][:limit]
+        (limit,) = args
+        return list(reversed(self.rows[-limit:]))
+
+
+def _patch_pool(monkeypatch, pool: _FakeMeshPool) -> None:
+    monkeypatch.setattr(mesh_api, 'get_pool', lambda: pool)
 
 
 def test_chat_history_is_served_by_the_api_not_the_static_mount(monkeypatch):
@@ -87,3 +135,54 @@ def test_other_api_routers_are_still_protected(monkeypatch):
         response = client.get('/api/sea-condition')
 
     assert response.status_code in (401, 403)
+
+
+def test_ingest_returns_201_only_once_the_row_is_persisted(monkeypatch):
+    """The handset's 'cloud relay stored' fact is only true after this."""
+    pool = _FakeMeshPool()
+    _patch_pool(monkeypatch, pool)
+
+    with TestClient(app) as client:
+        response = client.post(
+            CHAT, json={'sender': 'Maria Gracia', 'text': 'heading back'}
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body['sender'] == 'Maria Gracia'
+    assert body['text'] == 'heading back'
+    assert body['origin'] == 'app'
+    assert pool.rows and pool.rows[0]['sender'] == 'Maria Gracia'
+
+
+def test_since_id_returns_only_newer_messages_in_ascending_order(monkeypatch):
+    """A hub/handset that was offline must catch up in order, not skip a gap."""
+    pool = _FakeMeshPool()
+    _patch_pool(monkeypatch, pool)
+
+    with TestClient(app) as client:
+        for text in ('first', 'second', 'third'):
+            client.post(CHAT, json={'sender': 'Boat-1', 'text': text})
+
+        response = client.get(f'{CHAT}?since_id=1')
+
+    assert response.status_code == 200
+    messages = response.json()['messages']
+    assert [m['text'] for m in messages] == ['second', 'third']
+    assert [m['id'] for m in messages] == sorted(m['id'] for m in messages)
+
+
+def test_get_without_since_id_returns_the_most_recent_window_oldest_first(
+    monkeypatch,
+):
+    pool = _FakeMeshPool()
+    _patch_pool(monkeypatch, pool)
+
+    with TestClient(app) as client:
+        for text in ('a', 'b', 'c'):
+            client.post(CHAT, json={'sender': 'Boat-1', 'text': text})
+
+        response = client.get(f'{CHAT}?limit=2')
+
+    messages = response.json()['messages']
+    assert [m['text'] for m in messages] == ['b', 'c']

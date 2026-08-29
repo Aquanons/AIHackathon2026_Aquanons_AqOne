@@ -813,6 +813,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not sent yet — will send automatically once you have a connection.'**
   String get responderReplyPending;
+
+  /// Caption under a nearby-boat chat message this handset sent while not connected to the Aquan hub WiFi. The line is saved on this phone only and has not been put on the wire yet - see docs/05_PUBLIC_API.md.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued'**
+  String get chatStatusQueued;
+
+  /// Caption under a nearby-boat chat message this handset wrote to the hub's WebSocket. The hub protocol has no delivery receipt, so this only means the phone put the line on the wire - not that the hub, another boat, or shore received it.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get chatStatusSent;
+
+  /// Caption under a nearby-boat chat message once the cloud backend has confirmed it stored the line (HTTP 201 from POST /api/mesh/chat). Distinct from chatStatusSent, which has no such confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced'**
+  String get chatStatusSynced;
+
+  /// Live character counter under the chat compose box, shown before the fisher sends so the 50-character limit is visible ahead of time, not just after a rejection.
+  ///
+  /// In en, this message translates to:
+  /// **'{used}/{max}'**
+  String chatCharacterLimitLabel(int used, int max);
+
+  /// SAFETY CRITICAL. Heading on the neutral squall banner shown when the backend's synthetic pressure data is older than its freshness window. Must read as neutral/informational, never alarming - it replaces the RETURN NOW/watch banner, which never appears for stale data, and it must not be softened into implying the sea is calm.
+  ///
+  /// In en, this message translates to:
+  /// **'Squall nowcast: data too old to trust'**
+  String get squallStaleTitle;
+
+  /// SAFETY CRITICAL. Body text on the stale-squall notice when the backend supplied a last-reading time. {age} is a short duration like "3h" or "45 min", already formatted - do not add units around the placeholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Last reading {age} ago. Not showing a squall status until fresh data arrives.'**
+  String squallStaleBodyWithAge(String age);
+
+  /// SAFETY CRITICAL. Body text on the stale-squall notice when no last-reading time is available at all.
+  ///
+  /// In en, this message translates to:
+  /// **'Not showing a squall status until fresh data arrives.'**
+  String get squallStaleBodyNoAge;
 }
 
 class _AppLocalizationsDelegate

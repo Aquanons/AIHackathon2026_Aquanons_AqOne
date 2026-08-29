@@ -371,5 +371,40 @@
   "responderReplyPending": "Not sent yet — will send automatically once you have a connection.",
   "@responderReplyPending": {
     "description": "SAFETY CRITICAL. Shown when a reply could not reach the backend immediately and is saved locally to retry later. Must not imply the reply already reached MDRRMO."
+  },
+  "chatStatusQueued": "Queued",
+  "@chatStatusQueued": {
+    "description": "Caption under a nearby-boat chat message this handset sent while not connected to the Aquan hub WiFi. The line is saved on this phone only and has not been put on the wire yet - see docs/05_PUBLIC_API.md."
+  },
+  "chatStatusSent": "Sent",
+  "@chatStatusSent": {
+    "description": "Caption under a nearby-boat chat message this handset wrote to the hub's WebSocket. The hub protocol has no delivery receipt, so this only means the phone put the line on the wire - not that the hub, another boat, or shore received it."
+  },
+  "chatStatusSynced": "Synced",
+  "@chatStatusSynced": {
+    "description": "Caption under a nearby-boat chat message once the cloud backend has confirmed it stored the line (HTTP 201 from POST /api/mesh/chat). Distinct from chatStatusSent, which has no such confirmation."
+  },
+  "chatCharacterLimitLabel": "{used}/{max}",
+  "@chatCharacterLimitLabel": {
+    "description": "Live character counter under the chat compose box, shown before the fisher sends so the 50-character limit is visible ahead of time, not just after a rejection.",
+    "placeholders": {
+      "used": {"type": "int", "example": "12"},
+      "max": {"type": "int", "example": "50"}
+    }
+  },
+  "squallStaleTitle": "Squall nowcast: data too old to trust",
+  "@squallStaleTitle": {
+    "description": "SAFETY CRITICAL. Heading on the neutral squall banner shown when the backend's synthetic pressure data is older than its freshness window. Must read as neutral/informational, never alarming - it replaces the RETURN NOW/watch banner, which never appears for stale data, and it must not be softened into implying the sea is calm."
+  },
+  "squallStaleBodyWithAge": "Last reading {age} ago. Not showing a squall status until fresh data arrives.",
+  "@squallStaleBodyWithAge": {
+    "description": "SAFETY CRITICAL. Body text on the stale-squall notice when the backend supplied a last-reading time. {age} is a short duration like \"3h\" or \"45 min\", already formatted - do not add units around the placeholder.",
+    "placeholders": {
+      "age": {"type": "String", "example": "3h"}
+    }
+  },
+  "squallStaleBodyNoAge": "Not showing a squall status until fresh data arrives.",
+  "@squallStaleBodyNoAge": {
+    "description": "SAFETY CRITICAL. Body text on the stale-squall notice when no last-reading time is available at all."
   }
 }

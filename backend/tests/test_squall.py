@@ -1,11 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
+from fastapi.testclient import TestClient
+
 from app.ai.squall import (
     build_buoys,
     build_history,
     estimate_propagation_vector,
     extract_pressure_features,
 )
+from app.api import public as public_api
+from app.main import app
 
 
 def _buoy_rows() -> list[dict[str, object]]:
@@ -85,3 +89,88 @@ def test_propagation_vector_flags_collinear_geometry_and_caps_confidence():
 
     assert estimate.geometry_degenerate is True
     assert estimate.r2 == 0.0
+
+
+class _FakeSquallPool:
+    """Enough of the pool surface for `_load_rows` (app/api/squall.py) to run
+    against seeded readings instead of a real database."""
+
+    def __init__(self, readings: list[dict[str, object]]) -> None:
+        self._readings = readings
+
+    def acquire(self):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def fetch(self, query: str, *args):
+        if 'FROM barometric_readings' in query:
+            return list(self._readings)
+        return []
+
+
+def test_fresh_qualifying_squall_can_signal_return_now(monkeypatch):
+    """Contrast case for the staleness guard below: fresh data must still be
+    able to alarm - the guard must not make GET /api/public/squall inert."""
+    now = datetime.now(UTC)
+    pool = _FakeSquallPool(
+        [{'buoy_id': 'B01', 'observed_at': now, 'pressure_hpa': 1005.0}]
+    )
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+    monkeypatch.setattr(public_api, 'load_bundle', lambda: object())
+    monkeypatch.setattr(public_api, 'build_buoys', lambda rows: {})
+    monkeypatch.setattr(
+        public_api,
+        'current_detection',
+        lambda readings, buoys, model: [
+            {
+                'probability': 0.9,
+                'arrival_by_buoy': [{'buoy_id': 'B01', 'arrival_minutes': 12}],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        public_api,
+        'event_detection_summary',
+        lambda model, detections: {'threshold': 0.5, 'detections': detections},
+    )
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'return_now'
+    assert body['return_now'] is True
+    assert body['stale'] is False
+    assert body['lead_minutes'] == 12
+
+
+def test_stale_synthetic_squall_is_unknown_and_never_return_now(monkeypatch):
+    """The non-negotiable rule from docs/37: a stale reading must never raise
+    a fresh RETURN NOW warning. The model is made to raise if it is ever
+    reached, so this fails loudly if the staleness guard stops short-
+    circuiting instead of quietly passing on an untested code path."""
+    stale_at = datetime.now(UTC) - timedelta(hours=6)
+    pool = _FakeSquallPool(
+        [{'buoy_id': 'B01', 'observed_at': stale_at, 'pressure_hpa': 1005.0}]
+    )
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+
+    def _must_not_be_called():
+        raise AssertionError('the model must not run on stale data')
+
+    monkeypatch.setattr(public_api, 'load_bundle', lambda: _must_not_be_called())
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'unknown'
+    assert body['return_now'] is False
+    assert body['stale'] is True
+    assert body['stale_reason']
+    assert body['as_of'] is not None

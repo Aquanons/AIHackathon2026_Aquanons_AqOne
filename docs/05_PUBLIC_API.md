@@ -269,30 +269,188 @@ Confirms the real reweighed catch figure.
 Requires a vessel-device bearer token. The backend updates the row only when it
 belongs to that token's vessel.
 
-## Daily outlook for the app — **contract agreed, not yet implemented**
+## Nearby-boat group chat — **implemented**
+
+### `POST /api/mesh/chat`
+
+Relays one chat line from a handset (via the Heltec WiFi hub, or straight
+from the phone when it has internet) into the durable store the MDRRMO
+dashboard and other handsets read from. Unauthenticated — fishermen have no
+account, and neither does the hub.
+
+This is **nearby-boat group messaging**, not private or family messaging.
+`sender`, `text`, and `origin` are public group-chat metadata delivered to
+every listener of this endpoint; there is no recipient field, no consent
+model, and no private downlink. Do not build or document a "message to
+family" feature on top of this contract — that needs a new one.
+
+Body:
+
+```json
+{ "sender": "Maria Gracia", "text": "heading back, engine trouble", "origin": "app" }
+```
+
+| Field | Limit | Notes |
+|---|---|---|
+| `sender` | 1–64 chars | Self-declared boat/skipper name, not verified. |
+| `text` | 1–256 chars | Backend/hub-origin ceiling. The handset's own compose box enforces a tighter 50-character limit before a line is ever sent — see `ChatService.maxMessageLength` in `mobile/lib/ui/chathubb.dart`. |
+| `origin` | ≤16 chars, default `app` | Which leg the message arrived on (`app` or `hub`); lets the hub avoid rebroadcasting its own uplink back to the boats that just sent it. |
+
+Returns **`201` only once the row is committed** — this is the one fact a
+handset may treat as "cloud relay stored". A timeout, a non-`201` status, or
+no internet at all means the backend's state is simply unknown; the handset
+must not infer cloud delivery from network reachability alone, and must keep
+the line queued for retry rather than drop it.
+
+### `GET /api/mesh/chat?since_id=`
+
+Returns ordered nearby-group messages, unauthenticated. `since_id` (default
+`0`) returns messages with `id > since_id` in ascending order — "the next N
+after since_id" — so a hub or handset that was offline catches up in order
+instead of skipping a gap. Omitting `since_id` returns the most recent
+`limit` messages (default 50, max 200), oldest first.
+
+```json
+{
+  "messages": [
+    {
+      "id": 42,
+      "sender": "Maria Gracia",
+      "text": "heading back, engine trouble",
+      "origin": "app",
+      "created_at": "2026-08-16T04:00:00Z"
+    }
+  ]
+}
+```
+
+No cross-hop de-duplication is applied server-side or on the handset. The
+buoy firmware does not forward a stable message ID, so at-least-once
+delivery (a line possibly appearing twice across hub broadcast and cloud
+relay) is a known, accepted limitation, not a bug to mask with a text/time
+heuristic that could hide a real repeated distress call.
+
+## Official advisories — **implemented**
+
+### `GET /api/public/advisories`
+
+Published, currently-active advisories only, unauthenticated. "Active" means
+`status = Published` **and** the advisory has started (`publish_date <=
+today`) **and** has not expired (`expiration_date` is null or `>= today`) —
+filtered server-side, not left to the handset's own client-side check.
+
+```json
+{
+  "advisories": [
+    {
+      "id": 42,
+      "title": "Not advised to go out",
+      "category": "Weather Advisory",
+      "description": "Habagat surge expected through Thursday.",
+      "municipality": "New Washington",
+      "priority": "Warning",
+      "publish_date": "2026-08-14",
+      "expiration_date": "2026-08-16",
+      "image_url": "https://.../pier.jpg",
+      "status": "Published",
+      "source": "LGU",
+      "created_at": "2026-08-14T04:00:00Z",
+      "updated_at": "2026-08-14T04:00:00Z"
+    }
+  ]
+}
+```
+
+Field notes:
+
+- `image_url` is the one public field name for the advisory's photo. The
+  operator-facing create/update body still accepts `cover_image` (see
+  below) — the backend stores it under that column and always serialises it
+  back out as `image_url`. A handset must not need to read both names.
+- `publish_date`/`expiration_date` are ISO `YYYY-MM-DD`; `expiration_date` is
+  `""` when the advisory does not expire.
+- `priority` is one of `Emergency` \| `Warning` \| `Information` \| `Community`.
+- `source` identifies the issuer (`LGU` by default). This is a human-authored
+  official notice — it is never AqOne's own copy; compare
+  `data/welcome_advisory.dart` on the handset, which is marked unofficial and
+  never comes from this endpoint.
+
+### `GET /api/advisories`, `POST /api/advisories`, `PUT /api/advisories/{id}`, `DELETE /api/advisories/{id}`
+
+Operator-authenticated (`mdrrmo` / `lgu` / `admin`, via `require_user`). The
+list read here is **not** filtered by active/expired — an operator managing
+notices needs to see and edit drafts and past advisories too; only the
+public route above filters. Create/update accept `cover_image` as the
+write-side field name; the response echoes it back as `image_url` like every
+other advisory read.
+
+## Squall nowcast — **implemented**
+
+### `GET /api/public/squall`
+
+Squall alarm state for the handset, unauthenticated. `level` is one of
+`clear` \| `watch` \| `return_now` \| `unknown`; `return_now` is the
+RETURN NOW alarm condition, decided by the model's own threshold rather than
+any client-side re-derivation.
+
+A synthetic reading older than a max-data-age guard (3 hours) is treated as
+too stale to evaluate: `level` and `return_now` come back exactly as if the
+model had never run (`unknown` / `false`), alongside the last known `as_of`
+and a `stale`/`stale_reason` pair so the handset can say *why* nothing is
+being claimed, rather than going silent. This guard runs before the model is
+even loaded — a stale reading can never reach the threshold logic, so it can
+never raise a fresh RETURN NOW warning.
+
+```json
+{
+  "calibration": "synthetic",
+  "as_of": "2026-08-16T02:00:00Z",
+  "return_now": false,
+  "level": "unknown",
+  "stale": true,
+  "stale_reason": "latest synthetic reading is 6:00:00 old, past the 3:00:00 freshness window for this nowcast",
+  "source": "AqOne squall nowcast — calibrated on synthetic data"
+}
+```
+
+`calibration: "synthetic"` is carried on every response while the model is
+trained on simulated pressure fields rather than observed squalls — this is
+not a PAGASA warning, and the handset must keep saying so.
+
+## Daily outlook for the app — **implemented as a transparent proxy**
 
 ### `GET /api/public/forecast`
 
-The fused seven-day outlook behind Home's forecast strip: buoy sensor
-telemetry combined with a weather provider, scored server-side.
+The seven-day outlook behind Home's forecast strip.
 
-**This endpoint does not exist yet.** The contract is fixed here first so the
-handset and the backend can be built against it independently. Until it
-answers, the app falls back to Open-Meteo plus its own heuristic
-(`mobile/lib/services/forecast_provider.dart`), so switching it on is a
-backend-only deploy — no handset release.
+**No server-side fusion model exists yet.** What is implemented today is a
+transparent Open-Meteo/marine proxy: the backend fetches the same two
+providers the handset's own fallback would, applies a short upstream
+timeout, and returns them in this shape. `source` is `"open-meteo"`, not
+`"aqone-fusion"`, and the `risk` block below is always omitted — a fisher
+must never be told a verdict was fused from buoy telemetry when none was
+used. The shape leaves room for a real fusion model to fill in `risk`
+later without a contract change; until then the handset scores every day
+itself, exactly as if this endpoint had 404'd
+(`mobile/lib/services/forecast_provider.dart`'s `AqOneForecastProvider`
+already implements this precedence and its Open-Meteo fallback).
 
 | Query | Default | Meaning |
 |---|---|---|
-| `lat` | — | Position to forecast for. |
-| `lon` | — | Position to forecast for. |
-| `days` | 7 | Days requested (≤ 7 is what the strip renders). |
+| `lat` | — | Position to forecast for. Required, `-90..90`. |
+| `lon` | — | Position to forecast for. Required, `-180..180`. |
+| `days` | 7 | Days requested, `1..7`. |
+
+An out-of-range `lat`/`lon`/`days`, or an upstream provider timeout/error,
+returns `422`/`502` respectively — never a `200` with an empty or invented
+forecast. A `502` here is what lets the handset's own fallback take over on
+its next attempt.
 
 Response `200`:
 
 ```json
 {
-  "source": "aqone-fusion",
+  "source": "open-meteo",
   "generated_at": "2026-08-16T04:00:00Z",
   "days": [
     {
@@ -303,16 +461,21 @@ Response `200`:
       "wind_kph": 24,
       "gust_kph": 41,
       "precip_mm": 18.4,
-      "wave_m": 2.1,
+      "wave_m": 2.1
+    }
+  ]
+}
+```
+
+A future fusion model would additionally attach a `risk` block per day:
+
+```json
       "risk": {
         "level": "danger",
         "score": 0.81,
         "reason": "Gusts 41 km/h, 2.1 m swell at Buoy B",
         "inputs": ["buoy:buoy-b", "open-meteo"]
       }
-    }
-  ]
-}
 ```
 
 Field notes, all of them load-bearing:

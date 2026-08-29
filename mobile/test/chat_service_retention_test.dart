@@ -1,6 +1,12 @@
+import 'package:aqone/core/config.dart';
+import 'package:aqone/core/l10n_fallback.dart';
 import 'package:aqone/data/identity_store.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/ui/chathubb.dart';
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   group('ChatService.displayNameFor', () {
@@ -160,5 +166,125 @@ void main() {
       expect(kept.first.text, 'm5');
       expect(kept.last.text, 'm54');
     });
+  });
+
+  group('ChatService cloud relay', () {
+    test('posts to the canonical Railway relay URL and marks 201 as stored',
+        () async {
+      String? requestedUrl;
+      final service = ChatService(
+        displayName: 'Maria Gracia',
+        client: MockClient((request) async {
+          requestedUrl = request.url.toString();
+          return http.Response('{}', 201);
+        }),
+      );
+
+      await service.sendMessage('heading back, engine trouble');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        requestedUrl,
+        '${AqOneConfig.backendBaseUrl}/api/mesh/chat',
+      );
+      expect(service.messages.single.cloudStored, isTrue);
+    });
+
+    test('a failed cloud relay preserves the queued/local message rather than dropping it',
+        () async {
+      final service = ChatService(
+        displayName: 'Maria Gracia',
+        client: MockClient((request) async => http.Response('', 500)),
+      );
+
+      await service.sendMessage('help, taking on water');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(service.messages, hasLength(1));
+      expect(service.messages.single.text, 'help, taking on water');
+      expect(service.messages.single.cloudStored, isFalse);
+    });
+
+    test('while not connected to the hub, a sent line is queued locally, not claimed handed off',
+        () async {
+      final service = ChatService(
+        displayName: 'Maria Gracia',
+        client: MockClient((request) async => http.Response('{}', 201)),
+      );
+
+      await service.sendMessage('anyone nearby?');
+
+      expect(service.messages.single.hubState, ChatHubState.queuedLocally);
+      expect(service.pendingCount, 1);
+    });
+
+    test('over-limit text is rejected outright, never sent or truncated', () async {
+      bool relayCalled = false;
+      final service = ChatService(
+        displayName: 'Maria Gracia',
+        client: MockClient((request) async {
+          relayCalled = true;
+          return http.Response('{}', 201);
+        }),
+      );
+      final overLimit = 'x' * (ChatService.maxMessageLength + 1);
+
+      await service.sendMessage(overLimit);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(service.messages, isEmpty);
+      expect(service.pendingCount, 0);
+      expect(relayCalled, isFalse);
+      expect(service.lastError, isNotNull);
+    });
+  });
+
+  group('hubCloudStatusLabel - honest per-message status, all locales', () {
+    ChatMessage line({
+      ChatHubState hubState = ChatHubState.handedToHub,
+      bool cloudStored = false,
+    }) {
+      return ChatMessage(
+        text: 'help',
+        from: 'Maria Gracia',
+        isMine: true,
+        time: DateTime.utc(2026, 8, 20, 12),
+        hubState: hubState,
+        cloudStored: cloudStored,
+      );
+    }
+
+    for (final Locale locale in kSupportedLocales) {
+      final AppLocalizations t = lookupAppLocalizations(locale);
+
+      test('${locale.languageCode}: queued locally never claims sent or synced', () {
+        expect(
+          hubCloudStatusLabel(t, line(hubState: ChatHubState.queuedLocally)),
+          t.chatStatusQueued,
+        );
+      });
+
+      test('${locale.languageCode}: handed to hub but not yet cloud-stored says sent, not synced', () {
+        expect(
+          hubCloudStatusLabel(t, line(hubState: ChatHubState.handedToHub)),
+          t.chatStatusSent,
+        );
+      });
+
+      test('${locale.languageCode}: cloud relay stored (201) says synced', () {
+        expect(
+          hubCloudStatusLabel(
+            t,
+            line(hubState: ChatHubState.handedToHub, cloudStored: true),
+          ),
+          t.chatStatusSynced,
+        );
+      });
+
+      test('${locale.languageCode}: chatCharacterLimitLabel formats used/max', () {
+        expect(t.chatCharacterLimitLabel(12, 50), contains('12'));
+        expect(t.chatCharacterLimitLabel(12, 50), contains('50'));
+      });
+    }
   });
 }
