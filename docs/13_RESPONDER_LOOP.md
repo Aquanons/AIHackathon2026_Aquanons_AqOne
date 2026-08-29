@@ -180,9 +180,30 @@ store-and-forward for uplink; this is the same mechanism pointed the other way.
 | Risk | Handling |
 |---|---|
 | Dispatcher gives an optimistic ETA and misses it | `DELAYED` status plus the honest "still en route" state. Never a countdown that expires into silence. |
-| Unauthenticated reply endpoint is abused | Reply only affects an existing event id and cannot create one. Same trust model as ingest: self-declared until a responder confirms. |
+| A vessel-device token is stolen or a reply is replayed | The reply endpoint requires that token and only affects the event owned by its vessel; it cannot touch another vessel's incident or create a new one (`docs/05_PUBLIC_API.md`'s Option A). |
 | Phone battery dies while polling every 15s | Fast polling only while an SOS is unresolved, then back to 2 minutes. |
 | Fisher never sees the ETA because they are offline | Exactly what Phase 2 exists to fix. Until then the app must say "waiting for signal" rather than implying nobody answered. |
+
+---
+
+## 2026-08-29 — verification record
+
+Phase 1 of this document (the direct path: acknowledge with ETA, the fisher's
+`STILL_IN_DANGER` / `SAFE_NOW` reply, and the responder card) is implemented
+and covered by the automated suite - see `docs/08_DEMO_AND_STATUS.md`'s
+matching entry for the full command list and results (backend 108 passed,
+mobile 151/151, web 32/32, `flutter build web` succeeded). Phase 2 (the LoRa
+downlink) remains unbuilt, as this document already states.
+
+A real end-to-end run - a paired handset pressing Manual SOS, a dispatcher
+acknowledging it on a live dashboard, and the handset showing and answering
+that acknowledgement - was attempted but not completed in this environment:
+no working local PostgreSQL credential or Docker install was available to run
+the backend against, and no physical device, emulator, or Windows build was
+available to run the handset app outside its test harness. See
+`docs/08_DEMO_AND_STATUS.md` for the specific blockers. This is an accurate
+account of what was checked, not a claim that the loop has been watched
+working live.
 
 ---
 
