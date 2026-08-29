@@ -113,10 +113,76 @@
       : { text: 'DEMO', cssClass: 'alert-demo-badge' };
   }
 
+  /**
+   * Live countdown text for an acknowledged SOS's ETA, honest about an
+   * expired one. See docs/13_RESPONDER_LOOP.md: a countdown that reaches
+   * zero and stops reads as "nobody is coming", so this never returns
+   * `00:00` or a negative number - once `etaAt` has passed it says the
+   * rescue is delayed instead.
+   *
+   * `nowMs` defaults to `Date.now()` but is an explicit parameter so this
+   * can be tested without faking the system clock.
+   */
+  function formatEta(etaAt, nowMs) {
+    if (!etaAt) return '';
+    var now = nowMs == null ? Date.now() : nowMs;
+    var remainingMs = new Date(etaAt).getTime() - now;
+    if (!isFinite(remainingMs) || remainingMs <= 0) return 'delayed — still en route';
+    var mins = Math.floor(remainingMs / 60000);
+    var secs = Math.floor((remainingMs % 60000) / 1000);
+    return 'ETA ' + mins + ':' + String(secs).padStart(2, '0');
+  }
+
+  /**
+   * Builds the incident drawer's responder-status block as an HTML string.
+   * Pure - the DOM write (`el.innerHTML = ...`) happens in
+   * dashboard-incidents.js, so this runs identically under `node --test`
+   * with no DOM.
+   *
+   * `responderNote` is dispatcher-entered free text
+   * (docs/13_RESPONDER_LOOP.md's `responder_note`) and must never reach
+   * innerHTML unescaped - see docs/21_WEEK1_CONTRACT_FIXTURES.md's dashboard
+   * honesty findings for what an unescaped field already did to this
+   * dashboard once.
+   */
+  function responderStatusHtml(data, nowMs) {
+    var d = data || {};
+    if (!d.acknowledgedAt) return '';
+    var rows = [];
+    rows.push(
+      '<div class="sos-detail-row"><span class="sos-detail-label">Responder Status</span>' +
+      '<span class="sos-detail-value">' + escapeHtml(d.responderStatusLabel || 'Acknowledged') + '</span></div>'
+    );
+    var etaText = formatEta(d.etaAt, nowMs);
+    rows.push(
+      '<div class="sos-detail-row"><span class="sos-detail-label">ETA</span>' +
+      '<span class="sos-detail-value' + (etaText.indexOf('delayed') === 0 ? ' is-overdue' : '') + '"' +
+      (d.etaAt ? ' data-eta-at="' + escapeHtml(d.etaAt) + '"' : '') + '>' +
+      escapeHtml(etaText || 'No ETA given') + '</span></div>'
+    );
+    if (d.responderNote) {
+      rows.push(
+        '<div class="sos-detail-row"><span class="sos-detail-label">Responder Note</span>' +
+        '<span class="sos-detail-value">' + escapeHtml(d.responderNote) + '</span></div>'
+      );
+    }
+    if (d.fisherReply === 1 || d.fisherReply === 2) {
+      var replyText = d.fisherReply === 2 ? 'Safe now' : 'Still in danger';
+      rows.push(
+        '<div class="sos-detail-row"><span class="sos-detail-label">Fisher Reply</span>' +
+        '<span class="sos-detail-value' + (d.fisherReply === 1 ? ' sos-fisher-danger' : '') + '">' +
+        escapeHtml(replyText) + '</span></div>'
+      );
+    }
+    return rows.join('');
+  }
+
   return {
     escapeHtml: escapeHtml,
     classifyFreshness: classifyFreshness,
     freshnessLabel: freshnessLabel,
-    alertBadge: alertBadge
+    alertBadge: alertBadge,
+    formatEta: formatEta,
+    responderStatusHtml: responderStatusHtml
   };
 });

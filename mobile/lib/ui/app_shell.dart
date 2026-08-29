@@ -240,7 +240,7 @@ class _AppShellState extends State<AppShell> {
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (_) => ResponderEtaDialog(record: pending!),
+          builder: (_) => ResponderEtaDialog(record: pending!, sos: widget.sos),
         );
         _dialogOpen = false;
       });

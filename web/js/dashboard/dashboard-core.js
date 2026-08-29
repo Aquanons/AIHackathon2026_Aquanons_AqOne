@@ -39,6 +39,8 @@
       ? { text: 'LIVE', cssClass: 'alert-live-badge' }
       : { text: 'DEMO', cssClass: 'alert-demo-badge' };
   };
+  var formatEta = dashboardUtils.formatEta || function () { return ''; };
+  var responderStatusHtml = dashboardUtils.responderStatusHtml || function () { return ''; };
 
 
   // ===== CONFIG =====
@@ -303,6 +305,8 @@
   ns.classifyFreshness = classifyFreshness;
   ns.freshnessLabel = freshnessLabel;
   ns.alertBadge = alertBadge;
+  ns.formatEta = formatEta;
+  ns.responderStatusHtml = responderStatusHtml;
   ns.OPS_CENTER = OPS_CENTER;
   ns.OPS_ZOOM = OPS_ZOOM;
   ns.TILES = TILES;

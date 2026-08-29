@@ -200,29 +200,37 @@ async def ingest_sos(payload: SosIn) -> dict[str, object]:
 
 @protected_router.get('/active')
 async def active_sos(_: dict = Depends(require_user)) -> dict[str, object]:
-    """Unacknowledged SOS events, newest first. Dispatcher view."""
+    """Every unresolved SOS event, newest first. Dispatcher view.
+
+    Includes acknowledged-but-unresolved incidents, not just brand-new ones -
+    otherwise an acknowledgement makes the incident disappear before the
+    dispatcher can see the fisher's reply to it. An incident leaves this feed
+    only once a dispatcher resolves it or the fisher sends SAFE_NOW.
+    """
     pool = get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             '''
             SELECT id, vessel_id, boat, latitude, longitude, note, trust_tier,
                    client_ts, delivered_direct, delivered_via_buoy,
-                   buoy_id, created_at, acknowledged_at, acked_by
+                   buoy_id, created_at, acknowledged_at, acked_by,
+                   eta_at, responder_status, responder_note,
+                   fisher_reply, fisher_replied_at, resolved_at
             FROM sos_events
-            WHERE acknowledged_at IS NULL
-              AND resolved_at IS NULL
+            WHERE resolved_at IS NULL
             ORDER BY created_at DESC
             LIMIT 100
             '''
         )
+    timestamp_columns = (
+        'created_at', 'acknowledged_at', 'eta_at', 'fisher_replied_at', 'resolved_at',
+    )
     return {
         'events': [
             {
-                **{k: v for k, v in dict(row).items() if k not in ('created_at', 'acknowledged_at')},
-                'created_at': row['created_at'].isoformat(),
-                'acknowledged_at': (
-                    row['acknowledged_at'].isoformat() if row['acknowledged_at'] else None
-                ),
+                **{k: v for k, v in dict(row).items() if k not in timestamp_columns},
+                **{col: _iso(row[col]) for col in timestamp_columns},
+                'responder_status_label': RESPONDER_STATUS_LABELS.get(row['responder_status']),
             }
             for row in rows
         ]
@@ -388,16 +396,18 @@ async def fisher_reply(
     """Record the fisher's reply on that vessel's own incident.
 
     SAFE_NOW resolves the incident, which is what lets a dispatcher release
-    assets to somebody else.
+    assets to somebody else. Once resolved, the reply is frozen: a later
+    retry - of the same reply or a different one - can neither reopen the
+    incident nor replace what was recorded, so retrying is always safe.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
             UPDATE sos_events
-               SET fisher_reply      = $2,
-                   fisher_replied_at = NOW(),
-                   resolved_at = CASE WHEN $2 = $3 THEN NOW() ELSE resolved_at END
+               SET fisher_reply      = CASE WHEN resolved_at IS NULL THEN $2 ELSE fisher_reply END,
+                   fisher_replied_at = CASE WHEN resolved_at IS NULL THEN NOW() ELSE fisher_replied_at END,
+                   resolved_at       = CASE WHEN resolved_at IS NULL AND $2 = $3 THEN NOW() ELSE resolved_at END
              WHERE id = $1
                AND vessel_id = $4
             RETURNING id, fisher_reply, fisher_replied_at, resolved_at

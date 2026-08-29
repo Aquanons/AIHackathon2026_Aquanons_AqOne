@@ -15,7 +15,9 @@ const {
   escapeHtml,
   classifyFreshness,
   freshnessLabel,
-  alertBadge
+  alertBadge,
+  formatEta,
+  responderStatusHtml
 } = require('../js/dashboard-utils.js');
 
 test('escapeHtml', async (t) => {
@@ -144,5 +146,75 @@ test('alertBadge (synthetic/demo vs. live incident-feed badges)', async (t) => {
     // looking like a real distress call.
     const badge = alertBadge(undefined);
     assert.equal(badge.text, 'DEMO');
+  });
+});
+
+test('formatEta', async (t) => {
+  await t.test('is empty when there is no ETA yet', () => {
+    assert.equal(formatEta(null), '');
+    assert.equal(formatEta(undefined), '');
+  });
+
+  await t.test('an expired ETA renders an honest delayed message, never 00:00 or negative', () => {
+    const now = Date.parse('2026-08-16T09:00:00Z');
+    const oneMinuteAgo = '2026-08-16T08:59:00Z';
+    const text = formatEta(oneMinuteAgo, now);
+    assert.equal(text, 'delayed — still en route');
+    assert.ok(!text.includes('00:00'));
+    assert.ok(!text.includes('-'));
+  });
+
+  await t.test('an ETA at the exact current moment counts as expired, not 00:00', () => {
+    const now = Date.parse('2026-08-16T09:00:00Z');
+    assert.equal(formatEta('2026-08-16T09:00:00Z', now), 'delayed — still en route');
+  });
+
+  await t.test('a future ETA renders a countdown', () => {
+    const now = Date.parse('2026-08-16T09:00:00Z');
+    assert.equal(formatEta('2026-08-16T09:05:30Z', now), 'ETA 5:30');
+  });
+});
+
+test('responderStatusHtml', async (t) => {
+  await t.test('is empty for an SOS that has not been acknowledged yet', () => {
+    assert.equal(responderStatusHtml({ acknowledgedAt: null }), '');
+  });
+
+  await t.test('server-supplied responder note text is escaped, never passed through raw', () => {
+    const now = Date.parse('2026-08-16T09:00:00Z');
+    const html = responderStatusHtml({
+      acknowledgedAt: '2026-08-16T08:50:00Z',
+      etaAt: '2026-08-16T09:20:00Z',
+      responderStatusLabel: 'Rescue boat on the way',
+      responderNote: '<script>alert(1)</script>'
+    }, now);
+    assert.ok(!html.includes('<script>'));
+    assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  });
+
+  await t.test('an expired ETA shows the honest delayed wording, not a stale countdown', () => {
+    const now = Date.parse('2026-08-16T09:00:00Z');
+    const html = responderStatusHtml({
+      acknowledgedAt: '2026-08-16T08:00:00Z',
+      etaAt: '2026-08-16T08:30:00Z',
+      responderStatusLabel: 'Delayed - still coming'
+    }, now);
+    assert.ok(html.includes('delayed — still en route'));
+    assert.ok(html.includes('is-overdue'));
+  });
+
+  await t.test('the fisher\'s STILL_IN_DANGER reply is shown distinctly from SAFE_NOW', () => {
+    const stillInDanger = responderStatusHtml({ acknowledgedAt: '2026-08-16T08:00:00Z', fisherReply: 1 });
+    const safeNow = responderStatusHtml({ acknowledgedAt: '2026-08-16T08:00:00Z', fisherReply: 2 });
+    assert.ok(stillInDanger.includes('Still in danger'));
+    assert.ok(stillInDanger.includes('sos-fisher-danger'));
+    assert.ok(safeNow.includes('Safe now'));
+    assert.ok(!safeNow.includes('sos-fisher-danger'));
+  });
+
+  await t.test('omits the fisher-reply and note rows when there is nothing to show', () => {
+    const html = responderStatusHtml({ acknowledgedAt: '2026-08-16T08:00:00Z' });
+    assert.ok(!html.includes('Fisher Reply'));
+    assert.ok(!html.includes('Responder Note'));
   });
 });

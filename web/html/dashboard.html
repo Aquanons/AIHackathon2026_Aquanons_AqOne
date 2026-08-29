@@ -770,6 +770,10 @@
           <span class="sos-detail-value" id="sos-next-contact"></span>
         </div>
       </div>
+      <!-- Populated only once acknowledged - see responderStatusHtml() in
+           web/js/dashboard-utils.js. Empty (and invisible) for a fresh,
+           unacknowledged SOS. -->
+      <div class="sos-section sos-details" id="sos-responder-block"></div>
       <hr class="sos-divider" />
       <div class="sos-section sos-map-action">
         <button class="sos-btn sos-btn-zoom" id="sos-btn-zoom">Zoom to Last Known Position</button>
