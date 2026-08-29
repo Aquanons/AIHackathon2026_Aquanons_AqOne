@@ -269,6 +269,53 @@ today's only caller of that path is the synthetic demo, not a live array.
 - Run the evaluator against the committed synthetic fixture, targeted tests,
   `python -m pytest -q`, and `ruff check .`.
 
+### Status, recorded 2026-08-29
+
+Work items 1-3 and the code half of item 4 are done. Item 4's *approval*
+half — a named MDRRMO approver, an actual completed field-validation set —
+is explicitly not done and not fabricated, per the user's direction.
+
+- **Evaluation protocol repaired** (`backend/app/ai/squall_eval.py`):
+  `evaluate()` is now a pure, database-free function that splits *events* by
+  time (train on the earlier half, score only the later half — a model
+  never sees a "future" event during training), runs
+  `assess_array_quality()` on every candidate window before scoring it
+  (a quality-failing window is excluded, never scored as calm), and reports
+  precision, recall, mean lead time, a Brier score, false-alert rate, and
+  excluded-window counts for both the model and the baseline below. No
+  longer trains or saves the deployed model bundle as a side effect — that
+  stayed `POST /api/ai/squall/train` alone (`ALLOW_TRAINING`-gated), closing
+  the "no production training endpoint" requirement in item 4 more firmly
+  than before. `train_from_rows()`'s own internal random-split
+  self-evaluation still runs as part of training, for that endpoint's own
+  use, but is no longer what `squall_eval.py`/`GET /api/ai/metrics` report —
+  every section this script writes is tagged `"note": "synthetic demo
+  evidence only - not field validation"`.
+- **Transparent baseline added**: a fixed, untuned 1.5 hPa array-pressure-drop
+  threshold (`BASELINE_ARRAY_DROP_THRESHOLD_HPA`), scored on the same
+  held-out split. `evaluate()` reports which one the held-out numbers
+  actually favor (`recommendation: "model" | "baseline"`) rather than
+  assuming the logistic model wins. The deployed detection path
+  (`current_detection`/`build_squall_status`) has **not** been switched to
+  the baseline this session — that would be a real model-swap decision, not
+  evidence-gathering, and is left for deliberate follow-through once real
+  (not synthetic-fixture) numbers exist.
+- **Field-validation log template added**: `docs/08_DEMO_AND_STATUS.md`
+  "Squall field-validation log" — blank, dated-copy-per-deployment template
+  covering buoy locations, clock sync, sampling continuity, calibration
+  checks, event-by-event official/observer ground truth, and summary
+  figures. Explicitly not filled with placeholder numbers.
+- **Release gate**: `SQUALL_RETURN_NOW_ENABLED` (added in Phase 3, ahead of
+  this phase, because the safety boundary is global and applies from the
+  moment production reads live rows — see Phase 3's own note). Confirmed
+  here to default off (`backend/.env.example`), to be the single choke point
+  for `return_now` on live data (`build_squall_status()` is the only place
+  `level` is ever set, across the dashboard/public/demo routes), and to have
+  no override. The field-validation log template's own "Release gate
+  sign-off" checklist is the actual mechanism item 4 asks for: an approver
+  cannot sign off a log that does not exist yet, and none has been created
+  or fabricated. `RETURN NOW` remains unavailable for live use.
+
 ### Commit
 
 `test(squall): add time-split nowcast evaluation`

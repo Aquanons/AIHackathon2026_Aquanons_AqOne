@@ -404,12 +404,13 @@ reaches either production route.
 - `watch` — an eligible model candidate. Visible everywhere, never sounds
   a handset alarm (`return_now` is the only alarming state).
 - `return_now` — the RETURN NOW alarm condition. For `source: "live"` this
-  requires the `SQUALL_RETURN_NOW_ENABLED` deployment flag to be enabled,
-  which itself requires a recorded field-validation set and a named
-  MDRRMO approver's sign-off (Phase 4); until then, a live detection that
-  crosses the model's threshold reports `watch` instead. `source:
-  "synthetic"` has no such restriction, since only the demo route ever
-  reports it.
+  requires the `SQUALL_RETURN_NOW_ENABLED` deployment flag to be enabled
+  (default off, `backend/.env.example`), which itself requires a completed
+  field-validation log (template: `docs/08_DEMO_AND_STATUS.md` "Squall
+  field-validation log") reviewed and signed off by a named MDRRMO approver
+  (Phase 4's release gate); until both exist, a live detection that crosses
+  the model's threshold reports `watch` instead. `source: "synthetic"` has
+  no such restriction, since only the demo route ever reports it.
 
 Before any detection runs, the response is quality-gated
 (`assess_array_quality()`, Phase 2): a missing, stale (>10 minutes old),

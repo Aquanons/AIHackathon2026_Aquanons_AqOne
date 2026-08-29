@@ -362,6 +362,29 @@ def test_insufficient_live_array_is_unknown_and_never_return_now(monkeypatch):
     assert body['source'] == 'live'
 
 
+def test_return_now_flag_cannot_bypass_the_quality_gate(monkeypatch):
+    """docs/39 Phase 4 test requirement: the release flag can enable
+    return_now only for fresh, quality-passing input - it is not a general
+    override. A single stale reading stays unknown even with the flag on,
+    and the model is never loaded."""
+    monkeypatch.setenv('SQUALL_RETURN_NOW_ENABLED', 'true')
+    stale_at = datetime.now(UTC) - timedelta(hours=6)
+    pool = _FakeSquallPool([{'buoy_id': 'B01', 'observed_at': stale_at, 'pressure_hpa': 1005.0}])
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+
+    def _must_not_be_called():
+        raise AssertionError('the model must not run on an insufficient array, flag or no flag')
+
+    monkeypatch.setattr(squall_api, 'load_bundle', lambda: _must_not_be_called())
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'unknown'
+    assert body['return_now'] is False
+
+
 def test_synthetic_only_data_is_invisible_to_the_public_live_route(monkeypatch):
     """The exact bug docs/39's findings section opens with: production must
     never see synthetic rows, no matter how fresh and complete they are."""

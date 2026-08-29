@@ -315,6 +315,86 @@ phase's manual acceptance script for real.
 
 ---
 
+## Squall field-validation log (template)
+
+Per `docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md` Phase 4 item 3. This
+is a **template**, not a completed log — every field below is blank because
+field collection and weather-event labelling require the responsible
+hardware/operations owners (real buoy deployment, clock sync, and an
+official/observer ground truth this plan does not fabricate). Copy this
+section, dated, once real field data collection begins; do not fill in
+placeholder or synthetic numbers here.
+
+This log is also the record `SQUALL_RETURN_NOW_ENABLED` (backend/.env.example,
+`docs/05_PUBLIC_API.md` "Squall nowcast") is gated on: per the plan's release
+gate, a named MDRRMO approver reviews a completed version of this log before
+that flag is ever set in a deployment environment. An empty template below is
+not review material — it is the shape review material must take.
+
+**Deployment window:** `<start date>` – `<end date>`
+**Recorded by:** `<name/role>`
+
+### Fixed buoy locations
+
+| Buoy ID | Latitude | Longitude | Deployed at | Notes |
+|---|---|---|---|---|
+| | | | | |
+
+### Clock sync
+
+| Buoy ID | Clock source (GPS/NTP/manual) | Last verified | Drift observed |
+|---|---|---|---|
+| | | | |
+
+### Sampling continuity
+
+| Buoy ID | Expected interval | Outage periods (start–end, cause) | Total uptime % over window |
+|---|---|---|---|
+| | | | |
+
+### Calibration checks
+
+| Buoy ID | Reference instrument | Reading vs. reference | Date checked |
+|---|---|---|---|
+| | | | |
+
+### Weather events observed
+
+One row per candidate squall, whether or not the model flagged it.
+
+| Event date/time | Official PAGASA advisory? | Independent observer confirmation | Model output at the time (level, probability) | Outcome |
+|---|---|---|---|---|
+| | | | | |
+
+`Outcome` is one of: **hit** (model raised `watch`/would-have-raised
+`return_now` ahead of a confirmed event), **miss** (a confirmed event the
+model never flagged), **false alert** (model raised a candidate with no
+confirmed event), **excluded** (the array was quality-failing at the time —
+cite the `status_reason`, do not backfill a guess).
+
+### Summary figures (fill in once the table above is complete)
+
+- Lead time (confirmed hits only): `<median / range>`
+- False-alert rate: `<false alerts / total non-event evaluation windows>`
+- Miss rate: `<misses / confirmed events>`
+- Excluded windows: `<count and % of the evaluation window>`
+- Outage periods materially affecting coverage: `<list>`
+
+### Release gate sign-off
+
+- [ ] Named MDRRMO approver: `<name, role, date>`
+- [ ] Field-validation set above reviewed and accepted by that approver
+- [ ] `SQUALL_RETURN_NOW_ENABLED` set in the deployment environment (Railway),
+      not committed to the repository
+
+Until every box above is checked with real names and real data,
+`SQUALL_RETURN_NOW_ENABLED` stays unset and a live squall detection is
+visible only as `watch`, never `return_now` — see
+`backend/app/api/squall.py`'s `_return_now_enabled()` and the "Policy
+decision" section of `docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md`.
+
+---
+
 ## Judging weights — build toward these
 
 | Criterion | Weight | Where it's won |
