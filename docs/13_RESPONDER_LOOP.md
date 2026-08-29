@@ -111,11 +111,19 @@ sos_events
 - `POST /api/sos/{id}/acknowledge` — extend to accept `eta_minutes` and
   `responder_status`. Server converts minutes to `eta_at = NOW() + interval`,
   so the clock is authoritative and not the browser's.
-- `GET /api/sos/vessel/{vessel_id}` — **new, unauthenticated.** What the handset
-  polls. Returns delivery state, acknowledgement, `eta_at`, status code and any
-  note. Open for the same reason ingest is: a handset in distress has no token.
-  Returns only that vessel's own events.
-- `POST /api/sos/{id}/reply` — **new, unauthenticated.** The one-byte answer.
+- `GET /api/sos/active` — the dashboard's live feed returns every
+  **unresolved** event, including one already acknowledged, so a dispatcher
+  can see the fisher's `STILL_IN_DANGER` / `SAFE_NOW` reply land on it. An
+  event leaves this feed only once resolved (see `docs/05_PUBLIC_API.md`).
+- `GET /api/sos/vessel/{vessel_id}` — what the handset polls. Returns delivery
+  state, acknowledgement, `eta_at`, status code and any note. Requires the
+  vessel-device bearer token (`docs/05_PUBLIC_API.md`'s Option A) bound to
+  that vessel; ingest itself stays unauthenticated, but this per-vessel read
+  is not. Returns only that vessel's own events.
+- `POST /api/sos/{id}/reply` — the one-byte answer. Requires the same
+  vessel-device bearer token, and only updates an event owned by that token's
+  vessel. Monotonic once resolved: a retry after `SAFE_NOW` cannot reopen the
+  incident or replace what was recorded.
 
 **Dashboard**
 
