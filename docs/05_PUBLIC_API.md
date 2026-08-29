@@ -384,30 +384,73 @@ public route above filters. Create/update accept `cover_image` as the
 write-side field name; the response echoes it back as `image_url` like every
 other advisory read.
 
-## Daily outlook for the app — **contract agreed, not yet implemented**
+## Squall nowcast — **implemented**
+
+### `GET /api/public/squall`
+
+Squall alarm state for the handset, unauthenticated. `level` is one of
+`clear` \| `watch` \| `return_now` \| `unknown`; `return_now` is the
+RETURN NOW alarm condition, decided by the model's own threshold rather than
+any client-side re-derivation.
+
+A synthetic reading older than a max-data-age guard (3 hours) is treated as
+too stale to evaluate: `level` and `return_now` come back exactly as if the
+model had never run (`unknown` / `false`), alongside the last known `as_of`
+and a `stale`/`stale_reason` pair so the handset can say *why* nothing is
+being claimed, rather than going silent. This guard runs before the model is
+even loaded — a stale reading can never reach the threshold logic, so it can
+never raise a fresh RETURN NOW warning.
+
+```json
+{
+  "calibration": "synthetic",
+  "as_of": "2026-08-16T02:00:00Z",
+  "return_now": false,
+  "level": "unknown",
+  "stale": true,
+  "stale_reason": "latest synthetic reading is 6:00:00 old, past the 3:00:00 freshness window for this nowcast",
+  "source": "AqOne squall nowcast — calibrated on synthetic data"
+}
+```
+
+`calibration: "synthetic"` is carried on every response while the model is
+trained on simulated pressure fields rather than observed squalls — this is
+not a PAGASA warning, and the handset must keep saying so.
+
+## Daily outlook for the app — **implemented as a transparent proxy**
 
 ### `GET /api/public/forecast`
 
-The fused seven-day outlook behind Home's forecast strip: buoy sensor
-telemetry combined with a weather provider, scored server-side.
+The seven-day outlook behind Home's forecast strip.
 
-**This endpoint does not exist yet.** The contract is fixed here first so the
-handset and the backend can be built against it independently. Until it
-answers, the app falls back to Open-Meteo plus its own heuristic
-(`mobile/lib/services/forecast_provider.dart`), so switching it on is a
-backend-only deploy — no handset release.
+**No server-side fusion model exists yet.** What is implemented today is a
+transparent Open-Meteo/marine proxy: the backend fetches the same two
+providers the handset's own fallback would, applies a short upstream
+timeout, and returns them in this shape. `source` is `"open-meteo"`, not
+`"aqone-fusion"`, and the `risk` block below is always omitted — a fisher
+must never be told a verdict was fused from buoy telemetry when none was
+used. The shape leaves room for a real fusion model to fill in `risk`
+later without a contract change; until then the handset scores every day
+itself, exactly as if this endpoint had 404'd
+(`mobile/lib/services/forecast_provider.dart`'s `AqOneForecastProvider`
+already implements this precedence and its Open-Meteo fallback).
 
 | Query | Default | Meaning |
 |---|---|---|
-| `lat` | — | Position to forecast for. |
-| `lon` | — | Position to forecast for. |
-| `days` | 7 | Days requested (≤ 7 is what the strip renders). |
+| `lat` | — | Position to forecast for. Required, `-90..90`. |
+| `lon` | — | Position to forecast for. Required, `-180..180`. |
+| `days` | 7 | Days requested, `1..7`. |
+
+An out-of-range `lat`/`lon`/`days`, or an upstream provider timeout/error,
+returns `422`/`502` respectively — never a `200` with an empty or invented
+forecast. A `502` here is what lets the handset's own fallback take over on
+its next attempt.
 
 Response `200`:
 
 ```json
 {
-  "source": "aqone-fusion",
+  "source": "open-meteo",
   "generated_at": "2026-08-16T04:00:00Z",
   "days": [
     {
@@ -418,16 +461,21 @@ Response `200`:
       "wind_kph": 24,
       "gust_kph": 41,
       "precip_mm": 18.4,
-      "wave_m": 2.1,
+      "wave_m": 2.1
+    }
+  ]
+}
+```
+
+A future fusion model would additionally attach a `risk` block per day:
+
+```json
       "risk": {
         "level": "danger",
         "score": 0.81,
         "reason": "Gusts 41 km/h, 2.1 m swell at Buoy B",
         "inputs": ["buoy:buoy-b", "open-meteo"]
       }
-    }
-  ]
-}
 ```
 
 Field notes, all of them load-bearing:

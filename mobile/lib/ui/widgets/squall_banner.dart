@@ -29,6 +29,16 @@ class SquallBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    // Stale data that never reached watch/returnNow gets a quiet, neutral
+    // notice - not the amber/red alarm styling below, and never hidden
+    // outright. A fisher should be able to tell "the model has nothing
+    // current to say" from "everything is fine", and from an alarm.
+    final bool isAlarming =
+        watch.level == SquallLevel.watch || watch.level == SquallLevel.returnNow;
+    if (!isAlarming && watch.stale) {
+      return _buildStaleNotice(context);
+    }
+
     final bool isReturnNow = watch.level == SquallLevel.returnNow;
     final Color accent =
         isReturnNow ? const Color(0xFFDC2626) : const Color(0xFFF59E0B);
@@ -120,6 +130,66 @@ class SquallBanner extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildStaleNotice(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    const Color neutral = Color(0xFF6B7280);
+    final DateTime? asOf = watch.asOf;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: neutral.withValues(alpha: isDark ? 0.16 : 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: neutral, width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.history_toggle_off_rounded, color: neutral, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Squall nowcast: data too old to trust',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF334155),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  asOf != null
+                      ? 'Last reading ${_ago(DateTime.now().difference(asOf))}. '
+                          'Not showing a squall status until fresh data arrives.'
+                      : 'Not showing a squall status until fresh data arrives.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.3,
+                    color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _ago(Duration age) {
+    if (age.inMinutes < 60) {
+      return '${age.inMinutes} min ago';
+    }
+    if (age.inHours < 24) {
+      return '${age.inHours}h ago';
+    }
+    return '${age.inDays}d ago';
   }
 
   String _body(bool isReturnNow) {

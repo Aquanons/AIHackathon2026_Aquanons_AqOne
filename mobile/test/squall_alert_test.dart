@@ -1,5 +1,6 @@
 import 'package:aqone/models/squall_watch.dart';
 import 'package:aqone/ui/squall_alert_page.dart';
+import 'package:aqone/ui/widgets/squall_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -97,5 +98,80 @@ void main() {
   ) async {
     await tester.pumpWidget(wrap(returnNow));
     expect(find.textContaining('simulated'), findsNothing);
+  });
+
+  group('SquallWatch.tryParse - stale data', () {
+    test('a stale backend reading parses to unknown/no-alarm, never return_now', () {
+      final SquallWatch? watch = SquallWatch.tryParse(<String, Object?>{
+        'level': 'unknown',
+        'return_now': false,
+        'as_of': '2026-08-16T02:00:00Z',
+        'calibration': 'synthetic',
+        'stale': true,
+        'stale_reason': 'latest synthetic reading is 6:00:00 old, past the '
+            '3:00:00 freshness window for this nowcast',
+      });
+
+      expect(watch, isNotNull);
+      expect(watch!.level, SquallLevel.unknown);
+      expect(watch.returnNow, isFalse);
+      expect(watch.stale, isTrue);
+      expect(watch.staleReason, contains('freshness window'));
+      // shouldDisplay is true for stale (there is something worth telling the
+      // fisher) but the level guarantees no alarm-styled rendering happens.
+      expect(watch.shouldDisplay, isTrue);
+    });
+
+    test('a malicious/malformed stale+return_now combination still cannot alarm', () {
+      // The server's own boolean is never trusted alone - level must agree.
+      // A payload claiming both stale and return_now is nonsensical, and the
+      // existing level/return_now cross-check must still win.
+      final SquallWatch? watch = SquallWatch.tryParse(<String, Object?>{
+        'level': 'unknown',
+        'return_now': true,
+        'stale': true,
+      });
+
+      expect(watch!.returnNow, isFalse);
+    });
+
+    test('a normal unavailable/no-fetch state is not flagged stale', () {
+      expect(SquallWatch.unavailable.stale, isFalse);
+      expect(SquallWatch.unavailable.shouldDisplay, isFalse);
+    });
+  });
+
+  group('SquallBanner - stale state', () {
+    testWidgets('shows a neutral stale notice, never the alarm styling', (
+      WidgetTester tester,
+    ) async {
+      const SquallWatch stale = SquallWatch(
+        level: SquallLevel.unknown,
+        returnNow: false,
+        stale: true,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: SquallBanner(watch: stale))),
+      );
+
+      expect(find.textContaining('data too old to trust'), findsOneWidget);
+      expect(find.text('RETURN NOW'), findsNothing);
+      expect(find.text('Squall watch'), findsNothing);
+    });
+
+    testWidgets('renders nothing for a plain unavailable/unknown state', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: SquallBanner(watch: SquallWatch.unavailable)),
+        ),
+      );
+
+      expect(find.byType(SquallBanner), findsOneWidget);
+      expect(find.textContaining('data too old to trust'), findsNothing);
+      expect(find.text('RETURN NOW'), findsNothing);
+    });
   });
 }

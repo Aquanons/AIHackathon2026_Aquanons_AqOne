@@ -21,6 +21,7 @@ def test_public_routes_exist_and_need_no_token() -> None:
     spec = app.openapi()
     assert '/api/public/sea-condition' in spec['paths']
     assert '/api/public/squall' in spec['paths']
+    assert '/api/public/forecast' in spec['paths']
 
 
 def test_public_feeds_are_not_401() -> None:

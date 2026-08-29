@@ -31,6 +31,8 @@ class SquallWatch {
     this.triggeredBuoys = const <String>[],
     this.asOf,
     this.calibration,
+    this.stale = false,
+    this.staleReason,
   });
 
   final SquallLevel level;
@@ -47,6 +49,19 @@ class SquallWatch {
   /// than the model has earned.
   final String? calibration;
 
+  /// True when the backend's own max-data-age guard rejected the latest
+  /// synthetic reading as too old to evaluate. Distinct from
+  /// [unavailable]/[SquallLevel.unknown] from a failed fetch: here the
+  /// backend answered and [asOf] names exactly how old its data is, which is
+  /// worth disclosing rather than just going silent - see
+  /// docs/05_PUBLIC_API.md.
+  final bool stale;
+
+  /// Machine-readable-ish reason from the backend, e.g. "latest synthetic
+  /// reading is 6:00:00 old, past the 3:00:00 freshness window". Not
+  /// localized; shown as supporting detail, not the headline.
+  final String? staleReason;
+
   /// The state to show when the backend cannot be reached at all.
   static const SquallWatch unavailable = SquallWatch(
     level: SquallLevel.unknown,
@@ -54,7 +69,7 @@ class SquallWatch {
   );
 
   bool get shouldDisplay =>
-      level == SquallLevel.watch || level == SquallLevel.returnNow;
+      level == SquallLevel.watch || level == SquallLevel.returnNow || stale;
 
   static SquallLevel _levelFrom(String? raw) {
     switch (raw) {
@@ -95,6 +110,8 @@ class SquallWatch {
           : const <String>[],
       asOf: asOfRaw is String ? DateTime.tryParse(asOfRaw) : null,
       calibration: decoded['calibration'] as String?,
+      stale: decoded['stale'] == true,
+      staleReason: decoded['stale_reason'] as String?,
     );
   }
 

@@ -18,7 +18,10 @@ credentials the person at risk cannot hold.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from datetime import UTC, datetime, timedelta
+
+import httpx
+from fastapi import APIRouter, HTTPException, Query
 
 from app.ai.squall import build_buoys, current_detection, event_detection_summary, load_bundle
 from app.api.sea_condition import _buoy_telemetry, _serialise
@@ -27,6 +30,17 @@ from app.db import get_pool
 from app.geo import SHORE_STATIONS
 
 router = APIRouter(prefix='/api/public', tags=['public'])
+
+OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+OPEN_METEO_MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine'
+FORECAST_UPSTREAM_TIMEOUT_SECONDS = 5.0
+MAX_FORECAST_DAYS = 7
+
+# A synthetic reading older than this cannot be trusted as "current weather" -
+# see docs/37 non-negotiable rule: stale data must never raise a fresh RETURN
+# NOW warning. Squalls are a tens-of-minutes phenomenon (PRD §5.1), so a few
+# hours old is already stale for this purpose.
+SQUALL_MAX_DATA_AGE = timedelta(hours=3)
 
 DEMO_BUOYS: tuple[dict[str, object], ...] = (
     {
@@ -118,6 +132,128 @@ async def public_sea_condition() -> dict[str, object]:
     return {'current': current}
 
 
+def _daily_wave_max(marine_payload: dict[str, object]) -> dict[str, float]:
+    """Max hourly significant wave height per calendar day.
+
+    The marine API only reports hourly, so this collapses to a daily figure
+    the same way the handset's own client-side fallback does
+    (`DailyOutlook.parseMarineDailyMax` in mobile/lib/models/daily_outlook.dart)
+    - kept in sync so a proxied day and a directly-fetched fallback day never
+    disagree about the same swell.
+    """
+    hourly = marine_payload.get('hourly')
+    if not isinstance(hourly, dict):
+        return {}
+    times = hourly.get('time')
+    heights = hourly.get('wave_height')
+    if not isinstance(times, list) or not isinstance(heights, list):
+        return {}
+    by_day: dict[str, float] = {}
+    for time_str, height in zip(times, heights, strict=False):
+        if not isinstance(time_str, str) or not isinstance(height, (int, float)):
+            continue
+        day = time_str[:10]
+        by_day[day] = max(by_day.get(day, float('-inf')), float(height))
+    return by_day
+
+
+@router.get('/forecast')
+async def public_forecast(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    days: int = Query(default=7, ge=1, le=MAX_FORECAST_DAYS),
+) -> dict[str, object]:
+    """Transparent Open-Meteo/marine proxy - see docs/05_PUBLIC_API.md.
+
+    No server-side fusion model exists yet, so this never claims
+    `aqone-fusion` and never includes a `risk` block - the handset scores
+    each day itself when `risk` is absent. `wave_m` stays null rather than
+    0.0 whenever the marine model has nothing for a day: a missing reading
+    must never read as flat calm.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=FORECAST_UPSTREAM_TIMEOUT_SECONDS) as client:
+            atmo_response = await client.get(
+                OPEN_METEO_FORECAST_URL,
+                params={
+                    'latitude': lat,
+                    'longitude': lon,
+                    'daily': (
+                        'weather_code,temperature_2m_max,temperature_2m_min,'
+                        'wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum'
+                    ),
+                    'forecast_days': days,
+                    'timezone': 'auto',
+                },
+            )
+            atmo_response.raise_for_status()
+            atmo = atmo_response.json()
+
+            marine: dict[str, object] = {}
+            try:
+                marine_response = await client.get(
+                    OPEN_METEO_MARINE_URL,
+                    params={
+                        'latitude': lat,
+                        'longitude': lon,
+                        'hourly': 'wave_height',
+                        'forecast_days': days,
+                        'timezone': 'auto',
+                    },
+                )
+                marine_response.raise_for_status()
+                marine = marine_response.json()
+            except (httpx.HTTPError, ValueError):
+                # Wave data is frequently unavailable for nearshore cells.
+                # That degrades wave_m to null for every day below, not the
+                # whole forecast to an error.
+                marine = {}
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502, detail='upstream weather provider unavailable'
+        ) from exc
+
+    daily = atmo.get('daily')
+    if not isinstance(daily, dict):
+        raise HTTPException(status_code=502, detail='malformed weather provider response')
+
+    times = daily.get('time')
+    if not isinstance(times, list):
+        raise HTTPException(status_code=502, detail='malformed weather provider response')
+
+    wave_by_day = _daily_wave_max(marine)
+
+    def _at(key: str, index: int) -> object | None:
+        series = daily.get(key)
+        if isinstance(series, list) and index < len(series):
+            return series[index]
+        return None
+
+    out_days: list[dict[str, object]] = []
+    for index, date_str in enumerate(times):
+        if not isinstance(date_str, str):
+            continue
+        wave = wave_by_day.get(date_str)
+        out_days.append(
+            {
+                'date': date_str,
+                'weather_code': _at('weather_code', index),
+                'temp_max': _at('temperature_2m_max', index),
+                'temp_min': _at('temperature_2m_min', index),
+                'wind_kph': _at('wind_speed_10m_max', index),
+                'gust_kph': _at('wind_gusts_10m_max', index),
+                'precip_mm': _at('precipitation_sum', index),
+                'wave_m': wave,
+            }
+        )
+
+    return {
+        'source': 'open-meteo',
+        'generated_at': datetime.now(UTC).isoformat(),
+        'days': out_days,
+    }
+
+
 @router.get('/squall')
 async def public_squall() -> dict[str, object]:
     """Squall nowcast for the handset.
@@ -143,10 +279,30 @@ async def public_squall() -> dict[str, object]:
         'return_now': False,
         'level': 'unknown',
         'source': 'AqOne squall nowcast — calibrated on synthetic data',
+        'stale': False,
+        'stale_reason': None,
     }
 
     if not readings:
         return empty
+
+    latest_reading_at = max(row['observed_at'] for row in readings)
+    as_of = latest_reading_at.isoformat()
+    age = datetime.now(UTC) - latest_reading_at
+
+    # A stale synthetic reading must never raise a fresh RETURN NOW warning
+    # (docs/37 non-negotiable rule). This is checked before the model even
+    # runs, so a stale detection can never slip through the threshold logic
+    # below by accident.
+    if age > SQUALL_MAX_DATA_AGE:
+        return empty | {
+            'as_of': as_of,
+            'stale': True,
+            'stale_reason': (
+                f'latest synthetic reading is {age} old, past the '
+                f'{SQUALL_MAX_DATA_AGE} freshness window for this nowcast'
+            ),
+        }
 
     try:
         model = load_bundle()
@@ -191,7 +347,7 @@ async def public_squall() -> dict[str, object]:
                 lead_minutes = eta if lead_minutes is None else min(lead_minutes, eta)
 
     return summary | {
-        'as_of': max(row['observed_at'] for row in readings).isoformat(),
+        'as_of': as_of,
         'return_now': bool(triggered),
         'level': level,
         'triggered_buoys': triggered_buoys,
@@ -199,4 +355,6 @@ async def public_squall() -> dict[str, object]:
         # shows as "squall in ~N minutes".
         'lead_minutes': round(lead_minutes) if lead_minutes is not None else None,
         'source': 'AqOne squall nowcast — calibrated on synthetic data',
+        'stale': False,
+        'stale_reason': None,
     }
