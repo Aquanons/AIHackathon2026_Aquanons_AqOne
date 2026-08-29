@@ -8,8 +8,9 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.ai.current_field import create_current_field_factory
-from app.ai.drift import ObjectClass, predict_drift
+from app.ai import environment
+from app.ai.current_field import count_nearby_fresh_buoys, create_current_field_factory
+from app.ai.drift import MODEL_VERSION, ObjectClass, predict_drift
 from app.ai.search import contours_from_grid, update_posterior
 from app.auth import require_user
 from app.db import get_pool
@@ -23,6 +24,13 @@ router = APIRouter(prefix='/api/ai/drift', tags=['drift'])
 # responder at open time (docs/40 Phase 1 item 4).
 SOS_OPEN_REASON = 'manual_sos_confirmed'
 ANOMALY_OPEN_REASON = 'anomaly_escalated'
+
+_RUN_COLUMNS = '''
+    run_number, object_class, forecast_hours, model_version, computed_at, computed_by,
+    environmental_status, insufficiency_reason, observed_coverage,
+    current_max_age_seconds, nearby_buoy_count, wind_source, wind_degraded,
+    max_wind_age_seconds, prior_grid, posterior_grid
+'''
 
 
 class SearchSectorRequest(BaseModel):
@@ -60,10 +68,49 @@ def _source_type(row) -> str:
     return 'synthetic'
 
 
+def _grid(value) -> dict | None:
+    if value is None:
+        return None
+    return json.loads(value) if isinstance(value, str) else value
+
+
+async def _fetch_sectors(pool, incident_id: int) -> list[dict[str, object]]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at '
+            'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at',
+            incident_id,
+        )
+    return [
+        {
+            'x_min_m': float(row['x_min_m']),
+            'x_max_m': float(row['x_max_m']),
+            'y_min_m': float(row['y_min_m']),
+            'y_max_m': float(row['y_max_m']),
+            'detection_probability': float(row['detection_probability']),
+            'searched_at': row['searched_at'].isoformat(),
+        }
+        for row in rows
+    ]
+
+
+async def _latest_run(pool, incident_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            f'SELECT {_RUN_COLUMNS} FROM drift_runs WHERE incident_id = $1 '
+            'ORDER BY run_number DESC LIMIT 1',
+            incident_id,
+        )
+
+
 async def _get_or_compute_prior(
     pool, incident_id: int, row, current_fn, forecast_hours: float,
 ) -> dict:
-    """Return the prior grid dict, loading from DB or computing fresh."""
+    """Legacy/demo-fixture path only (docs/40 Phase 1 item 4): loads the
+    incidents.prior_grid cache, or computes and caches it. Never used for a
+    real case - those always have a drift_runs row by the time this could be
+    reached (see record_searched_sector).
+    """
     prior_grid = row['prior_grid']
     if prior_grid is not None:
         return json.loads(prior_grid) if isinstance(prior_grid, str) else prior_grid
@@ -83,6 +130,61 @@ async def _get_or_compute_prior(
             incident_id,
         )
     return result.grid
+
+
+async def _compute_and_persist_run(
+    pool, incident_id: int, run_number: int, *,
+    last_lat: float, last_lon: float, last_at: datetime,
+    object_class: ObjectClass, forecast_hours: float, actor: str,
+) -> environment.EnvironmentAssessment:
+    """The production quality-gated prediction (docs/40 Phase 2 items 2-3).
+
+    Computes at most one particle simulation, assesses it against the
+    owner-approved policy in app.ai.environment, and persists exactly one
+    immutable drift_runs row - a contour only when the inputs are
+    sufficient, `insufficient_environmental_data` (with its diagnostic
+    snapshot) otherwise. Never falls back to the synthetic current field.
+    """
+    nearby = await count_nearby_fresh_buoys(pool, last_lat, last_lon, last_at)
+    assessment = environment.assess_geometry(nearby)
+    prior_grid = posterior_grid = None
+
+    if assessment is None:
+        current_fn = await create_current_field_factory(pool)
+        result = predict_drift(
+            last_lat=last_lat,
+            last_lon=last_lon,
+            observed_at=last_at,
+            object_class=object_class,
+            forecast_hours=forecast_hours,
+            current_vector_fn=current_fn,
+        )
+        coverage = getattr(current_fn, 'observation_fraction', 0.0)
+        assessment = environment.assess_result(nearby, coverage, result)
+        if assessment.sufficient:
+            prior_grid = result.grid
+            posterior_grid = result.grid
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            '''
+            INSERT INTO drift_runs (
+              incident_id, run_number, object_class, forecast_hours, model_version,
+              computed_by, environmental_status, insufficiency_reason,
+              observed_coverage, current_max_age_seconds, nearby_buoy_count,
+              wind_source, wind_degraded, max_wind_age_seconds,
+              prior_grid, posterior_grid
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            ''',
+            incident_id, run_number, object_class.value, forecast_hours, MODEL_VERSION,
+            actor, 'ok' if assessment.sufficient else 'insufficient_environmental_data',
+            assessment.reason, assessment.observed_coverage, assessment.current_max_age_seconds,
+            assessment.nearby_buoy_count, assessment.wind_source, assessment.wind_degraded,
+            assessment.max_wind_age_seconds,
+            json.dumps(prior_grid) if prior_grid is not None else None,
+            json.dumps(posterior_grid) if posterior_grid is not None else None,
+        )
+    return assessment
 
 
 @router.get('/incidents')
@@ -128,6 +230,7 @@ class OpenCaseRequest(BaseModel):
     source_type: Literal['sos', 'anomaly']
     source_id: int
     object_class: ObjectClass
+    forecast_hours: float = Field(24.0, gt=0, le=72)
 
 
 async def _sos_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[str, float, float, datetime]:
@@ -208,12 +311,73 @@ async def open_case(body: OpenCaseRequest, user: dict = Depends(require_user)) -
                 status_code=409, detail='a case already exists for this source',
             ) from exc
 
+    incident_id = row['id']
+    actor = user.get('email') or 'unknown'
+    assessment = await _compute_and_persist_run(
+        pool, incident_id, 1,
+        last_lat=lat, last_lon=lon, last_at=at,
+        object_class=body.object_class, forecast_hours=body.forecast_hours,
+        actor=actor,
+    )
+
     return {
-        'id': row['id'],
+        'id': incident_id,
         'vessel_id': vessel_id,
         'object_class': body.object_class.value,
         'case_state': 'confirmed',
         'source_type': body.source_type,
+        'run_number': 1,
+        'environmental_status': 'ok' if assessment.sufficient else 'insufficient_environmental_data',
+        'insufficiency_reason': assessment.reason,
+    }
+
+
+@router.post('/cases/{incident_id}/rerun')
+async def rerun_case(incident_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+    """An explicit, responder-only new drift run (docs/40 Phase 2 item 4).
+
+    Appends a new numbered run rather than overwriting the current one, so a
+    crew already acting on an earlier run's contours and search sectors is
+    never silently redirected mid-search.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        incident = await conn.fetchrow(
+            '''
+            SELECT id, last_contact_at, last_contact_lat, last_contact_lon,
+                   abnormal_reason, object_class, resolved_at, cancelled_at
+            FROM incidents WHERE id = $1
+            ''',
+            incident_id,
+        )
+    if incident is None:
+        raise HTTPException(status_code=404, detail='no such case')
+    if incident['resolved_at'] is not None or incident['cancelled_at'] is not None:
+        raise HTTPException(
+            status_code=409, detail=f'case is {_case_state(incident)}; cannot start a new run',
+        )
+
+    latest = await _latest_run(pool, incident_id)
+    if latest is None:
+        raise HTTPException(
+            status_code=409, detail='this case has no prior run to supersede',
+        )
+
+    next_run_number = latest['run_number'] + 1
+    assessment = await _compute_and_persist_run(
+        pool, incident_id, next_run_number,
+        last_lat=float(incident['last_contact_lat']),
+        last_lon=float(incident['last_contact_lon']),
+        last_at=incident['last_contact_at'],
+        object_class=_resolved_object_class(incident),
+        forecast_hours=float(latest['forecast_hours']),
+        actor=user.get('email') or 'unknown',
+    )
+    return {
+        'id': incident_id,
+        'run_number': next_run_number,
+        'environmental_status': 'ok' if assessment.sufficient else 'insufficient_environmental_data',
+        'insufficiency_reason': assessment.reason,
     }
 
 
@@ -276,7 +440,6 @@ async def cancel_case(
 @router.get('/incident/{incident_id}')
 async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) -> dict[str, object]:
     pool = get_pool()
-    current_fn = await create_current_field_factory(pool)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
@@ -293,6 +456,54 @@ async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) ->
     if row is None:
         raise HTTPException(status_code=404, detail='incident not found')
 
+    incident_summary = {
+        'id': row['id'],
+        'vessel_id': row['vessel_id'],
+        'last_contact_at': row['last_contact_at'].isoformat(),
+        'last_contact_lat': float(row['last_contact_lat']),
+        'last_contact_lon': float(row['last_contact_lon']),
+        'abnormal_reason': row['abnormal_reason'],
+        'is_synthetic': row['is_synthetic'],
+        'source_type': _source_type(row),
+        'case_state': _case_state(row),
+    }
+
+    run = await _latest_run(pool, incident_id)
+
+    if run is not None:
+        # A real case: read the stored, immutable run. Never recompute on a
+        # GET (docs/40 Phase 2 item 3) - a displayed prediction must always
+        # belong to the same environmental inputs as its posterior.
+        is_ok = run['environmental_status'] == 'ok'
+        response: dict[str, object] = {
+            'incident': incident_summary,
+            'run_number': run['run_number'],
+            'model_version': run['model_version'],
+            'computed_at': run['computed_at'].isoformat(),
+            'environmental_status': run['environmental_status'],
+            'insufficiency_reason': run['insufficiency_reason'],
+            'nearby_buoy_count': run['nearby_buoy_count'],
+            'current_max_age_seconds': run['current_max_age_seconds'],
+            'max_wind_age_seconds': run['max_wind_age_seconds'],
+            'observation_fraction': (
+                round(run['observed_coverage'], 4) if run['observed_coverage'] is not None else None
+            ),
+            'prediction': {
+                'object_class': run['object_class'],
+                'wind_source': run['wind_source'],
+                'degraded': run['wind_degraded'],
+            } if is_ok else None,
+            'posterior_grid': _grid(run['posterior_grid']) if is_ok else None,
+            'contours': contours_from_grid(_grid(run['posterior_grid'])) if is_ok else [],
+            'search_sectors': await _fetch_sectors(pool, incident_id),
+        }
+        return response
+
+    # Legacy/demo-fixture path (docs/40 Phase 1 item 4): the simulator and
+    # the demo scenario engine still write incidents.prior_grid/
+    # posterior_grid directly and never create a drift_runs row, so this
+    # keeps their exact pre-Phase-2 behaviour unchanged.
+    current_fn = await create_current_field_factory(pool)
     result = predict_drift(
         last_lat=float(row['last_contact_lat']),
         last_lon=float(row['last_contact_lon']),
@@ -301,55 +512,17 @@ async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) ->
         forecast_hours=forecast_hours,
         current_vector_fn=current_fn,
     )
-
-    posterior_grid = row['posterior_grid']
-    if posterior_grid is not None:
-        posterior_grid = json.loads(posterior_grid) if isinstance(posterior_grid, str) else posterior_grid
-    else:
-        posterior_grid = result.grid
-
-    sectors = []
-    async with pool.acquire() as conn:
-        sector_rows = await conn.fetch(
-            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at '
-            'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at',
-            incident_id,
-        )
-    for sr in sector_rows:
-        sectors.append({
-            'x_min_m': float(sr['x_min_m']),
-            'x_max_m': float(sr['x_max_m']),
-            'y_min_m': float(sr['y_min_m']),
-            'y_max_m': float(sr['y_max_m']),
-            'detection_probability': float(sr['detection_probability']),
-            'searched_at': sr['searched_at'].isoformat(),
-        })
+    posterior_grid = _grid(row['posterior_grid']) or result.grid
 
     response = {
-        'incident': {
-            'id': row['id'],
-            'vessel_id': row['vessel_id'],
-            'last_contact_at': row['last_contact_at'].isoformat(),
-            'last_contact_lat': float(row['last_contact_lat']),
-            'last_contact_lon': float(row['last_contact_lon']),
-            'abnormal_reason': row['abnormal_reason'],
-            'is_synthetic': row['is_synthetic'],
-            'source_type': _source_type(row),
-            'case_state': _case_state(row),
-        },
+        'incident': incident_summary,
         'prediction': result.to_dict(),
         'posterior_grid': posterior_grid,
         'contours': contours_from_grid(posterior_grid),
-        'search_sectors': sectors,
+        'search_sectors': await _fetch_sectors(pool, incident_id),
     }
-    # Ground truth must never appear for a real incident (docs/40 "Current
-    # findings"). It is real-track data and only ever legitimate for a
-    # synthetic replay used in evaluation.
     if row['is_synthetic']:
-        true_track = row['true_track']
-        if isinstance(true_track, str):
-            true_track = json.loads(true_track)
-        response['ground_truth_track'] = true_track
+        response['ground_truth_track'] = _grid(row['true_track'])
     obs_frac = getattr(current_fn, 'observation_fraction', None)
     if obs_frac is not None:
         response['observation_fraction'] = round(obs_frac, 4)
@@ -361,7 +534,6 @@ async def record_searched_sector(
     incident_id: int, body: SearchSectorRequest,
 ) -> dict[str, object]:
     pool = get_pool()
-    current_fn = await create_current_field_factory(pool)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
@@ -381,20 +553,6 @@ async def record_searched_sector(
             detail=f'case is {_case_state(row)}; cannot record a new search',
         )
 
-    prior_grid = row['prior_grid']
-    if prior_grid is not None:
-        prior_grid = json.loads(prior_grid) if isinstance(prior_grid, str) else prior_grid
-    else:
-        prior_grid = await _get_or_compute_prior(
-            pool, incident_id, row, current_fn, 24.0,
-        )
-
-    posterior_grid = row['posterior_grid']
-    if posterior_grid is not None:
-        posterior_grid = json.loads(posterior_grid) if isinstance(posterior_grid, str) else posterior_grid
-    else:
-        posterior_grid = prior_grid
-
     sector = {
         'x_min_m': body.x_min_m,
         'x_max_m': body.x_max_m,
@@ -402,14 +560,42 @@ async def record_searched_sector(
         'y_max_m': body.y_max_m,
         'detection_probability': body.detection_probability,
     }
-    updated_grid = update_posterior(posterior_grid, [sector])
+
+    run = await _latest_run(pool, incident_id)
+    if run is not None:
+        # Real case: the posterior lives on the current drift run, not on
+        # incidents.posterior_grid (docs/40 Phase 2).
+        if run['environmental_status'] != 'ok':
+            raise HTTPException(
+                status_code=409,
+                detail='insufficient environmental data; no search field to update',
+            )
+        posterior_grid = _grid(run['posterior_grid'])
+        updated_grid = update_posterior(posterior_grid, [sector])
+        async with pool.acquire() as conn:
+            await conn.execute(
+                '''
+                UPDATE drift_runs SET posterior_grid = $1
+                 WHERE incident_id = $2 AND run_number = $3
+                ''',
+                json.dumps(updated_grid), incident_id, run['run_number'],
+            )
+    else:
+        # Legacy/demo-fixture path - unchanged pre-Phase-2 behaviour.
+        current_fn = await create_current_field_factory(pool)
+        prior_grid = row['prior_grid']
+        prior_grid = _grid(prior_grid) if prior_grid is not None else await _get_or_compute_prior(
+            pool, incident_id, row, current_fn, 24.0,
+        )
+        posterior_grid = _grid(row['posterior_grid']) or prior_grid
+        updated_grid = update_posterior(posterior_grid, [sector])
+        async with pool.acquire() as conn:
+            await conn.execute(
+                'UPDATE incidents SET posterior_grid = $1 WHERE id = $2',
+                json.dumps(updated_grid), incident_id,
+            )
 
     async with pool.acquire() as conn:
-        await conn.execute(
-            'UPDATE incidents SET posterior_grid = $1 WHERE id = $2',
-            json.dumps(updated_grid),
-            incident_id,
-        )
         await conn.execute(
             '''
             INSERT INTO search_sectors
@@ -424,27 +610,8 @@ async def record_searched_sector(
             body.detection_probability,
         )
 
-    updated_contours = contours_from_grid(updated_grid)
-
-    all_sectors = []
-    async with pool.acquire() as conn:
-        sector_rows = await conn.fetch(
-            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at '
-            'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at',
-            incident_id,
-        )
-    for sr in sector_rows:
-        all_sectors.append({
-            'x_min_m': float(sr['x_min_m']),
-            'x_max_m': float(sr['x_max_m']),
-            'y_min_m': float(sr['y_min_m']),
-            'y_max_m': float(sr['y_max_m']),
-            'detection_probability': float(sr['detection_probability']),
-            'searched_at': sr['searched_at'].isoformat(),
-        })
-
     return {
         'posterior_grid': updated_grid,
-        'contours': updated_contours,
-        'search_sectors': all_sectors,
+        'contours': contours_from_grid(updated_grid),
+        'search_sectors': await _fetch_sectors(pool, incident_id),
     }

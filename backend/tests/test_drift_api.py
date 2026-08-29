@@ -1,23 +1,31 @@
-"""Responder-confirmed drift/search cases (docs/40 Phase 1).
+"""Responder-confirmed drift/search cases (docs/40 Phases 1-2).
 
-A case can only be opened from a source the responder has already confirmed
-(an acknowledged SOS or an escalated anomaly case), never from an arbitrary
-client-supplied position. Real incidents must never carry ground truth; only
-a synthetic/demo incident may.
+Phase 1: a case can only be opened from a source the responder has already
+confirmed (an acknowledged SOS or an escalated anomaly case), never from an
+arbitrary client-supplied position. Real incidents must never carry ground
+truth; only a synthetic/demo incident may.
+
+Phase 2: case-opening computes exactly one production drift run, gated by
+the owner-approved environmental quality policy (app/ai/environment.py) -
+insufficient inputs persist `insufficient_environmental_data` rather than a
+contour built on the synthetic fallback. A GET always reads that stored run;
+it never recomputes. An explicit rerun appends a new run without touching
+the one before it.
 
 `_FakePool` is a tiny in-memory double for the handful of query shapes
 `app.api.drift` issues - dispatched by substring the same way the existing
 `_FakeStore` in test_anomaly_cases.py works. It intentionally does not model
-`conn.transaction()`: the drift handlers below rely on a real unique index
-for the hard duplicate-case guarantee (asserted here by having the fake raise
-the same `asyncpg.UniqueViolationError` a real duplicate insert would).
+`conn.transaction()`: the drift handlers rely on a real unique index for the
+hard duplicate-case guarantee (asserted here by having the fake raise the
+same `asyncpg.UniqueViolationError` a real duplicate insert would).
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -29,8 +37,12 @@ from app.main import app
 
 AUTH = {'Authorization': f"Bearer {create_token(1, 'ops@example.com', 'mdrrmo')}"}
 
+CASE_LAT = 11.7
+CASE_LON = 122.4
+CASE_AT = datetime(2026, 8, 29, 8, tzinfo=UTC)
 
-def _fake_prediction() -> DriftResult:
+
+def _fake_prediction(*, degraded: bool = False) -> DriftResult:
     ring = [[122.0, 11.0], [122.1, 11.0], [122.1, 11.1], [122.0, 11.1], [122.0, 11.0]]
     return DriftResult(
         grid={
@@ -43,12 +55,27 @@ def _fake_prediction() -> DriftResult:
         contours=[
             {'type': 'Feature', 'geometry': {'type': 'Polygon', 'coordinates': [ring]}, 'properties': {'mass': 0.95}},
         ],
-        centroid_track=[{'at': datetime(2026, 8, 1, tzinfo=UTC).isoformat(), 'lat': 11.05, 'lon': 122.05}],
-        degraded=False,
+        centroid_track=[{'at': CASE_AT.isoformat(), 'lat': 11.05, 'lon': 122.05}],
+        degraded=degraded,
         runtime_ms=1.23,
-        wind_source='test',
+        wind_source='synthetic' if degraded else 'open-meteo',
         object_class='person_in_water',
     )
+
+
+def _make_predict_drift(*, degraded: bool = False):
+    """A fast predict_drift double that still calls the real current_vector_fn
+    once (as a real particle step would), so create_current_field_factory's
+    `observation_fraction` gets populated from whatever buoy rows the test
+    put in `pool.current_observations` - without running the actual
+    2000-particle Monte Carlo simulation or fetching live wind.
+    """
+
+    def _predict(*, current_vector_fn, last_lat, last_lon, observed_at, **_kwargs):
+        current_vector_fn(np.array([last_lat]), np.array([last_lon]), observed_at)
+        return _fake_prediction(degraded=degraded)
+
+    return _predict
 
 
 class _FakePool:
@@ -56,7 +83,9 @@ class _FakePool:
         self.sos_events: dict[int, dict] = {}
         self.anomaly_cases: dict[int, dict] = {}
         self.buoy_contacts: list[dict] = []
+        self.current_observations: list[dict] = []
         self.incidents: dict[int, dict] = {}
+        self.drift_runs: dict[int, list[dict]] = {}
         self.search_sectors: list[dict] = []
         self._next_incident_id = 1
 
@@ -150,6 +179,13 @@ class _FakePool:
             incident['cancelled_reason'] = incident['cancelled_reason'] or reason
             return dict(incident)
 
+        if 'FROM drift_runs' in query:
+            incident_id = args[0]
+            runs = self.drift_runs.get(incident_id) or []
+            if not runs:
+                return None
+            return dict(max(runs, key=lambda r: r['run_number']))
+
         if 'FROM incidents' in query and 'WHERE id = $1' in query:
             return self.incidents.get(args[0])
 
@@ -157,7 +193,7 @@ class _FakePool:
 
     async def fetch(self, query: str, *args):
         if 'FROM current_observations' in query:
-            return []
+            return self.current_observations
         if 'FROM search_sectors' in query:
             incident_id = args[0]
             return [row for row in self.search_sectors if row['incident_id'] == incident_id]
@@ -166,7 +202,38 @@ class _FakePool:
         return []
 
     async def execute(self, query: str, *args):
-        if 'UPDATE incidents SET prior_grid' in query:
+        if 'INSERT INTO drift_runs' in query:
+            (
+                incident_id, run_number, object_class, forecast_hours, model_version,
+                computed_by, environmental_status, insufficiency_reason,
+                observed_coverage, current_max_age_seconds, nearby_buoy_count,
+                wind_source, wind_degraded, max_wind_age_seconds,
+                prior_grid, posterior_grid,
+            ) = args
+            self.drift_runs.setdefault(incident_id, []).append({
+                'run_number': run_number,
+                'object_class': object_class,
+                'forecast_hours': forecast_hours,
+                'model_version': model_version,
+                'computed_at': datetime.now(UTC),
+                'computed_by': computed_by,
+                'environmental_status': environmental_status,
+                'insufficiency_reason': insufficiency_reason,
+                'observed_coverage': observed_coverage,
+                'current_max_age_seconds': current_max_age_seconds,
+                'nearby_buoy_count': nearby_buoy_count,
+                'wind_source': wind_source,
+                'wind_degraded': wind_degraded,
+                'max_wind_age_seconds': max_wind_age_seconds,
+                'prior_grid': prior_grid,
+                'posterior_grid': posterior_grid,
+            })
+        elif 'UPDATE drift_runs SET posterior_grid' in query:
+            grid_json, incident_id, run_number = args
+            for run in self.drift_runs.get(incident_id, []):
+                if run['run_number'] == run_number:
+                    run['posterior_grid'] = grid_json
+        elif 'UPDATE incidents SET prior_grid' in query:
             grid_json, incident_id = args
             incident = self.incidents[incident_id]
             incident['prior_grid'] = grid_json
@@ -190,18 +257,18 @@ def pool(monkeypatch):
     fake = _FakePool()
     monkeypatch.setattr(app_db, 'get_pool', lambda: fake)
     monkeypatch.setattr(drift_api, 'get_pool', lambda: fake)
-    monkeypatch.setattr(drift_api, 'predict_drift', lambda **kwargs: _fake_prediction())
+    monkeypatch.setattr(drift_api, 'predict_drift', _make_predict_drift())
     return fake
 
 
 def _sos(pool, id_, *, acknowledged=True, resolved=False, has_position=True) -> None:
     pool.sos_events[id_] = {
         'vessel_id': 'V-001',
-        'latitude': 11.7 if has_position else None,
-        'longitude': 122.4 if has_position else None,
-        'created_at': datetime(2026, 8, 29, 8, tzinfo=UTC),
-        'acknowledged_at': datetime(2026, 8, 29, 8, 5, tzinfo=UTC) if acknowledged else None,
-        'resolved_at': datetime(2026, 8, 29, 9, tzinfo=UTC) if resolved else None,
+        'latitude': CASE_LAT if has_position else None,
+        'longitude': CASE_LON if has_position else None,
+        'created_at': CASE_AT,
+        'acknowledged_at': CASE_AT + timedelta(minutes=5) if acknowledged else None,
+        'resolved_at': CASE_AT + timedelta(hours=1) if resolved else None,
     }
 
 
@@ -209,16 +276,39 @@ def _anomaly(pool, id_, *, escalated=True, resolved=False, position=True) -> Non
     pool.anomaly_cases[id_] = {
         'vessel_id': 'V-002',
         'trip_id': 'trip-1',
-        'escalated_at': datetime(2026, 8, 29, 8, 5, tzinfo=UTC) if escalated else None,
-        'resolved_at': datetime(2026, 8, 29, 9, tzinfo=UTC) if resolved else None,
+        'escalated_at': CASE_AT + timedelta(minutes=5) if escalated else None,
+        'resolved_at': CASE_AT + timedelta(hours=1) if resolved else None,
     }
     if position:
         pool.buoy_contacts.append({
             'vessel_id': 'V-002', 'trip_id': 'trip-1',
-            'latitude': 11.65, 'longitude': 122.35,
-            'observed_at': datetime(2026, 8, 29, 7, tzinfo=UTC),
+            'latitude': CASE_LAT, 'longitude': CASE_LON,
+            'observed_at': CASE_AT - timedelta(hours=1),
         })
 
+
+def _nearby_buoy(pool, buoy_id: str, *, age_seconds: float = 0.0) -> None:
+    """A buoy reading at the exact case position - distance 0, so only the
+    age matters for the field-geometry check."""
+    pool.current_observations.append({
+        'buoy_id': buoy_id,
+        'buoy_lat': CASE_LAT,
+        'buoy_lon': CASE_LON,
+        'observed_at': CASE_AT - timedelta(seconds=age_seconds),
+        'observed_u_mps': 0.3,
+        'observed_v_mps': 0.1,
+    })
+
+
+def _open_sos_case(client, *, source_id=1) -> dict:
+    return client.post(
+        '/api/ai/drift/cases',
+        headers=AUTH,
+        json={'source_type': 'sos', 'source_id': source_id, 'object_class': 'person_in_water'},
+    ).json()
+
+
+# --- Phase 1: case lifecycle -------------------------------------------------
 
 def test_public_caller_cannot_open_or_read_cases(pool):
     with TestClient(app, raise_server_exceptions=False) as client:
@@ -256,16 +346,11 @@ def test_resolved_sos_cannot_open_a_case(pool):
 def test_confirmed_sos_opens_a_case(pool):
     _sos(pool, 1)
     with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            '/api/ai/drift/cases',
-            headers=AUTH,
-            json={'source_type': 'sos', 'source_id': 1, 'object_class': 'person_in_water'},
-        )
-    assert response.status_code == 200
-    body = response.json()
+        body = _open_sos_case(client)
     assert body['case_state'] == 'confirmed'
     assert body['source_type'] == 'sos'
     assert body['vessel_id'] == 'V-001'
+    assert body['run_number'] == 1
 
 
 def test_duplicate_case_creation_is_rejected(pool):
@@ -322,23 +407,12 @@ def test_escalated_anomaly_opens_a_case(pool):
 def test_resolved_case_rejects_a_new_search_report(pool):
     _sos(pool, 1)
     with TestClient(app, raise_server_exceptions=False) as client:
-        opened = client.post(
-            '/api/ai/drift/cases',
-            headers=AUTH,
-            json={'source_type': 'sos', 'source_id': 1, 'object_class': 'person_in_water'},
-        ).json()
-        incident_id = opened['id']
-
+        incident_id = _open_sos_case(client)['id']
         client.post(f'/api/ai/drift/cases/{incident_id}/resolve', headers=AUTH)
-
         report = client.post(
             f'/api/ai/drift/incident/{incident_id}/searched',
             headers=AUTH,
-            json={
-                'x_min_m': -1000, 'x_max_m': 1000,
-                'y_min_m': -1000, 'y_max_m': 1000,
-                'detection_probability': 0.5,
-            },
+            json={'x_min_m': -1000, 'x_max_m': 1000, 'y_min_m': -1000, 'y_max_m': 1000, 'detection_probability': 0.5},
         )
     assert report.status_code == 409
 
@@ -346,26 +420,15 @@ def test_resolved_case_rejects_a_new_search_report(pool):
 def test_cancelled_case_rejects_a_new_search_report(pool):
     _sos(pool, 1)
     with TestClient(app, raise_server_exceptions=False) as client:
-        incident_id = client.post(
-            '/api/ai/drift/cases',
-            headers=AUTH,
-            json={'source_type': 'sos', 'source_id': 1, 'object_class': 'person_in_water'},
-        ).json()['id']
-
+        incident_id = _open_sos_case(client)['id']
         client.post(
             f'/api/ai/drift/cases/{incident_id}/cancel',
-            headers=AUTH,
-            json={'reason': 'false alarm, vessel found at dock'},
+            headers=AUTH, json={'reason': 'false alarm, vessel found at dock'},
         )
-
         report = client.post(
             f'/api/ai/drift/incident/{incident_id}/searched',
             headers=AUTH,
-            json={
-                'x_min_m': -1000, 'x_max_m': 1000,
-                'y_min_m': -1000, 'y_max_m': 1000,
-                'detection_probability': 0.5,
-            },
+            json={'x_min_m': -1000, 'x_max_m': 1000, 'y_min_m': -1000, 'y_max_m': 1000, 'detection_probability': 0.5},
         )
     assert report.status_code == 409
 
@@ -373,12 +436,7 @@ def test_cancelled_case_rejects_a_new_search_report(pool):
 def test_real_incident_response_has_no_ground_truth_field(pool):
     _sos(pool, 1)
     with TestClient(app, raise_server_exceptions=False) as client:
-        incident_id = client.post(
-            '/api/ai/drift/cases',
-            headers=AUTH,
-            json={'source_type': 'sos', 'source_id': 1, 'object_class': 'person_in_water'},
-        ).json()['id']
-
+        incident_id = _open_sos_case(client)['id']
         response = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH)
 
     assert response.status_code == 200
@@ -419,16 +477,153 @@ def test_synthetic_incident_response_is_visibly_marked_and_carries_ground_truth(
 def test_incidents_endpoint_lists_summaries(pool):
     _sos(pool, 1)
     with TestClient(app, raise_server_exceptions=False) as client:
-        client.post(
-            '/api/ai/drift/cases',
-            headers=AUTH,
-            json={'source_type': 'sos', 'source_id': 1, 'object_class': 'swamped_banca'},
-        )
+        _open_sos_case(client)
         response = client.get('/api/ai/drift/incidents', headers=AUTH)
 
     assert response.status_code == 200
     payload = response.json()
     assert payload[0]['vessel_id'] == 'V-001'
-    assert payload[0]['object_class'] == 'swamped_banca'
+    assert payload[0]['object_class'] == 'person_in_water'
     assert payload[0]['source_type'] == 'sos'
     assert payload[0]['case_state'] == 'confirmed'
+
+
+# --- Phase 2: environmental quality gate + immutable run snapshots ----------
+
+def test_no_observations_produces_insufficient_field_geometry(pool):
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        response = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH)
+
+    body = response.json()
+    assert body['environmental_status'] == 'insufficient_environmental_data'
+    assert body['insufficiency_reason'] == 'insufficient_field_geometry'
+    assert body['contours'] == []
+    assert body['posterior_grid'] is None
+    assert body['prediction'] is None
+
+
+def test_stale_observations_produce_insufficient_field_geometry(pool):
+    _nearby_buoy(pool, 'B1', age_seconds=7200)  # 2h old, past the 60-minute policy cutoff
+    _nearby_buoy(pool, 'B2', age_seconds=7200)
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        response = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH)
+
+    assert response.json()['insufficiency_reason'] == 'insufficient_field_geometry'
+
+
+def test_a_single_nearby_buoy_is_insufficient_geometry(pool):
+    _nearby_buoy(pool, 'B1')  # only one - MIN_NEARBY_BUOYS is 2
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        response = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH)
+
+    assert response.json()['insufficiency_reason'] == 'insufficient_field_geometry'
+
+
+def test_degraded_wind_is_rejected_even_with_good_current_coverage(pool, monkeypatch):
+    monkeypatch.setattr(drift_api, 'predict_drift', _make_predict_drift(degraded=True))
+    _nearby_buoy(pool, 'B1')
+    _nearby_buoy(pool, 'B2')
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        response = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH)
+
+    body = response.json()
+    assert body['environmental_status'] == 'insufficient_environmental_data'
+    assert body['insufficiency_reason'] == 'degraded_wind_source'
+    assert body['contours'] == []
+
+
+def test_fresh_quality_passing_observations_produce_a_contour(pool):
+    _nearby_buoy(pool, 'B1')
+    _nearby_buoy(pool, 'B2')
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        opened = _open_sos_case(client)
+        incident_id = opened['id']
+        response = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH)
+
+    assert opened['environmental_status'] == 'ok'
+    body = response.json()
+    assert body['environmental_status'] == 'ok'
+    assert body['insufficiency_reason'] is None
+    assert body['posterior_grid'] is not None
+    assert len(body['contours']) == 3  # 50/75/95% mass targets
+    assert body['prediction']['object_class'] == 'person_in_water'
+    assert body['observation_fraction'] == 1.0
+
+
+def test_repeated_gets_return_the_identical_stored_run(pool):
+    _nearby_buoy(pool, 'B1')
+    _nearby_buoy(pool, 'B2')
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        first = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH).json()
+        second = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH).json()
+
+    assert first['run_number'] == second['run_number'] == 1
+    assert first['computed_at'] == second['computed_at']
+    assert first['posterior_grid'] == second['posterior_grid']
+
+
+def test_rerun_creates_a_new_version_without_modifying_the_first(pool):
+    _sos(pool, 1)  # no buoys yet - run 1 is insufficient
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        first = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH).json()
+        assert first['environmental_status'] == 'insufficient_environmental_data'
+
+        # Buoys arrive after the fact - a responder explicitly reruns.
+        _nearby_buoy(pool, 'B1')
+        _nearby_buoy(pool, 'B2')
+        rerun = client.post(f'/api/ai/drift/cases/{incident_id}/rerun', headers=AUTH)
+        assert rerun.status_code == 200
+        assert rerun.json()['run_number'] == 2
+        assert rerun.json()['environmental_status'] == 'ok'
+
+        second = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH).json()
+
+    assert second['run_number'] == 2
+    assert second['environmental_status'] == 'ok'
+    # The original run is still there, untouched.
+    stored_runs = pool.drift_runs[incident_id]
+    assert len(stored_runs) == 2
+    assert stored_runs[0]['run_number'] == 1
+    assert stored_runs[0]['environmental_status'] == 'insufficient_environmental_data'
+
+
+def test_search_report_is_rejected_when_the_current_run_is_insufficient(pool):
+    _sos(pool, 1)  # no buoys - insufficient
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        report = client.post(
+            f'/api/ai/drift/incident/{incident_id}/searched',
+            headers=AUTH,
+            json={'x_min_m': -1000, 'x_max_m': 1000, 'y_min_m': -1000, 'y_max_m': 1000, 'detection_probability': 0.5},
+        )
+    assert report.status_code == 409
+
+
+def test_search_report_updates_the_current_runs_posterior(pool):
+    _nearby_buoy(pool, 'B1')
+    _nearby_buoy(pool, 'B2')
+    _sos(pool, 1)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        incident_id = _open_sos_case(client)['id']
+        report = client.post(
+            f'/api/ai/drift/incident/{incident_id}/searched',
+            headers=AUTH,
+            json={'x_min_m': -1000, 'x_max_m': 5000, 'y_min_m': -1000, 'y_max_m': 5000, 'detection_probability': 0.5},
+        )
+        detail = client.get(f'/api/ai/drift/incident/{incident_id}', headers=AUTH).json()
+
+    assert report.status_code == 200
+    assert len(report.json()['search_sectors']) == 1
+    assert detail['search_sectors']

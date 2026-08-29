@@ -655,7 +655,7 @@ Closes the case; it drops out of `GET /cases/open` on the next poll.
 Idempotent, no body required. Because evaluation never writes `resolved_at`,
 a later score refresh can never reopen a case a responder closed.
 
-## Drift prediction and search re-tasking — **implemented (Phase 1: case lifecycle)**
+## Drift prediction and search re-tasking — **implemented (Phases 1-2: case lifecycle, quality-gated runs)**
 
 The responder-facing side of
 `docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md`. A case
@@ -682,28 +682,55 @@ A new anomaly score, an arbitrary client-supplied position, or a public
 caller can never open a case. All routes below require a bearer token
 (`require_user`); there is no unauthenticated drift endpoint.
 
+### Production environmental-input quality policy (Phase 2)
+
+A real case's drift run may only use observed currents and a non-degraded
+wind source — never the synthetic current equation or the simulator's
+`true_*` columns. When the inputs don't clear the bar below, the run is
+persisted as `insufficient_environmental_data` (with the diagnostic snapshot
+that follows) instead of a contour.
+
+Approved by the project owner (Lenard — see `AGENTS.md` Ownership) on
+2026-08-30. These are safety thresholds: do not change them to make a demo
+or a specific case work — that changes which real cases get a search field.
+Re-approval is required before adjusting any of them.
+
+| Policy | Value | Rationale |
+|---|---|---|
+| Minimum field geometry | ≥ 2 distinct buoys with a fresh reading within range of the last-known position | One buoy gives a point value, not a spatial gradient — two is the minimum to interpolate a direction. |
+| Maximum current-observation age | 60 minutes | Matches the pre-existing interpolation cutoff (`current_field.MAX_AGE_SECONDS`) rather than adding a second, looser number. |
+| Maximum wind-forecast age | 60 minutes | Structurally enforced tighter already: the wind cache TTL is 20 minutes, so a non-degraded fetch is always well under this. A *degraded* fetch (Open-Meteo unreachable, synthetic wind substituted) is rejected outright regardless of age. |
+| Minimum observed-current coverage | ≥ 50% of the particle field driven by real observations, not the synthetic fallback | A zero (or near-zero) observation fraction is not sufficient evidence for a production search map (docs/40 "Current findings"). |
+
+With no buoys deployed yet, every real case today is `insufficient_field_geometry`
+until the buoy/current hardware is in the water — this is the honest, intended
+state, not a bug (docs/40 "Purpose and delivery rule").
+
 ### `POST /api/ai/drift/cases` — open a case
 
 ```json
-{ "source_type": "sos", "source_id": 42, "object_class": "person_in_water" }
+{ "source_type": "sos", "source_id": 42, "object_class": "person_in_water", "forecast_hours": 24 }
 ```
 
 `source_type` is `"sos"` or `"anomaly"`; `object_class` is one of
 `person_in_water`, `swamped_banca`, `intact_hull_adrift` and is always an
 explicit responder choice — it is never inferred from the source's own
-reason text. The last-known position and time come from the source itself
-(the SOS's own lat/lon, or the vessel's most recent position fix for an
-escalated anomaly) — the caller cannot supply an arbitrary position.
+reason text. `forecast_hours` defaults to 24 (max 72). The last-known
+position and time come from the source itself (the SOS's own lat/lon, or the
+vessel's most recent position fix for an escalated anomaly) — the caller
+cannot supply an arbitrary position.
 
 Fails with `404` if the source doesn't exist, `409` if the source is not yet
 confirmed (not acknowledged / not escalated), already resolved, or already
 has a case open (one case per source — a retry does not fork a second search
 effort), and `422` if the source has no recorded position yet.
 
-Response `200`:
+Opening a case immediately computes and persists **run 1** against the
+quality policy above — this is the only time a real case's prediction is
+computed except for an explicit rerun (below). Response `200`:
 
 ```json
-{ "id": 101, "vessel_id": "NW-001", "object_class": "person_in_water", "case_state": "confirmed", "source_type": "sos" }
+{ "id": 101, "vessel_id": "NW-001", "object_class": "person_in_water", "case_state": "confirmed", "source_type": "sos", "run_number": 1, "environmental_status": "ok", "insufficiency_reason": null }
 ```
 
 ### `GET /api/ai/drift/incidents`
@@ -713,19 +740,61 @@ labelled. `case_state` is `confirmed`, `resolved`, or `cancelled`.
 
 ### `GET /api/ai/drift/incident/{id}`
 
-The full drift picture for one case: the current prediction, the posterior
-probability grid and its 50/75/95% contours, and every recorded search
-sector. **`ground_truth_track` is present only when the incident is
-synthetic** — a real case's response never contains a ground-truth field at
-all (not even `null`). A synthetic replay's ground truth is otherwise only
-available from the demo-gated route below.
+Reads the **stored** current run — it never recomputes on a `GET`, so a
+displayed prediction and its posterior always belong to the same
+environmental inputs. Response shape for a real case:
+
+```json
+{
+  "incident": { "id": 101, "vessel_id": "NW-001", "case_state": "confirmed", "source_type": "sos", "is_synthetic": false, "...": "..." },
+  "run_number": 1,
+  "model_version": "aqone-drift-v1",
+  "computed_at": "2026-08-30T05:10:00Z",
+  "environmental_status": "ok",
+  "insufficiency_reason": null,
+  "nearby_buoy_count": 3,
+  "observation_fraction": 0.71,
+  "prediction": { "object_class": "person_in_water", "wind_source": "open-meteo", "degraded": false },
+  "posterior_grid": { "...": "DensityGrid" },
+  "contours": [ "...": "50/75/95% GeoJSON polygons" ],
+  "search_sectors": [ "..." ]
+}
+```
+
+When `environmental_status` is `insufficient_environmental_data`,
+`prediction`/`posterior_grid` are `null` and `contours` is `[]` — never a
+contour inferred from the synthetic fallback. **`ground_truth_track` is
+present only when the incident is synthetic** — a real case's response never
+contains a ground-truth field at all (not even `null`). A synthetic replay's
+ground truth is otherwise only available from the demo-gated route below.
+
+A legacy/demo-fixture incident (created by the simulator or the demo
+scenario engine, never by `POST /cases`) has no stored run and keeps the
+pre-Phase-2 behaviour: `prediction` is a live-recomputed `DriftResult`, not a
+stored run snapshot.
+
+### `POST /api/ai/drift/cases/{id}/rerun` — explicit new drift run (Phase 2)
+
+The only way a case's prediction is ever recomputed after it opens — always
+a deliberate responder action, never automatic. Appends **run *N*+1**; the
+previous run and every search sector already recorded against the case are
+left untouched, so a crew already acting on the current contours is never
+silently redirected mid-search. Fails `409` if the case is resolved/
+cancelled, or has no run yet (a demo/synthetic case has none — `rerun` only
+applies to a real case). Response shape matches `POST /cases`' tail:
+
+```json
+{ "id": 101, "run_number": 2, "environmental_status": "ok", "insufficiency_reason": null }
+```
 
 ### `POST /api/ai/drift/incident/{id}/searched`
 
-Records a searched sector and returns the updated posterior. Rejects with
-`409` once the case is `resolved` or `cancelled`. (Phase 3 replaces the raw
-metre-offset body and adds an idempotency key; this phase only adds the
-case-state gate.)
+Records a searched sector against the case's *current* run and returns the
+updated posterior. Rejects with `409` once the case is `resolved` or
+`cancelled`, or if the current run is `insufficient_environmental_data`
+(there is no field to search). (Phase 3 replaces the raw metre-offset body
+and adds an idempotency key; this phase only adds the case-state and
+run-status gates.)
 
 ### `POST /api/ai/drift/cases/{id}/resolve`
 

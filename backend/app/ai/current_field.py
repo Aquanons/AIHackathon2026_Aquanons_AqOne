@@ -83,6 +83,33 @@ async def _load_buoy_observations(conn: asyncpg.Connection) -> dict[str, dict[st
     return buoys
 
 
+async def count_nearby_fresh_buoys(pool: asyncpg.Pool, lat: float, lon: float, at: datetime) -> int:
+    """How many distinct buoys have a current observation within
+    ``MAX_RADIUS_M`` of ``(lat, lon)`` and within ``MAX_AGE_SECONDS`` of
+    ``at``.
+
+    The field-geometry half of the docs/40 Phase 2 production quality gate.
+    One buoy gives a single point value, not a spatial gradient - a
+    production run needs more than one to interpolate a direction rather
+    than extrapolate blindly from a lone reading.
+    """
+    async with pool.acquire() as conn:
+        buoys = await _load_buoy_observations(conn)
+
+    target_time = at.astimezone(UTC).timestamp()
+    count = 0
+    for buoy in buoys.values():
+        if len(buoy['times']) == 0:
+            continue
+        dist_m = _haversine_m(np.array([lat]), np.array([lon]), buoy['lat'], buoy['lon'])[0]
+        if dist_m >= MAX_RADIUS_M:
+            continue
+        nearest_age = float(np.min(np.abs(buoy['times'] - target_time)))
+        if nearest_age <= MAX_AGE_SECONDS:
+            count += 1
+    return count
+
+
 async def create_current_field_factory(
     pool: asyncpg.Pool,
 ) -> Callable[[np.ndarray, np.ndarray, datetime], tuple[np.ndarray, np.ndarray]]:

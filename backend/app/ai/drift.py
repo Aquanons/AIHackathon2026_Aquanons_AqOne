@@ -36,6 +36,12 @@ MANILA_TZ = timezone(timedelta(hours=8))
 WIND_CACHE_TTL_SECONDS = 20 * 60
 KM_PER_DEG_LAT = 110_574.0
 
+# Recorded on every persisted drift run snapshot (docs/40 Phase 2 item 3) so a
+# later change to the particle model is visible in old runs' metadata rather
+# than silently reinterpreting them. Bump on any change to predict_drift's
+# physics (leeway coefficients, diffusion, current-bias sigma, ...).
+MODEL_VERSION = 'aqone-drift-v1'
+
 
 class ObjectClass(str, Enum):  # noqa: UP042
     person_in_water = 'person_in_water'
