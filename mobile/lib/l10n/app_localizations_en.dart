@@ -401,4 +401,30 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get responderReplyPending =>
       'Not sent yet — will send automatically once you have a connection.';
+
+  @override
+  String get chatStatusQueued => 'Queued';
+
+  @override
+  String get chatStatusSent => 'Sent';
+
+  @override
+  String get chatStatusSynced => 'Synced';
+
+  @override
+  String chatCharacterLimitLabel(int used, int max) {
+    return '$used/$max';
+  }
+
+  @override
+  String get squallStaleTitle => 'Squall nowcast: data too old to trust';
+
+  @override
+  String squallStaleBodyWithAge(String age) {
+    return 'Last reading $age ago. Not showing a squall status until fresh data arrives.';
+  }
+
+  @override
+  String get squallStaleBodyNoAge =>
+      'Not showing a squall status until fresh data arrives.';
 }

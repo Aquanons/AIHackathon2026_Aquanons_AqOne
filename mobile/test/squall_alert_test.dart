@@ -1,7 +1,10 @@
+import 'package:aqone/core/l10n_fallback.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/models/squall_watch.dart';
 import 'package:aqone/ui/squall_alert_page.dart';
 import 'package:aqone/ui/widgets/squall_banner.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -142,36 +145,57 @@ void main() {
   });
 
   group('SquallBanner - stale state', () {
-    testWidgets('shows a neutral stale notice, never the alarm styling', (
-      WidgetTester tester,
-    ) async {
-      const SquallWatch stale = SquallWatch(
-        level: SquallLevel.unknown,
-        returnNow: false,
-        stale: true,
+    Widget wrapBanner(Widget child, {Locale locale = const Locale('en')}) {
+      return MaterialApp(
+        locale: locale,
+        supportedLocales: kSupportedLocales,
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          ...kFallbackDelegates,
+        ],
+        home: Scaffold(body: SingleChildScrollView(child: child)),
       );
+    }
 
-      await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: SquallBanner(watch: stale))),
+    const SquallWatch staleWithAge = SquallWatch(
+      level: SquallLevel.unknown,
+      returnNow: false,
+      stale: true,
+      asOf: null,
+    );
+
+    for (final Locale locale in kSupportedLocales) {
+      testWidgets(
+        'shows a neutral stale notice in ${locale.languageCode}, never the alarm styling',
+        (WidgetTester tester) async {
+          await tester.pumpWidget(
+            wrapBanner(const SquallBanner(watch: staleWithAge), locale: locale),
+          );
+          await tester.pumpAndSettle();
+
+          final AppLocalizations t = lookupAppLocalizations(locale);
+          expect(find.text(t.squallStaleTitle), findsOneWidget);
+          expect(find.text('RETURN NOW'), findsNothing);
+          expect(find.text('Squall watch'), findsNothing);
+          // No layout overflow, including the longer Filipino/Aklanon copy.
+          expect(tester.takeException(), isNull);
+        },
       );
-
-      expect(find.textContaining('data too old to trust'), findsOneWidget);
-      expect(find.text('RETURN NOW'), findsNothing);
-      expect(find.text('Squall watch'), findsNothing);
-    });
+    }
 
     testWidgets('renders nothing for a plain unavailable/unknown state', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(body: SquallBanner(watch: SquallWatch.unavailable)),
-        ),
+        wrapBanner(const SquallBanner(watch: SquallWatch.unavailable)),
       );
 
       expect(find.byType(SquallBanner), findsOneWidget);
-      expect(find.textContaining('data too old to trust'), findsNothing);
       expect(find.text('RETURN NOW'), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }

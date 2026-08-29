@@ -410,4 +410,30 @@ class AppLocalizationsFil extends AppLocalizations {
   @override
   String get responderReplyPending =>
       'Hindi pa naipapadala — awtomatikong ipapadala kapag may koneksyon na.';
+
+  @override
+  String get chatStatusQueued => 'Nakapila';
+
+  @override
+  String get chatStatusSent => 'Naipadala';
+
+  @override
+  String get chatStatusSynced => 'Na-sync';
+
+  @override
+  String chatCharacterLimitLabel(int used, int max) {
+    return '$used/$max';
+  }
+
+  @override
+  String get squallStaleTitle => 'Pagtataya ng unos: lumang datos';
+
+  @override
+  String squallStaleBodyWithAge(String age) {
+    return 'Huling babasahin: $age na ang nakalipas. Wala munang ipapakitang katayuan hangga\'t walang sariwang datos.';
+  }
+
+  @override
+  String get squallStaleBodyNoAge =>
+      'Wala munang ipapakitang katayuan ng unos hangga\'t walang sariwang datos.';
 }

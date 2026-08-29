@@ -10,6 +10,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../core/config.dart';
 import '../core/endpoint_guard.dart';
 import '../data/identity_store.dart';
+import '../l10n/app_localizations.dart';
 
 // ---------------------------------------------------------------------------
 // Model
@@ -658,6 +659,21 @@ String initialOf(String name) {
 /// share an initial. Top-level (rather than a private helper on the state)
 /// so the bubble, wheel and header all derive avatars the same way instead
 /// of each doing its own `name[0]`.
+/// Caption shown under this handset's own outgoing lines: the honest facts
+/// this handset actually knows, per docs/05_PUBLIC_API.md's truth rules.
+/// Cloud confirmation (a real HTTP 201) outranks the hub leg, which has no
+/// receipt at all - showing both at once would just repeat "not confirmed"
+/// twice in different words.
+String hubCloudStatusLabel(AppLocalizations t, ChatMessage msg) {
+  if (msg.cloudStored) {
+    return t.chatStatusSynced;
+  }
+  if (msg.hubState == ChatHubState.handedToHub) {
+    return t.chatStatusSent;
+  }
+  return t.chatStatusQueued;
+}
+
 Color avatarColorOf(String name) {
   const palette = <Color>[
     Color(0xFF38BDF8),
@@ -1073,7 +1089,10 @@ class _ChathubbState extends State<Chathubb> {
                     right: isMine ? 4 : 0,
                   ),
                   child: Text(
-                    '${msg.time.hour.toString().padLeft(2, '0')}:${msg.time.minute.toString().padLeft(2, '0')}',
+                    isMine
+                        ? '${msg.time.hour.toString().padLeft(2, '0')}:${msg.time.minute.toString().padLeft(2, '0')} · '
+                            '${hubCloudStatusLabel(AppLocalizations.of(context), msg)}'
+                        : '${msg.time.hour.toString().padLeft(2, '0')}:${msg.time.minute.toString().padLeft(2, '0')}',
                     style: TextStyle(
                       fontSize: 10,
                       color: isDark ? Colors.white30 : Colors.black26,
@@ -1127,8 +1146,27 @@ class _ChathubbState extends State<Chathubb> {
                   color: isDark ? Colors.white : Colors.black87,
                   fontSize: 15,
                 ),
+                // Shown before sending, not just after a rejection - a fisher
+                // composing an emergency-relevant sentence should see the
+                // 50-character ceiling coming, not discover it mid-word.
+                buildCounter: (
+                  context, {
+                  required int currentLength,
+                  required bool isFocused,
+                  int? maxLength,
+                }) {
+                  return Text(
+                    AppLocalizations.of(context).chatCharacterLimitLabel(
+                      currentLength,
+                      maxLength ?? ChatService.maxMessageLength,
+                    ),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: isDark ? Colors.white38 : Colors.black38,
+                    ),
+                  );
+                },
                 decoration: InputDecoration(
-                  counterText: '',
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 18, vertical: 10),

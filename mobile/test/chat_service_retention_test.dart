@@ -1,6 +1,9 @@
 import 'package:aqone/core/config.dart';
+import 'package:aqone/core/l10n_fallback.dart';
 import 'package:aqone/data/identity_store.dart';
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/ui/chathubb.dart';
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -234,5 +237,54 @@ void main() {
       expect(relayCalled, isFalse);
       expect(service.lastError, isNotNull);
     });
+  });
+
+  group('hubCloudStatusLabel - honest per-message status, all locales', () {
+    ChatMessage line({
+      ChatHubState hubState = ChatHubState.handedToHub,
+      bool cloudStored = false,
+    }) {
+      return ChatMessage(
+        text: 'help',
+        from: 'Maria Gracia',
+        isMine: true,
+        time: DateTime.utc(2026, 8, 20, 12),
+        hubState: hubState,
+        cloudStored: cloudStored,
+      );
+    }
+
+    for (final Locale locale in kSupportedLocales) {
+      final AppLocalizations t = lookupAppLocalizations(locale);
+
+      test('${locale.languageCode}: queued locally never claims sent or synced', () {
+        expect(
+          hubCloudStatusLabel(t, line(hubState: ChatHubState.queuedLocally)),
+          t.chatStatusQueued,
+        );
+      });
+
+      test('${locale.languageCode}: handed to hub but not yet cloud-stored says sent, not synced', () {
+        expect(
+          hubCloudStatusLabel(t, line(hubState: ChatHubState.handedToHub)),
+          t.chatStatusSent,
+        );
+      });
+
+      test('${locale.languageCode}: cloud relay stored (201) says synced', () {
+        expect(
+          hubCloudStatusLabel(
+            t,
+            line(hubState: ChatHubState.handedToHub, cloudStored: true),
+          ),
+          t.chatStatusSynced,
+        );
+      });
+
+      test('${locale.languageCode}: chatCharacterLimitLabel formats used/max', () {
+        expect(t.chatCharacterLimitLabel(12, 50), contains('12'));
+        expect(t.chatCharacterLimitLabel(12, 50), contains('50'));
+      });
+    }
   });
 }

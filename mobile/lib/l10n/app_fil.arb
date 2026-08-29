@@ -106,5 +106,13 @@
   "responderReplyConfirmConfirm": "Oo, ligtas ako",
   "responderReplySentStillInDanger": "Alam ng MDRRMO na naghihintay ka pa rin ng tulong.",
   "responderReplySentSafeNow": "Nasabihan na ang MDRRMO na ligtas ka na.",
-  "responderReplyPending": "Hindi pa naipapadala — awtomatikong ipapadala kapag may koneksyon na."
+  "responderReplyPending": "Hindi pa naipapadala — awtomatikong ipapadala kapag may koneksyon na.",
+
+  "chatStatusQueued": "Nakapila",
+  "chatStatusSent": "Naipadala",
+  "chatStatusSynced": "Na-sync",
+  "chatCharacterLimitLabel": "{used}/{max}",
+  "squallStaleTitle": "Pagtataya ng unos: lumang datos",
+  "squallStaleBodyWithAge": "Huling babasahin: {age} na ang nakalipas. Wala munang ipapakitang katayuan hangga't walang sariwang datos.",
+  "squallStaleBodyNoAge": "Wala munang ipapakitang katayuan ng unos hangga't walang sariwang datos."
 }

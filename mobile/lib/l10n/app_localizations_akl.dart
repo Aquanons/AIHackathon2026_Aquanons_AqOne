@@ -408,4 +408,31 @@ class AppLocalizationsAkl extends AppLocalizations {
   @override
   String get responderReplyPending =>
       'Owa pa napadaea — automatiko nga ipapadaea kon may koneksyon ron.';
+
+  @override
+  String get chatStatusQueued => 'Nakapila';
+
+  @override
+  String get chatStatusSent => 'Napadaea';
+
+  @override
+  String get chatStatusSynced => 'Na-sync';
+
+  @override
+  String chatCharacterLimitLabel(int used, int max) {
+    return '$used/$max';
+  }
+
+  @override
+  String get squallStaleTitle =>
+      'Pagtantiya sa unos: daan nga datos, indi masaligan';
+
+  @override
+  String squallStaleBodyWithAge(String age) {
+    return 'Huling reading: $age na ang nakalabay. Waeay ipakita nga kahimtangan it unos hasta waeay bag-o nga datos.';
+  }
+
+  @override
+  String get squallStaleBodyNoAge =>
+      'Waeay ipakita nga kahimtangan it unos hasta waeay bag-o nga datos.';
 }

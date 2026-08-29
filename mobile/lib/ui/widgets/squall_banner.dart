@@ -1,3 +1,4 @@
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/squall_watch.dart';
@@ -133,6 +134,7 @@ class SquallBanner extends StatelessWidget {
   }
 
   Widget _buildStaleNotice(BuildContext context) {
+    final AppLocalizations t = AppLocalizations.of(context);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     const Color neutral = Color(0xFF6B7280);
     final DateTime? asOf = watch.asOf;
@@ -155,7 +157,7 @@ class SquallBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Squall nowcast: data too old to trust',
+                  t.squallStaleTitle,
                   style: TextStyle(
                     color: isDark ? Colors.white : const Color(0xFF334155),
                     fontWeight: FontWeight.w700,
@@ -165,9 +167,8 @@ class SquallBanner extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   asOf != null
-                      ? 'Last reading ${_ago(DateTime.now().difference(asOf))}. '
-                          'Not showing a squall status until fresh data arrives.'
-                      : 'Not showing a squall status until fresh data arrives.',
+                      ? t.squallStaleBodyWithAge(_ago(DateTime.now().difference(asOf)))
+                      : t.squallStaleBodyNoAge,
                   style: TextStyle(
                     fontSize: 11.5,
                     height: 1.3,
@@ -182,14 +183,17 @@ class SquallBanner extends StatelessWidget {
     );
   }
 
+  /// A bare duration - no trailing "ago". [squallStaleBodyWithAge] supplies
+  /// that word itself, so it stays in one place per locale instead of being
+  /// baked into this helper.
   static String _ago(Duration age) {
     if (age.inMinutes < 60) {
-      return '${age.inMinutes} min ago';
+      return '${age.inMinutes} min';
     }
     if (age.inHours < 24) {
-      return '${age.inHours}h ago';
+      return '${age.inHours}h';
     }
-    return '${age.inDays}d ago';
+    return '${age.inDays}d';
   }
 
   String _body(bool isReturnNow) {
