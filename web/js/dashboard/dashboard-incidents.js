@@ -11,6 +11,8 @@
   var loadActiveSos = ns.loadActiveSos;
   var allAlerts = ns.allAlerts;
   var syncAlertIndicators = ns.syncAlertIndicators;
+  var responderStatusHtml = ns.responderStatusHtml;
+  var formatEta = ns.formatEta;
 
   // ===== INCIDENT DRAWER (scored alert / escalation ladder) =====
   const sosDrawer          = document.getElementById('sos-drawer');
@@ -96,8 +98,17 @@
     sosTimerInterval = setInterval(sosTickTimer, 1000);
     sosTickTimer();
 
-    sosBtnAcknowledge.disabled = false;
-    sosBtnAcknowledge.textContent = 'Acknowledge';
+    // Reflects the confirmed backend state, not just "a modal was submitted" -
+    // reopening (or the periodic refresh) after a real acknowledgement must
+    // not offer to acknowledge it again.
+    if (data.acknowledgedAt) {
+      sosBtnAcknowledge.disabled = true;
+      sosBtnAcknowledge.textContent = 'Acknowledged';
+    } else {
+      sosBtnAcknowledge.disabled = false;
+      sosBtnAcknowledge.textContent = 'Acknowledge';
+    }
+    renderResponderSection(data);
     sosBroadcastMsg.textContent = '';
 
     sosDrawer.classList.add('open');
@@ -113,6 +124,35 @@
     if (sosTimerInterval) { clearInterval(sosTimerInterval); sosTimerInterval = null; }
     currentDrawerMarker = null;
     currentDrawerData   = null;
+  }
+
+  // Renders the responder-status/ETA/note/fisher-reply block from the
+  // server's own data (never a browser-guessed state) - see
+  // responderStatusHtml() in web/js/dashboard-utils.js for the pure part.
+  function renderResponderSection(data) {
+    var el = document.getElementById('sos-responder-block');
+    if (!el) return;
+    el.innerHTML = responderStatusHtml(data);
+  }
+
+  // Called after every successful /api/sos/active poll (dashboard-live-
+  // sos.js) so an open drawer picks up a fisher's STILL_IN_DANGER / SAFE_NOW
+  // reply, a status change, or a corrected ETA without the dispatcher having
+  // to close and reopen it.
+  function refreshOpenDrawer() {
+    if (!currentDrawerData || currentDrawerData.alertType !== 'sos' || currentDrawerData.sosEventId == null) {
+      return;
+    }
+    var updated = allAlerts().find(function (a) {
+      return a.sosEventId === currentDrawerData.sosEventId;
+    });
+    if (!updated || !updated.drawerData) return;
+    currentDrawerData = updated.drawerData;
+    if (currentDrawerData.acknowledgedAt) {
+      sosBtnAcknowledge.disabled = true;
+      sosBtnAcknowledge.textContent = 'Acknowledged';
+    }
+    renderResponderSection(currentDrawerData);
   }
 
   function sosTickTimer() {
@@ -204,75 +244,78 @@
 
       ackConfirmBtn.disabled = true;
 
-      // Optimistic: the dispatcher sees the incident acknowledged immediately.
-      // A distress console should never appear frozen while a request is in
-      // flight, and a failure is surfaced below rather than blocking the UI.
-      sosBtnAcknowledge.disabled = true;
-      sosBtnAcknowledge.textContent = 'Acknowledged';
-      if (currentDrawerData) {
-        currentDrawerData.etaAt = new Date(Date.now() + etaMinutes * 60000).toISOString();
-        currentDrawerData.responderStatus = status;
-
-        // Match on the event id when there is one. The old positional match on
-        // vesselId-or-coordinates could acknowledge the wrong row when two
-        // alerts shared a vessel, and could not address a live event at all.
-        const row = allAlerts().find(function (a) {
-          if (eventId) return a.sosEventId === eventId;
-          return a.vesselId === currentDrawerData.vesselId ||
-                 (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
-        });
-        if (row) {
-          row.status = 'acknowledged';
-          row.etaAt = currentDrawerData.etaAt;
-          syncAlertIndicators();
-        }
-      }
-      closeAckModal();
-
-      // Only reaches the backend for incidents that came from it. Demo rows in
-      // alertData have no sosEventId and stay local.
-      if (eventId) {
-        authFetch('/api/sos/' + encodeURIComponent(eventId) + '/acknowledge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eta_minutes: etaMinutes,
-            responder_status: status,
-            responder_note: note
-          })
-        })
-          .then(function (res) {
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return res.json();
-          })
-          .then(function (data) {
-            if (currentDrawerData) currentDrawerData.etaAt = data.eta_at;
-          })
-          .catch(function (err) {
-            console.warn('[AqOne] Acknowledgement not delivered:', err.message);
-            showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
-          })
-          .finally(function () {
-            ackConfirmBtn.disabled = false;
+      // Demo rows in alertData have no sosEventId and no backend acknowledge
+      // endpoint to confirm against - they keep the previous local-only
+      // behaviour rather than sitting in a permanent "pending" state.
+      if (!eventId) {
+        sosBtnAcknowledge.disabled = true;
+        sosBtnAcknowledge.textContent = 'Acknowledged';
+        if (currentDrawerData) {
+          currentDrawerData.etaAt = new Date(Date.now() + etaMinutes * 60000).toISOString();
+          currentDrawerData.responderStatus = status;
+          const row = allAlerts().find(function (a) {
+            return a.vesselId === currentDrawerData.vesselId ||
+                   (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
           });
-      } else {
+          if (row) {
+            row.status = 'acknowledged';
+            row.etaAt = currentDrawerData.etaAt;
+            syncAlertIndicators();
+          }
+        }
+        closeAckModal();
         ackConfirmBtn.disabled = false;
+        return;
       }
+
+      // A real incident waits for the server's answer before presenting
+      // itself as acknowledged - a distress console that shows "Acknowledged"
+      // when the request actually failed is worse than one that looks busy
+      // for a moment.
+      sosBtnAcknowledge.disabled = true;
+      sosBtnAcknowledge.textContent = 'Acknowledging…';
+
+      authFetch('/api/sos/' + encodeURIComponent(eventId) + '/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eta_minutes: etaMinutes,
+          responder_status: status,
+          responder_note: note
+        })
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function () {
+          closeAckModal();
+          // The server's own row, not a guessed one - re-fetching also
+          // refreshes the open drawer via refreshOpenDrawer().
+          return loadActiveSos();
+        })
+        .catch(function (err) {
+          console.warn('[AqOne] Acknowledgement not delivered:', err.message);
+          showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
+          // Roll back to the pre-attempt state rather than leaving the button
+          // stuck on "Acknowledging…".
+          if (currentDrawerData && currentDrawerData.sosEventId === eventId) {
+            sosBtnAcknowledge.disabled = !!currentDrawerData.acknowledgedAt;
+            sosBtnAcknowledge.textContent = currentDrawerData.acknowledgedAt ? 'Acknowledged' : 'Acknowledge';
+          }
+        })
+        .finally(function () {
+          ackConfirmBtn.disabled = false;
+        });
     });
   }
 
-  // Live countdown on acknowledged incidents. Never renders a negative number:
-  // once the promised time passes it says the rescue is delayed, because a
-  // countdown expiring into silence reads as "nobody is coming".
-  function formatEta(etaAt) {
-    if (!etaAt) return '';
-    var remainingMs = new Date(etaAt).getTime() - Date.now();
-    if (remainingMs <= 0) return 'delayed — still en route';
-    var mins = Math.floor(remainingMs / 60000);
-    var secs = Math.floor((remainingMs % 60000) / 1000);
-    return 'ETA ' + mins + ':' + String(secs).padStart(2, '0');
-  }
-
+  // Live countdown on acknowledged incidents, driven by the pure formatEta()
+  // in web/js/dashboard-utils.js. Never renders a negative number: once the
+  // promised time passes it says the rescue is delayed, because a countdown
+  // expiring into silence reads as "nobody is coming". Ticks every
+  // [data-eta-at] element on the page, which covers both the alert-list row
+  // (dashboard-vessels-alerts.js) and the drawer's responder block above.
   setInterval(function () {
     document.querySelectorAll('[data-eta-at]').forEach(function (el) {
       var text = formatEta(el.dataset.etaAt);
@@ -282,34 +325,48 @@
   }, 1000);
 
   sosBtnResolve.addEventListener('click', function () {
-    console.log('Alert ' + (currentDrawerData ? currentDrawerData.vesselId : '') + ' resolved');
     const eventId = currentDrawerData && currentDrawerData.sosEventId;
-    if (currentDrawerMarker) {
-      incidentLayer.removeLayer(currentDrawerMarker);
-      liveSosLayer.removeLayer(currentDrawerMarker);
-    }
-    if (currentDrawerData) {
-      const row = allAlerts().find(function (a) {
-        if (eventId) return a.sosEventId === eventId;
-        return a.vesselId === currentDrawerData.vesselId ||
-               (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
-      });
-      if (row) { row.status = 'resolved'; syncAlertIndicators(); }
-    }
-    closeSOSDrawer();
-    if (eventId) {
-      authFetch('/api/sos/' + encodeURIComponent(eventId) + '/resolve', {
-        method: 'POST'
-      })
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return loadActiveSos();
-        })
-        .catch(function (err) {
-          console.warn('[AqOne] Resolve not delivered:', err.message);
-          showToast('Not delivered', 'The incident may reappear until the backend is updated.', true);
+
+    // A demo row has no backend incident to resolve - keep the previous
+    // local-only behaviour for it.
+    if (!eventId) {
+      if (currentDrawerMarker) {
+        incidentLayer.removeLayer(currentDrawerMarker);
+        liveSosLayer.removeLayer(currentDrawerMarker);
+      }
+      if (currentDrawerData) {
+        const row = allAlerts().find(function (a) {
+          return a.vesselId === currentDrawerData.vesselId ||
+                 (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
         });
+        if (row) { row.status = 'resolved'; syncAlertIndicators(); }
+      }
+      closeSOSDrawer();
+      return;
     }
+
+    // Waits for the server to confirm resolution before touching the map or
+    // the drawer - removing the marker optimistically and then failing left
+    // a resolved-looking incident that the backend still considered active.
+    sosBtnResolve.disabled = true;
+    authFetch('/api/sos/' + encodeURIComponent(eventId) + '/resolve', {
+      method: 'POST'
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        closeSOSDrawer();
+        // The event has actually left storage server-side now, so let the
+        // next active-feed refresh remove its marker/row rather than
+        // guessing which one to remove client-side.
+        return loadActiveSos();
+      })
+      .catch(function (err) {
+        console.warn('[AqOne] Resolve not delivered:', err.message);
+        showToast('Not delivered', 'The incident is still active until this succeeds.', true);
+      })
+      .finally(function () {
+        sosBtnResolve.disabled = false;
+      });
   });
 
   sosBtnBroadcast.addEventListener('click', function () {
@@ -347,6 +404,7 @@
   ns.closeAckModal = closeAckModal;
   ns.openAckModal = openAckModal;
   ns.ackQuick = ackQuick;
-  ns.formatEta = formatEta;
+  ns.renderResponderSection = renderResponderSection;
+  ns.refreshOpenDrawer = refreshOpenDrawer;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

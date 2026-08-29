@@ -151,7 +151,14 @@ class SosService {
     final buoyResult = await buoyFuture;
     final directOk = await directFuture;
 
-    if (buoyResult is BuoyAck) {
+    // Both outcomes are processed, not just whichever is checked first - a
+    // simultaneous buoy ack and direct success must not leave the record
+    // stuck at `relayed` when the backend already has it. Writes stay
+    // sequential (not run concurrently with the sends above) so there is no
+    // read-modify-write race between them; OutboxStore.advance()'s monotonic
+    // merge means the order between them cannot regress the state either way.
+    final buoySucceeded = buoyResult is BuoyAck;
+    if (buoySucceeded) {
       await _outbox.advance(
         localId,
         DeliveryState.relayed,
@@ -162,16 +169,15 @@ class SosService {
         seq: buoyResult.seq,
         serverTs: buoyResult.serverTs,
       );
-      if (notify) {
-        _changes.add(null);
-      }
-      return true;
+    }
+    if (directOk) {
+      // The backend has it. No buoy metadata passed here - if the buoy also
+      // succeeded above, its metadata is already saved and copyWith() keeps
+      // it; if not, there is none to record.
+      await _outbox.advance(localId, DeliveryState.delivered);
     }
 
-    if (directOk) {
-      // The backend has it. No buoy metadata to record, because this copy
-      // never touched the mesh.
-      await _outbox.advance(localId, DeliveryState.delivered);
+    if (buoySucceeded || directOk) {
       if (notify) {
         _changes.add(null);
       }

@@ -9,6 +9,63 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-08-29 — manual SOS / responder-loop verification
+
+Recorded per `docs/36_MANUAL_SOS_RESPONDER_LOOP_IMPLEMENTATION_PLAN.md` Phase
+5, in the spirit of this file's own status table rather than as a rewrite of
+it. Environment: Windows 11 sandbox, Python 3.11.9, Flutter 3.44.7, Node
+v22.22.3, no attached Android/iOS device.
+
+**Automated release gate — all green except pre-existing, unrelated failures
+already present at Phase 0 baseline:**
+
+- `cd backend && python -m pytest -q && ruff check .` — 108 passed, 1 xfailed.
+  `test_demo.py::test_firing_same_beat_is_idempotent` and two
+  `test_dashboard_coords.py` errors (missing `web/js/dashboard.js`, a stale
+  path from before it moved under `web/js/dashboard/`) are pre-existing and
+  unrelated to the SOS/responder-loop work; `ruff check .` has 8 pre-existing
+  issues confined to `calibrate_demo_squall.py`, also unrelated.
+- `cd mobile && flutter analyze && flutter test` — 0 analyzer issues, 151/151
+  tests passed, including the new `sos_service_test.dart` and
+  `responder_eta_dialog_test.dart`.
+- `cd web && node --test test/dashboard-utils.test.js` — 32/32 passed,
+  including the new `formatEta`/`responderStatusHtml` cases.
+- `flutter build web` — succeeded cleanly (`Built build\web`), proving the
+  handset app actually compiles and runs as a live instance, not just under
+  `flutter test`'s widget harness.
+
+**Manual, device-level acceptance script (pairing a real handset, pressing
+Manual SOS, watching a live dashboard acknowledge and receive a reply) could
+not be completed in this environment.** Recording the blockers rather than
+skipping this silently, per the Hard Reset convention already used in
+`docs/21_WEEK1_CONTRACT_FIXTURES.md`:
+
+- The backend requires a real PostgreSQL database (`asyncpg`). A PostgreSQL 18
+  server is installed locally, but its credentials are unknown and do not
+  match `backend/.env.example`'s `postgres:postgres` default, so no local
+  backend could be started against it.
+- Docker Desktop is installed (would have given an isolated, disposable
+  Postgres instead of touching the existing server) but its engine did not
+  finish starting after roughly ten minutes of waiting, so that path was
+  abandoned rather than pursued indefinitely.
+- No Android or iOS device or emulator is attached, and Visual Studio (the
+  "Desktop development with C++" workload) is not installed, so neither a
+  real handset nor a Windows desktop build of the app was available.
+  `flutter devices` offers only Windows (blocked on the above) and Edge; only
+  Edge, not Chrome, is present.
+
+What this means concretely: the SOS → backend → dispatcher-acknowledge →
+fisher-reply loop is proven by the automated suite (including a real,
+compiled, running build of the handset app), and its buoy-fallback half is
+proven by `mobile/test/buoy_client_test.dart`'s fixture-based parsing of a
+real ETA response and its 320-byte firmware truncation — but nobody has yet
+watched an actual phone, buoy, and dispatcher screen agree with each other in
+real time for this phase. That remains open work for whoever has a real
+Postgres credential or a working Docker install in this environment (or is
+running this on a machine already set up per `backend/.env.example`).
+
+---
+
 ## Judging weights — build toward these
 
 | Criterion | Weight | Where it's won |

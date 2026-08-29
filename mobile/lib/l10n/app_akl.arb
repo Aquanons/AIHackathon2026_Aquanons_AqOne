@@ -94,5 +94,17 @@
   "avatarUpdateError": "Indi ma-update ro imong litrato sa profile.",
   "avatarTakePhoto": "Magkuha it litrato",
   "avatarChooseGallery": "Magpili halin sa gallery",
-  "avatarRemovePhoto": "Kuhaa ro litrato"
+  "avatarRemovePhoto": "Kuhaa ro litrato",
+  "responderStatusReceived": "Nabaton it MDRRMO ro imong tawag",
+  "responderStatusDispatched": "Nagapakadto ron ro sakayan nga panagip",
+  "responderStatusCoastGuard": "Napahibaeuan ron ro Coast Guard",
+  "responderStatusNearestVessel": "Napahibaeuan ron ro mga hueapit nga sakayan",
+  "responderStatusDelayed": "Naulang — nagapakadto pa gihapon",
+  "responderReplyStillInDanger": "Peligro pa gihapon",
+  "responderReplySafeNow": "Seguro ron",
+  "responderReplyConfirmBody": "Ini magasugid sa MDRRMO nga waea mo na kinahanglana ro pagsagip, kag mahimo nila ipadaea ro bueig sa iban. Kumpirmahon lamang kon seguro ka gid ron.",
+  "responderReplyConfirmConfirm": "Huo, seguro ako",
+  "responderReplySentStillInDanger": "Naeaman it MDRRMO nga nagahueat ka pa gihapon it bueig.",
+  "responderReplySentSafeNow": "Napahibaeuan ron ro MDRRMO nga seguro ka ron.",
+  "responderReplyPending": "Owa pa napadaea — automatiko nga ipapadaea kon may koneksyon ron."
 }

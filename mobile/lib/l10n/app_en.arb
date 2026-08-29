@@ -323,5 +323,53 @@
   "avatarChooseGallery": "Choose from gallery",
   "@avatarChooseGallery": {"description": "Profile photo option that opens the image gallery."},
   "avatarRemovePhoto": "Remove photo",
-  "@avatarRemovePhoto": {"description": "Profile photo option that deletes the current picture."}
+  "@avatarRemovePhoto": {"description": "Profile photo option that deletes the current picture."},
+  "responderStatusReceived": "MDRRMO has your call",
+  "@responderStatusReceived": {
+    "description": "SAFETY CRITICAL. Responder status code 1 of 5 (docs/13_RESPONDER_LOOP.md), shown in the responder dialog once a dispatcher has acknowledged the SOS. Means only that the call was seen, not that help has left yet."
+  },
+  "responderStatusDispatched": "Rescue boat on the way",
+  "@responderStatusDispatched": {
+    "description": "SAFETY CRITICAL. Responder status code 2 of 5. A rescue boat has actually left to respond."
+  },
+  "responderStatusCoastGuard": "Coast Guard notified",
+  "@responderStatusCoastGuard": {
+    "description": "SAFETY CRITICAL. Responder status code 3 of 5. Keep 'Coast Guard' as the closest local equivalent term, not a literal dictionary translation."
+  },
+  "responderStatusNearestVessel": "Nearby boats alerted",
+  "@responderStatusNearestVessel": {
+    "description": "SAFETY CRITICAL. Responder status code 4 of 5. Other fishing boats near the distress position have been asked to help."
+  },
+  "responderStatusDelayed": "Delayed — still coming",
+  "@responderStatusDelayed": {
+    "description": "SAFETY CRITICAL. Responder status code 5 of 5. Must not read as help has been cancelled - it is still coming, just later than first said."
+  },
+  "responderReplyStillInDanger": "Still in danger",
+  "@responderReplyStillInDanger": {
+    "description": "SAFETY CRITICAL. Button in the responder dialog. One tap tells MDRRMO the fisher received the ETA and the emergency is not over."
+  },
+  "responderReplySafeNow": "Safe now",
+  "@responderReplySafeNow": {
+    "description": "SAFETY CRITICAL. Button in the responder dialog. Tapping this leads to a confirmation before it is sent, because it tells MDRRMO to stand the rescue down."
+  },
+  "responderReplyConfirmBody": "This tells MDRRMO you no longer need rescue, and they may send help elsewhere instead. Only confirm if you are actually safe.",
+  "@responderReplyConfirmBody": {
+    "description": "SAFETY CRITICAL. Confirmation text shown before sending 'Safe now', since it can redirect a rescue already underway."
+  },
+  "responderReplyConfirmConfirm": "Yes, I'm safe",
+  "@responderReplyConfirmConfirm": {
+    "description": "SAFETY CRITICAL. Confirms the 'Safe now' reply after the warning text. Must read as a deliberate, informed choice, not a casual OK."
+  },
+  "responderReplySentStillInDanger": "MDRRMO knows you are still waiting for help.",
+  "@responderReplySentStillInDanger": {
+    "description": "Shown after the fisher taps Still in danger and the reply has been recorded (sent or queued)."
+  },
+  "responderReplySentSafeNow": "MDRRMO has been told you are safe.",
+  "@responderReplySentSafeNow": {
+    "description": "Shown after the fisher confirms Safe now and the reply has been recorded (sent or queued)."
+  },
+  "responderReplyPending": "Not sent yet — will send automatically once you have a connection.",
+  "@responderReplyPending": {
+    "description": "SAFETY CRITICAL. Shown when a reply could not reach the backend immediately and is saved locally to retry later. Must not imply the reply already reached MDRRMO."
+  }
 }

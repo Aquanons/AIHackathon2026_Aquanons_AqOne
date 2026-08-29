@@ -13,7 +13,7 @@ Out of scope: ingest (`docs/04_INGEST_API.md`) and the radio hops.
 
 ## Transport
 
-- HTTPS. Base URL is `https://incredible-liberation-production-aad7.up.railway.app`.
+- HTTPS. Base URL is `https://aihackathon2026aquanonsaqone-production.up.railway.app`.
 - Dashboard requests are authenticated by API key (`X-Api-Key`); the mobile
   app's safety feeds remain unauthenticated, but per-vessel normal-operation
   reads and writes now require a vessel-device bearer token issued by the
@@ -177,6 +177,31 @@ Acknowledge an SOS (MDRRMO action). Body:
 The ack is persisted and idempotent — re-acking the same id returns the same
 result (`acked_by` unchanged). A reload must show the ack (`docs/00_START_HERE.md`
 definition of done).
+
+### `GET /api/sos/active` — dashboard poll (what the dashboard actually uses)
+
+Operator-authenticated (bearer token, `require_user`). The dashboard polls
+this rather than the SSE feed below (`web/js/dashboard/dashboard-live-sos.js`).
+
+Returns **every unresolved SOS event**, newest first — including one a
+dispatcher has already acknowledged. An acknowledged event stays in this feed
+until a dispatcher calls `POST /api/sos/{id}/resolve` or the fisher replies
+`SAFE_NOW` (`POST /api/sos/{id}/reply`, `docs/13_RESPONDER_LOOP.md`); dropping
+it as soon as it is acknowledged — the previous behaviour — hid the fisher's
+subsequent reply from the dispatcher. Each row carries `acknowledged_at`,
+`acked_by`, `eta_at`, `responder_status`, `responder_status_label`,
+`responder_note`, `fisher_reply`, `fisher_replied_at` and `resolved_at`
+(always `null` here, since a resolved row has left the feed) alongside the
+fields `GET /api/v1/sos` documents above.
+
+### `POST /api/sos/{id}/acknowledge` and `POST /api/sos/{id}/resolve`
+
+Operator-authenticated. `acknowledge` accepts `eta_minutes` (converted
+server-side to an absolute `eta_at`, never trusting the browser's clock),
+`responder_status` (the code table in `docs/13_RESPONDER_LOOP.md`) and an
+optional `responder_note`. `resolve` marks the incident resolved, removing it
+from `GET /api/sos/active` on the next poll. Both are idempotent — re-calling
+either after it already applied returns the same result rather than erroring.
 
 ### `GET /api/v1/sos/stream` — SSE live feed
 

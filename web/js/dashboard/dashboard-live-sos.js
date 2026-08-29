@@ -125,7 +125,9 @@
       status: ev.acknowledged_at ? 'acknowledged' : 'active',
       vesselId: ev.vessel_id || null,
       confidence: null,
-      stage: 'DISTRESS CALL — ' + deliveryPath(ev)
+      stage: 'DISTRESS CALL — ' + deliveryPath(ev),
+      // Read by dashboard-vessels-alerts.js's [data-eta-at] countdown span.
+      etaAt: ev.eta_at || null
     };
     alert.drawerData = {
       alertType: 'sos',
@@ -141,7 +143,16 @@
       confidence: null,
       stage: 'DISTRESS CALL — human pressed the button',
       nextContact: ev.note || 'No message attached',
-      timerBaseline: Math.max(0, Math.floor((Date.now() - new Date(ev.created_at).getTime()) / 1000))
+      timerBaseline: Math.max(0, Math.floor((Date.now() - new Date(ev.created_at).getTime()) / 1000)),
+      // The responder loop (docs/13_RESPONDER_LOOP.md): what the dispatcher
+      // recorded, and how the fisher answered it. acknowledgedAt gates
+      // whether the drawer's responder section renders at all.
+      acknowledgedAt: ev.acknowledged_at || null,
+      etaAt: ev.eta_at || null,
+      responderStatus: ev.responder_status || null,
+      responderStatusLabel: ev.responder_status_label || null,
+      responderNote: ev.responder_note || null,
+      fisherReply: ev.fisher_reply || null
     };
     return alert;
   }
@@ -167,7 +178,10 @@
       marker.on('click', function () { ns.openIncidentDrawer(a.drawerData, marker); });
     });
 
-    // Acknowledged events leave /active, so their markers must go too.
+    // An acknowledged-but-unresolved event stays in /active (Phase 2 of
+    // docs/36_MANUAL_SOS_RESPONDER_LOOP_IMPLEMENTATION_PLAN.md) so the
+    // dispatcher can see the fisher's reply land on it - only a resolved
+    // event actually leaves the feed, and only then must its marker go too.
     Object.keys(liveSosMarkers).forEach(function (id) {
       if (!seen[id]) {
         liveSosLayer.removeLayer(liveSosMarkers[id]);
@@ -213,6 +227,10 @@
         syncLiveSosMarkers();
         ns.syncAlertIndicators();
         ns.renderIncidentFeed();
+        // If the open drawer is one of these events, this is what surfaces a
+        // fisher's STILL_IN_DANGER / SAFE_NOW reply without the dispatcher
+        // having to close and reopen it.
+        if (ns.refreshOpenDrawer) ns.refreshOpenDrawer();
       })
       .catch(function (err) {
         // A failed poll must not blank the list. The last known set of live

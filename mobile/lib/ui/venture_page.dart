@@ -1113,7 +1113,7 @@ class _VenturePageState extends State<VenturePage> {
           isDark: isDark,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) =>
-                Chathubb(displayName: _chatDisplayName)),
+                Chathubb(identity: widget.identity)),
           ),
         ),
         const SizedBox(height: 10),
@@ -1445,21 +1445,6 @@ class _VenturePageState extends State<VenturePage> {
       ),
     );
   }
-
-  /// What the rest of the mesh sees this handset as. Prefers skipper name,
-  /// then boat, then vessel ID - the wheel is never blank.
-  String get _chatDisplayName {
-    for (final candidate in <String>[
-      widget.identity.skipperName,
-      widget.identity.boat,
-      widget.identity.vesselId,
-    ]) {
-      final trimmed = candidate.trim();
-      if (trimmed.isNotEmpty) return trimmed;
-    }
-    return 'You';
-  }
-
 }
 
 class _RoundButton extends StatelessWidget {
