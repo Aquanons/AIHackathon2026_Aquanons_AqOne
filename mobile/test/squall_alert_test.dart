@@ -103,43 +103,64 @@ void main() {
     expect(find.textContaining('simulated'), findsNothing);
   });
 
-  group('SquallWatch.tryParse - stale data', () {
-    test('a stale backend reading parses to unknown/no-alarm, never return_now', () {
+  group('SquallWatch.tryParse - unified status shape', () {
+    test('a stale/insufficient backend reading parses to unknown/no-alarm, never return_now', () {
       final SquallWatch? watch = SquallWatch.tryParse(<String, Object?>{
+        'source': 'live',
         'level': 'unknown',
         'return_now': false,
-        'as_of': '2026-08-16T02:00:00Z',
+        'observed_at': '2026-08-16T02:00:00Z',
+        'generated_at': '2026-08-16T02:06:00Z',
+        'data_age_seconds': 360,
         'calibration': 'synthetic',
-        'stale': true,
-        'stale_reason': 'latest synthetic reading is 6:00:00 old, past the '
-            '3:00:00 freshness window for this nowcast',
+        'status_reason': 'only 1 of 3 required buoys have fresh, gap-free, '
+            'in-range readings',
       });
 
       expect(watch, isNotNull);
       expect(watch!.level, SquallLevel.unknown);
       expect(watch.returnNow, isFalse);
-      expect(watch.stale, isTrue);
-      expect(watch.staleReason, contains('freshness window'));
-      // shouldDisplay is true for stale (there is something worth telling the
-      // fisher) but the level guarantees no alarm-styled rendering happens.
+      expect(watch.source, 'live');
+      expect(watch.observedAt, DateTime.parse('2026-08-16T02:00:00Z'));
+      expect(watch.generatedAt, DateTime.parse('2026-08-16T02:06:00Z'));
+      expect(watch.dataAgeSeconds, 360);
+      expect(watch.statusReason, contains('required buoys'));
+      // shouldDisplay is true whenever there's a reason to show (there is
+      // something worth telling the fisher) but the level guarantees no
+      // alarm-styled rendering happens.
       expect(watch.shouldDisplay, isTrue);
     });
 
-    test('a malicious/malformed stale+return_now combination still cannot alarm', () {
+    test('a malicious/malformed unknown+return_now combination still cannot alarm', () {
       // The server's own boolean is never trusted alone - level must agree.
-      // A payload claiming both stale and return_now is nonsensical, and the
-      // existing level/return_now cross-check must still win.
+      // A payload claiming both an unknown status and return_now is
+      // nonsensical, and the existing level/return_now cross-check must
+      // still win.
       final SquallWatch? watch = SquallWatch.tryParse(<String, Object?>{
         'level': 'unknown',
         'return_now': true,
-        'stale': true,
+        'status_reason': 'insufficient telemetry',
       });
 
       expect(watch!.returnNow, isFalse);
     });
 
-    test('a normal unavailable/no-fetch state is not flagged stale', () {
-      expect(SquallWatch.unavailable.stale, isFalse);
+    test('server-side level precedence: a watch payload never sets returnNow', () {
+      // Proves the pre-Phase-4 safety clamp survives the client too: even a
+      // payload that (incorrectly) also sets return_now: true cannot alarm
+      // unless level itself says return_now.
+      final SquallWatch? watch = SquallWatch.tryParse(<String, Object?>{
+        'level': 'watch',
+        'return_now': true,
+        'lead_minutes': 12,
+      });
+
+      expect(watch!.level, SquallLevel.watch);
+      expect(watch.returnNow, isFalse);
+    });
+
+    test('a normal unavailable/no-fetch state has no status reason', () {
+      expect(SquallWatch.unavailable.statusReason, isNull);
       expect(SquallWatch.unavailable.shouldDisplay, isFalse);
     });
   });
@@ -163,8 +184,8 @@ void main() {
     const SquallWatch staleWithAge = SquallWatch(
       level: SquallLevel.unknown,
       returnNow: false,
-      stale: true,
-      asOf: null,
+      statusReason: 'insufficient telemetry',
+      observedAt: null,
     );
 
     for (final Locale locale in kSupportedLocales) {

@@ -30,13 +30,14 @@ class SquallBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    // Stale data that never reached watch/returnNow gets a quiet, neutral
-    // notice - not the amber/red alarm styling below, and never hidden
-    // outright. A fisher should be able to tell "the model has nothing
-    // current to say" from "everything is fine", and from an alarm.
+    // Missing/stale/insufficient telemetry that never reached watch/returnNow
+    // gets a quiet, neutral notice - not the amber/red alarm styling below,
+    // and never hidden outright. A fisher should be able to tell "the model
+    // has nothing current to say" from "everything is fine", and from an
+    // alarm.
     final bool isAlarming =
         watch.level == SquallLevel.watch || watch.level == SquallLevel.returnNow;
-    if (!isAlarming && watch.stale) {
+    if (!isAlarming && watch.statusReason != null) {
       return _buildStaleNotice(context);
     }
 
@@ -137,7 +138,7 @@ class SquallBanner extends StatelessWidget {
     final AppLocalizations t = AppLocalizations.of(context);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     const Color neutral = Color(0xFF6B7280);
-    final DateTime? asOf = watch.asOf;
+    final DateTime? observedAt = watch.observedAt;
 
     return Container(
       width: double.infinity,
@@ -166,8 +167,10 @@ class SquallBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  asOf != null
-                      ? t.squallStaleBodyWithAge(_ago(DateTime.now().difference(asOf)))
+                  observedAt != null
+                      ? t.squallStaleBodyWithAge(
+                          _ago(DateTime.now().difference(observedAt)),
+                        )
                       : t.squallStaleBodyNoAge,
                   style: TextStyle(
                     fontSize: 11.5,

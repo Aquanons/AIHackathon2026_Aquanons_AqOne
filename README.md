@@ -40,7 +40,7 @@ This table precedes every other claim in this document.
 | **FastAPI + PostgreSQL backend on Railway** | ✅ Live: `/healthz` and `/health/ready` returned 200 on 29 August 2026. The recorded 89-pass/1-expected-failure backend result predates the latest commit and has not been rerun in the current environment. |
 | **Drift prediction** (Monte Carlo Lagrangian) | ✅ Built, measured, live |
 | **Bayesian search re-tasking** | ✅ Built, measured, live |
-| **Squall nowcasting** (trained classifier) | 🟡 Built and deployed, but the current public feed is synthetic and its newest reading is 14 August 2026; do not treat its active RETURN NOW alert as current conditions. |
+| **Squall nowcasting** (trained classifier) | 🟡 The live Railway deployment (verified 29 August 2026) still runs the pre-Phase-3 build described below: its public feed reads synthetic data and can reach a stale RETURN NOW. A local branch (`codex/short-messaging-weather-advisories`, not yet merged to `master`/redeployed) fixes this — production reads live pressure telemetry only, a quality gate rejects missing/stale/insufficient arrays as `unknown`, and RETURN NOW is disabled for live data behind a deployment flag (`SQUALL_RETURN_NOW_ENABLED`, default off) pending a field-validated MDRRMO sign-off. See docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md and the squall entry under "Verification snapshot" below. |
 | **Trip anomaly / overdue detection** | 🟡 Live-queue path built and honest (docs/38 Phases 1-3: read-only polling, non-destructive scoring, persistent responder review). The published false-alarm figure below was found to be a measurement artifact and retracted (Phase 4) - not yet re-measured against a live database. |
 | **Marine hazard model** (trained on real data) | ✅ Built, runs in the browser |
 | **SOS pipeline** phone → backend → dashboard | ✅ Working, with de-duplication |
@@ -72,6 +72,75 @@ fisher's handset. **No LoRa hardware is required for this path.**
 - After `flutter gen-l10n`, `dart analyze` reports two errors in the chat-page
   constructor call. Do not rebuild or present the bundled APK as reflecting the
   current source until those errors are fixed and Flutter tests pass.
+
+#### Squall nowcasting Phase 5 verification — 29 August 2026
+
+Recorded per `docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md` Phase 5.
+Environment: Windows 11, Python 3.11.9, Flutter 3.44.7, Node v24.14.0. A local
+PostgreSQL 18 service is running on this machine but its credentials are not
+the documented default and were not pursued further at the user's direction;
+Docker Desktop's engine did not start. As in every prior phase this session,
+this means no live-server/real-database manual acceptance run was possible —
+verified instead by the full automated suite (which exercises the same code
+against fake pools) plus two things not done in prior phases: direct HTTP
+checks against the real Railway deployment, and a real local browser DOM
+check of the dashboard's new squall panel.
+
+**Automated checks, all green except the same pre-existing, unrelated
+failures already present at this session's baseline:**
+
+- `cd backend && python -m pytest -q` — 200 passed, 1 xfailed;
+  `test_demo.py::test_firing_same_beat_is_idempotent` fails (a real,
+  pre-existing `NameError`-causing bug in `fire_beat()`, tracked as its own
+  task, unrelated to squall work).
+- `cd backend && ruff check .` — 8 pre-existing issues, all in
+  `calibrate_demo_squall.py` and `app/demo/scenarios.py`; none in any file
+  this session touched.
+- `cd mobile && flutter analyze` — no issues found.
+  `flutter test test/squall_alert_test.dart` — 14/14 passed.
+- `cd web && node --test test/dashboard-utils.test.js` — 58/58 passed.
+
+**Direct checks against the live Railway deployment** (unauthenticated GETs
+and one deliberately-unauthenticated POST only — no write capability, no
+credentials used):
+
+- `GET /healthz` → `200 {"status":"ok"}`.
+- `GET /api/public/squall` → `200`, still the **pre-Phase-3 response shape**
+  (`as_of`/`stale`/`stale_reason`, `source` as a free-text string) reporting
+  a stale synthetic reading from 14 August 2026. Confirms this session's
+  live-only/quality-gated/alarm-safe rewrite (Phases 2-3) has **not** reached
+  production yet.
+- `POST /api/v1/pressure-events` with no `X-Api-Key` → `401`. Confirms
+  Phase 1's gateway-only ingest endpoint **is** live and correctly rejects an
+  unauthenticated write (the route exists and its auth guard runs before any
+  body validation).
+- `GET /api/demo/squall` → `404` — expected either way: this route is only
+  mounted when `DEMO_MODE` is set, so a 404 here does not by itself confirm
+  or rule out whether Phase 3's code has been deployed.
+- `git log`: the local branch was 1 commit ahead of
+  `origin/codex/short-messaging-weather-advisories` (Phase 4's commit) at the
+  start of this phase, and 3 commits ahead of `origin/master` (the Phase 3
+  wiring, a line-ending fix, and Phase 4's evaluation work) — consistent
+  with the above: Phase 1 reached `master` and Railway; Phases 2-4 have not.
+
+**Local browser check** (a plain static file server over this checkout's
+`web/` directory, no backend running, so every fetch legitimately fails):
+confirmed the squall panel renders the neutral "Squall status cannot be
+confirmed right now" state — never a false "no active detections" — and
+that the `RETURN NOW`/header badges read `UNKNOWN`, not `MONITORING`. This
+check caught one real bug before it shipped: the client-side fallback for a
+totally unreachable backend was being labelled `DEMO` (implying deliberately
+synthetic data) rather than reporting an honest unknown source; fixed in
+`web/js/dashboard-utils.js`'s `squallStatusHtml()`, covered by a new test in
+`web/test/dashboard-utils.test.js`.
+
+**What remains, unchanged from every prior phase:** the code is not proven
+against a live handset, buoy, or dispatcher screen. Additionally specific to
+squall: production has not been redeployed with Phases 2-4, and RETURN NOW
+cannot be enabled for live use in any environment until a named MDRRMO
+approver signs off a completed field-validation log
+(`docs/08_DEMO_AND_STATUS.md` "Squall field-validation log") — which does
+not exist yet and was not fabricated.
 
 ### Vessel-device authorization for routine data
 

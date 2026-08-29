@@ -4387,6 +4387,22 @@ h3.buoy-drawer-title {
   text-align: center;
   padding: 8px 0;
 }
+/* Freshness/source/calibration line, docs/39 Phase 3 item 5 - reuses the
+   existing .alert-live-badge/.alert-demo-badge pills (see .trip-check-row
+   above for the same convention). */
+.ai-squall-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.ai-squall-status-reason {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
 .squall-hero {
   border-left: 3px solid #e67e22;
   background: rgba(230,126,34,0.08);

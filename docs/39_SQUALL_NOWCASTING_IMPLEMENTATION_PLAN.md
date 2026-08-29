@@ -269,6 +269,53 @@ today's only caller of that path is the synthetic demo, not a live array.
 - Run the evaluator against the committed synthetic fixture, targeted tests,
   `python -m pytest -q`, and `ruff check .`.
 
+### Status, recorded 2026-08-29
+
+Work items 1-3 and the code half of item 4 are done. Item 4's *approval*
+half — a named MDRRMO approver, an actual completed field-validation set —
+is explicitly not done and not fabricated, per the user's direction.
+
+- **Evaluation protocol repaired** (`backend/app/ai/squall_eval.py`):
+  `evaluate()` is now a pure, database-free function that splits *events* by
+  time (train on the earlier half, score only the later half — a model
+  never sees a "future" event during training), runs
+  `assess_array_quality()` on every candidate window before scoring it
+  (a quality-failing window is excluded, never scored as calm), and reports
+  precision, recall, mean lead time, a Brier score, false-alert rate, and
+  excluded-window counts for both the model and the baseline below. No
+  longer trains or saves the deployed model bundle as a side effect — that
+  stayed `POST /api/ai/squall/train` alone (`ALLOW_TRAINING`-gated), closing
+  the "no production training endpoint" requirement in item 4 more firmly
+  than before. `train_from_rows()`'s own internal random-split
+  self-evaluation still runs as part of training, for that endpoint's own
+  use, but is no longer what `squall_eval.py`/`GET /api/ai/metrics` report —
+  every section this script writes is tagged `"note": "synthetic demo
+  evidence only - not field validation"`.
+- **Transparent baseline added**: a fixed, untuned 1.5 hPa array-pressure-drop
+  threshold (`BASELINE_ARRAY_DROP_THRESHOLD_HPA`), scored on the same
+  held-out split. `evaluate()` reports which one the held-out numbers
+  actually favor (`recommendation: "model" | "baseline"`) rather than
+  assuming the logistic model wins. The deployed detection path
+  (`current_detection`/`build_squall_status`) has **not** been switched to
+  the baseline this session — that would be a real model-swap decision, not
+  evidence-gathering, and is left for deliberate follow-through once real
+  (not synthetic-fixture) numbers exist.
+- **Field-validation log template added**: `docs/08_DEMO_AND_STATUS.md`
+  "Squall field-validation log" — blank, dated-copy-per-deployment template
+  covering buoy locations, clock sync, sampling continuity, calibration
+  checks, event-by-event official/observer ground truth, and summary
+  figures. Explicitly not filled with placeholder numbers.
+- **Release gate**: `SQUALL_RETURN_NOW_ENABLED` (added in Phase 3, ahead of
+  this phase, because the safety boundary is global and applies from the
+  moment production reads live rows — see Phase 3's own note). Confirmed
+  here to default off (`backend/.env.example`), to be the single choke point
+  for `return_now` on live data (`build_squall_status()` is the only place
+  `level` is ever set, across the dashboard/public/demo routes), and to have
+  no override. The field-validation log template's own "Release gate
+  sign-off" checklist is the actual mechanism item 4 asks for: an approver
+  cannot sign off a log that does not exist yet, and none has been created
+  or fabricated. `RETURN NOW` remains unavailable for live use.
+
 ### Commit
 
 `test(squall): add time-split nowcast evaluation`
@@ -301,6 +348,48 @@ today's only caller of that path is the synthetic demo, not a live array.
 - Manual acceptance: a responder can distinguish live quality-passing status,
   insufficient telemetry, a demo simulation, and an official advisory; a
   fisherman never receives a new alarm from stale or synthetic data.
+
+### Status, recorded 2026-08-29
+
+Full results in `docs/08_DEMO_AND_STATUS.md`'s dated entry for this phase
+and in the README's "Squall nowcasting Phase 5 verification" section. Summary
+against each work item:
+
+1. **Not performed.** Configuring Railway environment variables requires
+   deployment-platform access this session does not have. No credential or
+   flag value was set, printed, or fabricated anywhere.
+2. **Partially performed.** No live database was available to POST a real
+   pressure fixture and watch an HTTP-observed clear→watch→unknown
+   transition end to end (same constraint every prior phase recorded; a
+   local Postgres service is running on this machine, but its credentials
+   are unknown and the user declined pursuing them further for this phase).
+   Substituted with: the full automated suite, which exercises the identical
+   code paths against fake pools (`backend/tests/test_squall.py`), and a
+   real local browser DOM check of the frontend's rendering of that same
+   state machine with no backend reachable at all - which is itself the
+   `unknown` end of the transition, confirmed live in a real browser rather
+   than only asserted in a unit test.
+3. **Partially performed**, directly against the real Railway deployment
+   (read-only checks, one deliberately-unauthenticated POST, no writes):
+   Railway health endpoint ✅ confirmed; ingest authorization ✅ confirmed
+   (`POST /api/v1/pressure-events` correctly 401s with no key); public
+   stale/unknown response ✅ confirmed, though it reflects the pre-Phase-3
+   build still running in production; dashboard status rendering — confirmed
+   locally (real browser, static frontend, no backend) rather than against
+   the live deployment, since production has not been redeployed with this
+   session's work; handset no-new-alarm behaviour — confirmed via the mobile
+   automated suite only, no physical device; absence of synthetic rows from
+   production output — true by construction once this branch is deployed
+   (production reads live rows only), not independently observable from
+   outside without a database credential.
+4. **Done.** `docs/08_DEMO_AND_STATUS.md` and the README updated with exact
+   environment, timestamps, checks, and results; no other files touched for
+   this item.
+
+**Net effect on readiness:** unchanged from Phase 4 - `RETURN NOW` remains
+unavailable for live use, both because `SQUALL_RETURN_NOW_ENABLED` defaults
+off in code and because the code that enforces any of this has not yet been
+merged to `master`/redeployed to the live instance this session could reach.
 
 ### Commit
 

@@ -42,6 +42,7 @@
   var formatEta = dashboardUtils.formatEta || function () { return ''; };
   var responderStatusHtml = dashboardUtils.responderStatusHtml || function () { return ''; };
   var tripChecksListHtml = dashboardUtils.tripChecksListHtml || function () { return ''; };
+  var squallStatusHtml = dashboardUtils.squallStatusHtml || function () { return ''; };
 
 
   // ===== CONFIG =====
@@ -309,6 +310,7 @@
   ns.formatEta = formatEta;
   ns.responderStatusHtml = responderStatusHtml;
   ns.tripChecksListHtml = tripChecksListHtml;
+  ns.squallStatusHtml = squallStatusHtml;
   ns.OPS_CENTER = OPS_CENTER;
   ns.OPS_ZOOM = OPS_ZOOM;
   ns.TILES = TILES;
