@@ -148,6 +148,40 @@ failures already present at the Phase 0 baseline of this handoff:**
   exception in all three locales; it does not confirm the words are
   correct.
 
+## 2026-08-29 — automatic distress detection: open-trip freshness window decided
+
+Per `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 2 item
+2, a stop-and-ask condition: "If the team has not selected a safe cadence,
+stop this phase for that decision; guessing it changes emergency behaviour."
+
+**Decision: `OPEN_TRIP_FRESHNESS_WINDOW = 12 hours`**
+(`backend/app/ai/anomaly_service.py`). Made by the project lead, not guessed.
+
+How long after a vessel's last buoy contact its most recent trip still counts
+as "possibly still open" for scoring, versus excluded as stale/completed.
+Rationale considered:
+
+- Too short would exclude a vessel that is *already* hours overdue — the
+  exact case this feature exists to catch, since an overdue vessel's defining
+  characteristic is a growing gap since its last contact.
+- Too long lets a trip from days or weeks ago re-alert just because the wall
+  clock advanced — the design flaw `docs/31_DEMO_VERIFICATION_01.md` found in
+  the previous dataset-max-timestamp approach, where the whole synthetic
+  fleet scored ≈0.85 and alerted because their contacts were days behind the
+  demo's freshly-written ones.
+- The synthetic generator (`backend/app/simulation/generator.py`) models full
+  trips — departure to return — of roughly 6–13 hours (departure ~04:20–06:35,
+  fishing 1.8–6.5h, return same day ~16:10–19:15). 12 hours covers a complete
+  trip cycle with headroom, while still excluding anything from a prior day.
+
+There is currently no explicit "trip completed" signal other than a new
+`trip_id` starting later, so this window is the only mechanism that
+distinguishes "still out, buoy just hasn't seen them for a while" from "went
+home a long time ago, nothing to worry about." It is a single named constant,
+not tuned per vessel or scenario, and Phase 2's own instruction was explicit
+that this work must not extend to retuning `trip_profile.py`'s model weights
+or thresholds — only this eligibility guard.
+
 ---
 
 ## Judging weights — build toward these

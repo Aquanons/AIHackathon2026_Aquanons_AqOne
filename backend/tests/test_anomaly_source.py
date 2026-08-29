@@ -1,51 +1,64 @@
-"""The anomaly reader selects its evaluation source explicitly (docs/38 Phase 1
-item 5).
+"""app.ai.anomaly_service: explicit source selection, freshness, and clock
+injection (docs/38 Phase 1 item 5, Phase 2 items 1-4).
 
 Production evaluation must never fall back to synthetic-only data (docs/38
-acceptance boundary). These pin that `_load_trip_rows` filters strictly to
-`bc.source = 'live'` unless DEMO_MODE is enabled, and that the decision comes
-from that same env flag - the one main.py already uses to decide whether to
-even mount `/api/demo` - rather than from anything a caller could supply.
+acceptance boundary), and a trip that ended long before the evaluation
+instant must not re-alert just because the clock advanced (the docs/31
+design flaw). These pin, without a real database:
+
+- the reader filters strictly to `bc.source = 'live'` unless DEMO_MODE is on;
+- `eligible_latest_trips` excludes a trip whose last contact is older than
+  OPEN_TRIP_FRESHNESS_WINDOW relative to the supplied `as_of`;
+- `evaluate_and_persist` never truncates, always clears `is_active` before
+  reinserting (so a trip that ages out simply stops being written, not
+  deleted), and produces identical scores for the same fixture and `as_of`,
+  changing only when `as_of` advances.
 """
 
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 
-from app.api import anomaly
+from app.ai import anomaly_service
 
 
 class _FakeConnection:
-    def __init__(self) -> None:
-        self.queries: list[str] = []
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self._rows = rows
+        self.executed: list[tuple[str, tuple]] = []
 
     async def fetch(self, query: str, *args):
-        self.queries.append(query)
-        return []
+        self.executed.append((query, args))
+        return self._rows
+
+    async def execute(self, query: str, *args):
+        self.executed.append((query, args))
+        return 'OK'
 
 
 def test_demo_evaluation_disabled_by_default(monkeypatch):
     monkeypatch.delenv('DEMO_MODE', raising=False)
-    assert anomaly._demo_evaluation_enabled() is False
+    assert anomaly_service.demo_evaluation_enabled() is False
 
 
 def test_demo_evaluation_enabled_when_flag_set(monkeypatch):
     monkeypatch.setenv('DEMO_MODE', 'true')
-    assert anomaly._demo_evaluation_enabled() is True
+    assert anomaly_service.demo_evaluation_enabled() is True
 
 
 def test_production_reader_filters_to_live_only():
-    conn = _FakeConnection()
-    asyncio.run(anomaly._load_trip_rows(conn, include_synthetic=False))
-    query = conn.queries[0]
+    conn = _FakeConnection([])
+    asyncio.run(anomaly_service._load_trip_rows(conn, include_synthetic=False))
+    query = conn.executed[0][0]
     assert "WHERE bc.source = 'live'" in query
     assert "IN ('live', 'synthetic')" not in query
 
 
 def test_demo_reader_includes_both_sources():
-    conn = _FakeConnection()
-    asyncio.run(anomaly._load_trip_rows(conn, include_synthetic=True))
-    assert "WHERE bc.source IN ('live', 'synthetic')" in conn.queries[0]
+    conn = _FakeConnection([])
+    asyncio.run(anomaly_service._load_trip_rows(conn, include_synthetic=True))
+    assert "WHERE bc.source IN ('live', 'synthetic')" in conn.executed[0][0]
 
 
 def test_trip_is_synthetic_marks_a_trip_synthetic_if_any_contact_is():
@@ -54,6 +67,116 @@ def test_trip_is_synthetic_marks_a_trip_synthetic_if_any_contact_is():
         {'vessel_id': 'V1', 'trip_id': 'T1', 'is_synthetic': True},
         {'vessel_id': 'V2', 'trip_id': 'T2', 'is_synthetic': False},
     ]
-    flags = anomaly._trip_is_synthetic(rows)
+    flags = anomaly_service._trip_is_synthetic(rows)
     assert flags[('V1', 'T1')] is True
     assert flags[('V2', 'T2')] is False
+
+
+def _row(vessel_id: str, trip_id: str, buoy_id: str, observed_at: datetime) -> dict[str, object]:
+    return {
+        'vessel_id': vessel_id,
+        'trip_id': trip_id,
+        'buoy_id': buoy_id,
+        'observed_at': observed_at,
+        'latitude': 11.6892,
+        'longitude': 122.3667,
+        'is_synthetic': False,
+    }
+
+
+def test_eligible_latest_trips_excludes_a_trip_outside_the_freshness_window():
+    as_of = datetime(2026, 8, 10, 12, 0, tzinfo=UTC)
+    rows = [
+        _row('V-FRESH', 'trip-1', 'B01', as_of - timedelta(hours=2)),
+        _row('V-STALE', 'trip-1', 'B01', as_of - timedelta(hours=20)),
+    ]
+    latest = anomaly_service.eligible_latest_trips(rows, as_of=as_of)
+    eligible = {vessel_id for vessel_id, _trip_id, _contacts in latest}
+    assert eligible == {'V-FRESH'}
+
+
+def test_eligible_latest_trips_boundary_is_inclusive():
+    as_of = datetime(2026, 8, 10, 12, 0, tzinfo=UTC)
+    cutoff = as_of - anomaly_service.OPEN_TRIP_FRESHNESS_WINDOW
+    rows = [
+        _row('V-AT-CUTOFF', 'trip-1', 'B01', cutoff),
+        _row('V-JUST-PAST-CUTOFF', 'trip-1', 'B01', cutoff - timedelta(seconds=1)),
+    ]
+    latest = anomaly_service.eligible_latest_trips(rows, as_of=as_of)
+    eligible = {vessel_id for vessel_id, _trip_id, _contacts in latest}
+    assert eligible == {'V-AT-CUTOFF'}
+
+
+def _fleet_rows() -> list[dict[str, object]]:
+    """Two vessels with enough history to avoid the cold-start fleet
+    fallback, plus one "current" trip each. V-FRESH's current trip has
+    reached B01/B02 recently and is still waiting on B03 - the classic
+    overdue setup from test_trip_profile.py's own fixtures. V-STALE's
+    current trip is more than OPEN_TRIP_FRESHNESS_WINDOW old relative to
+    every `as_of` these tests use, so it must never be scored.
+    """
+    rows: list[dict[str, object]] = []
+    for vessel_id, current_day in (('V-FRESH', 10), ('V-STALE', 9)):
+        for day in range(1, 5):
+            start = datetime(2026, 8, day, 6, 0, tzinfo=UTC)
+            for index, buoy_id in enumerate(('B01', 'B02', 'B03')):
+                rows.append(_row(vessel_id, f'trip-{day}', buoy_id, start + timedelta(minutes=45 * index)))
+        current_start = datetime(2026, 8, current_day, 6, 0, tzinfo=UTC)
+        rows.append(_row(vessel_id, 'trip-current', 'B01', current_start))
+        rows.append(_row(vessel_id, 'trip-current', 'B02', current_start + timedelta(minutes=45)))
+    return rows
+
+
+def test_evaluate_and_persist_excludes_the_stale_vessel():
+    as_of = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
+    conn = _FakeConnection(_fleet_rows())
+    scores = asyncio.run(anomaly_service.evaluate_and_persist(conn, as_of=as_of, include_synthetic=False))
+
+    assert {row['vessel_id'] for row in scores} == {'V-FRESH'}
+    insert_calls = [q for q, _args in conn.executed if 'INSERT INTO vessel_anomaly_scores' in q]
+    assert len(insert_calls) == 1
+
+
+def test_evaluate_and_persist_never_truncates():
+    conn = _FakeConnection(_fleet_rows())
+    as_of = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
+    asyncio.run(anomaly_service.evaluate_and_persist(conn, as_of=as_of, include_synthetic=False))
+    assert not any('TRUNCATE' in query for query, _args in conn.executed)
+
+
+def test_evaluate_and_persist_clears_is_active_before_reinserting():
+    conn = _FakeConnection(_fleet_rows())
+    as_of = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
+    asyncio.run(anomaly_service.evaluate_and_persist(conn, as_of=as_of, include_synthetic=False))
+
+    def _is_clear(query: str) -> bool:
+        return 'UPDATE vessel_anomaly_scores' in query and 'is_active = FALSE' in query
+
+    clear_index = next(i for i, (q, _args) in enumerate(conn.executed) if _is_clear(q))
+    insert_index = next(
+        i for i, (q, _args) in enumerate(conn.executed) if 'INSERT INTO vessel_anomaly_scores' in q
+    )
+    assert clear_index < insert_index
+
+
+async def _evaluate(rows: list[dict[str, object]], *, as_of: datetime) -> list[dict[str, object]]:
+    return await anomaly_service.evaluate_and_persist(_FakeConnection(rows), as_of=as_of, include_synthetic=False)
+
+
+def test_evaluate_and_persist_is_deterministic_for_the_same_clock():
+    rows = _fleet_rows()
+    as_of = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
+    scores_first = asyncio.run(_evaluate(rows, as_of=as_of))
+    scores_second = asyncio.run(_evaluate(rows, as_of=as_of))
+    assert scores_first == scores_second
+
+
+def test_evaluate_and_persist_score_changes_only_when_the_clock_advances():
+    rows = _fleet_rows()
+    early = asyncio.run(_evaluate(rows, as_of=datetime(2026, 8, 10, 8, 0, tzinfo=UTC)))
+    late = asyncio.run(_evaluate(rows, as_of=datetime(2026, 8, 10, 14, 0, tzinfo=UTC)))
+    early_score = next(row['score'] for row in early if row['vessel_id'] == 'V-FRESH')
+    late_score = next(row['score'] for row in late if row['vessel_id'] == 'V-FRESH')
+    # Still overdue further past the expected-contact window - later must not
+    # score lower, and here it should be strictly higher.
+    assert late_score > early_score

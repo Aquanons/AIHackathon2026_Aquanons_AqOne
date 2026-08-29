@@ -345,6 +345,23 @@ Generate the synthetic dataset, which the evaluation scripts require:
 python -m app.simulation.generator --days 14 --seed 42
 ```
 
+#### Scheduled anomaly evaluation (Railway cron)
+
+Trip-anomaly scoring (`docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md`)
+no longer runs on every dashboard poll - `GET /api/ai/anomaly/active` is
+read-only. Something has to call the scorer on a schedule instead:
+
+```bash
+python -m app.ai.run_anomaly_evaluation
+```
+
+It is idempotent (safe to run twice, or to overlap a slow run with the next
+one) and needs only `DATABASE_URL`. On Railway, add a second service from
+this same repo, set its start command to the line above, and set its
+schedule (Settings → Cron Schedule) to run every few minutes - it does not
+need its own dependency, queue, or app, only its own cron trigger against
+the existing backend image.
+
 ### 2. Dashboard
 
 Served by the backend at `/`. Start the backend and open
