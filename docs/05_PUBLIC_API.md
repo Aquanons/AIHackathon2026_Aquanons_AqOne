@@ -655,6 +655,98 @@ Closes the case; it drops out of `GET /cases/open` on the next poll.
 Idempotent, no body required. Because evaluation never writes `resolved_at`,
 a later score refresh can never reopen a case a responder closed.
 
+## Drift prediction and search re-tasking — **implemented (Phase 1: case lifecycle)**
+
+The responder-facing side of
+`docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md`. A case
+here is a drift/search effort opened for one specific vessel, reusing the
+existing `incidents` table (prior/posterior grid, `search_sectors`) rather
+than a second incident system.
+
+**Non-goals — this API never does any of the following:** open a case on its
+own initiative, dispatch or assign an asset, plot a navigation route, declare
+a person found, or replace SAR command judgement. Every write here is a
+human responder's action; every read is decision *support*.
+
+**Protected source only.** A case can be opened only from a source the
+responder has already confirmed:
+
+- a Manual SOS event (`docs/36_MANUAL_SOS_RESPONDER_LOOP_IMPLEMENTATION_PLAN.md`)
+  that a dispatcher has **acknowledged** (`POST /api/sos/{id}/acknowledge`)
+  and that is not yet resolved; or
+- an automatic-distress anomaly case (`docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md`)
+  that a responder has **escalated** (`POST /api/ai/anomaly/cases/{id}/escalate`)
+  and that is not yet resolved.
+
+A new anomaly score, an arbitrary client-supplied position, or a public
+caller can never open a case. All routes below require a bearer token
+(`require_user`); there is no unauthenticated drift endpoint.
+
+### `POST /api/ai/drift/cases` — open a case
+
+```json
+{ "source_type": "sos", "source_id": 42, "object_class": "person_in_water" }
+```
+
+`source_type` is `"sos"` or `"anomaly"`; `object_class` is one of
+`person_in_water`, `swamped_banca`, `intact_hull_adrift` and is always an
+explicit responder choice — it is never inferred from the source's own
+reason text. The last-known position and time come from the source itself
+(the SOS's own lat/lon, or the vessel's most recent position fix for an
+escalated anomaly) — the caller cannot supply an arbitrary position.
+
+Fails with `404` if the source doesn't exist, `409` if the source is not yet
+confirmed (not acknowledged / not escalated), already resolved, or already
+has a case open (one case per source — a retry does not fork a second search
+effort), and `422` if the source has no recorded position yet.
+
+Response `200`:
+
+```json
+{ "id": 101, "vessel_id": "NW-001", "object_class": "person_in_water", "case_state": "confirmed", "source_type": "sos" }
+```
+
+### `GET /api/ai/drift/incidents`
+
+Every case, newest last-contact first — real and demo/synthetic alike, each
+labelled. `case_state` is `confirmed`, `resolved`, or `cancelled`.
+
+### `GET /api/ai/drift/incident/{id}`
+
+The full drift picture for one case: the current prediction, the posterior
+probability grid and its 50/75/95% contours, and every recorded search
+sector. **`ground_truth_track` is present only when the incident is
+synthetic** — a real case's response never contains a ground-truth field at
+all (not even `null`). A synthetic replay's ground truth is otherwise only
+available from the demo-gated route below.
+
+### `POST /api/ai/drift/incident/{id}/searched`
+
+Records a searched sector and returns the updated posterior. Rejects with
+`409` once the case is `resolved` or `cancelled`. (Phase 3 replaces the raw
+metre-offset body and adds an idempotency key; this phase only adds the
+case-state gate.)
+
+### `POST /api/ai/drift/cases/{id}/resolve`
+
+Closes the case (the search effort itself, independent of the source SOS/
+anomaly's own state). Idempotent, no body required.
+
+### `POST /api/ai/drift/cases/{id}/cancel`
+
+```json
+{ "reason": "false alarm, vessel found at dock" }
+```
+
+Idempotent — a retry keeps the original `cancelled_reason`.
+
+### `GET /api/demo/drift/incident/{id}` — demo-only, ground truth
+
+Returns `{ "ground_truth_track": [...] }` for a synthetic replay incident.
+Gated by `DEMO_MODE` (the route is only mounted when it is set) plus
+`X-Demo-Key`, and additionally `404`s on any incident that isn't synthetic —
+a demo key alone can never unlock a real case's data.
+
 ## Roles
 
 - `mdrrmo` and `admin` may list and ack. `admin` may also register devices and

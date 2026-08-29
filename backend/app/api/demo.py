@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import json
 import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -60,6 +61,30 @@ async def reset_demo() -> dict[str, object]:
         return {'status': 'reset', 'deleted': {}, **state.response()}
     deleted = await reset(get_pool(), state.run_id)
     return {'status': 'reset', 'deleted': deleted, **get_state().response()}
+
+
+@router.get('/drift/incident/{incident_id}', dependencies=[Depends(require_demo_key)])
+async def demo_drift_ground_truth(incident_id: int) -> dict[str, object]:
+    """Ground-truth track for a synthetic replay incident (docs/40 Phase 1
+    item 5). The normal responder route (`GET /api/ai/drift/incident/{id}`)
+    never returns `true_track` - it is real-track data and only ever
+    legitimate for a synthetic evaluation replay. Gated the same way as every
+    other route here: DEMO_MODE (this router is only mounted when it is set,
+    app/main.py) plus `require_demo_key`, and additionally 404s on a real
+    incident so a demo key alone can never unlock live case data.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            'SELECT id, is_synthetic, true_track FROM incidents WHERE id = $1',
+            incident_id,
+        )
+    if row is None or not row['is_synthetic']:
+        raise HTTPException(status_code=404, detail='no synthetic incident with that id')
+    true_track = row['true_track']
+    if isinstance(true_track, str):
+        true_track = json.loads(true_track)
+    return {'incident_id': row['id'], 'source': 'synthetic', 'ground_truth_track': true_track}
 
 
 def _weather_cells(latitude: str | None, longitude: str | None) -> list[tuple[float, float]]:

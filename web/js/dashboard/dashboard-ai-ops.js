@@ -252,7 +252,10 @@
         '<strong>Incident #' + incident.id + '</strong> · Vessel ' + ns._escHtml(incident.vessel_id) + '<br>' +
         'Last contact: ' + incidentTime + ' · ' + ns._escHtml(incident.abnormal_reason || 'unknown') + '<br>' +
         (bits.length ? bits.join(' · ') + '<br>' : '') +
-        'Track labeled as ground truth for synthetic evaluation.';
+        // The backend only ever includes ground_truth_track on a synthetic
+        // incident's payload (app/api/drift.py) - this line must not claim a
+        // real case has one.
+        (incident.is_synthetic ? 'Track labeled as ground truth for synthetic evaluation.' : '');
     }
 
     updateAiMapKey();
