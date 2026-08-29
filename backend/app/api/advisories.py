@@ -88,7 +88,11 @@ def _serialise(row: Any) -> dict[str, Any]:
         'expiration_date': row['expiration_date'].isoformat()
         if row['expiration_date']
         else '',
-        'cover_image': row['cover_image'],
+        # The documented public field is `image_url` (docs/05_PUBLIC_API.md) -
+        # `cover_image` is only the storage/operator-input name. Emitting one
+        # canonical field here means the handset never has to guess which of
+        # the two it will get.
+        'image_url': row['cover_image'],
         'status': row['status'],
         'source': row['source'],
         'score': row['score'],
@@ -101,8 +105,15 @@ def _serialise(row: Any) -> dict[str, Any]:
 async def _fetch_advisories(
     status: str | None = None,
     municipality: str | None = None,
+    *,
+    only_active: bool = False,
 ) -> list[dict[str, Any]]:
+    """`only_active` additionally requires the advisory to have started and
+    not yet expired. Used by the public route so an expired or future-dated
+    notice can never reach the handset - see docs/05_PUBLIC_API.md.
+    """
     pool = get_pool()
+    today = _today()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             '''
@@ -115,11 +126,15 @@ async def _fetch_advisories(
                 OR municipality = 'All'
                 OR municipality = $2
               )
+              AND (NOT $3::BOOLEAN OR publish_date <= $4)
+              AND (NOT $3::BOOLEAN OR expiration_date IS NULL OR expiration_date >= $4)
             ORDER BY publish_date DESC, created_at DESC, id DESC
             LIMIT 100
             ''',
             status,
             municipality,
+            only_active,
+            today,
         )
     return [_serialise(row) for row in rows]
 
@@ -137,7 +152,11 @@ async def get_advisories(
 async def get_public_advisories(
     municipality: str | None = Query(default=None),
 ) -> dict[str, list[dict[str, Any]]]:
-    return {'advisories': await _fetch_advisories('Published', municipality)}
+    return {
+        'advisories': await _fetch_advisories(
+            'Published', municipality, only_active=True
+        )
+    }
 
 
 @router.get('/{advisory_id}')

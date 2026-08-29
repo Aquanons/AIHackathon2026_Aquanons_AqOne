@@ -1,8 +1,14 @@
+import 'dart:convert';
+
 import 'package:aqone/data/welcome_advisory.dart';
 import 'package:aqone/models/advisory.dart';
+import 'package:aqone/services/backend_client.dart';
+import 'package:aqone/services/venture_feeds.dart';
 import 'package:aqone/ui/widgets/advisory_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   group('WelcomeAdvisory', () {
@@ -107,6 +113,47 @@ void main() {
       expect(find.text('APP NOTICE'), findsNothing);
       expect(find.textContaining('not an official'), findsNothing);
       expect(find.text('New Washington'), findsOneWidget);
+    });
+  });
+
+  group('VentureFeeds.advisories', () {
+    test('a failed fetch with nothing cached is null, never the welcome note standing in for real data', () async {
+      final feeds = VentureFeeds(
+        backend: BackendClient(
+          client: MockClient((request) async => http.Response('', 500)),
+        ),
+      );
+
+      final result = await feeds.advisories();
+
+      // AdvisoriesPage relies on exactly this null to show "could not load"
+      // instead of an empty/placeholder list - see advisories_page.dart.
+      expect(result, isNull);
+    });
+
+    test('a successful fetch appends the welcome note after real advisories', () async {
+      final feeds = VentureFeeds(
+        backend: BackendClient(
+          client: MockClient((request) async => http.Response(
+                jsonEncode(<String, Object?>{
+                  'advisories': <Object?>[
+                    <String, Object?>{
+                      'title': 'Habagat surge',
+                      'description': 'Small craft warning in effect.',
+                      'priority': 'warning',
+                    },
+                  ],
+                }),
+                200,
+              )),
+        ),
+      );
+
+      final result = await feeds.advisories();
+
+      expect(result, isNotNull);
+      expect(result!.last, same(WelcomeAdvisory.instance));
+      expect(result.any((Advisory a) => a.title == 'Habagat surge'), isTrue);
     });
   });
 }

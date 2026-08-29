@@ -330,6 +330,60 @@ delivery (a line possibly appearing twice across hub broadcast and cloud
 relay) is a known, accepted limitation, not a bug to mask with a text/time
 heuristic that could hide a real repeated distress call.
 
+## Official advisories — **implemented**
+
+### `GET /api/public/advisories`
+
+Published, currently-active advisories only, unauthenticated. "Active" means
+`status = Published` **and** the advisory has started (`publish_date <=
+today`) **and** has not expired (`expiration_date` is null or `>= today`) —
+filtered server-side, not left to the handset's own client-side check.
+
+```json
+{
+  "advisories": [
+    {
+      "id": 42,
+      "title": "Not advised to go out",
+      "category": "Weather Advisory",
+      "description": "Habagat surge expected through Thursday.",
+      "municipality": "New Washington",
+      "priority": "Warning",
+      "publish_date": "2026-08-14",
+      "expiration_date": "2026-08-16",
+      "image_url": "https://.../pier.jpg",
+      "status": "Published",
+      "source": "LGU",
+      "created_at": "2026-08-14T04:00:00Z",
+      "updated_at": "2026-08-14T04:00:00Z"
+    }
+  ]
+}
+```
+
+Field notes:
+
+- `image_url` is the one public field name for the advisory's photo. The
+  operator-facing create/update body still accepts `cover_image` (see
+  below) — the backend stores it under that column and always serialises it
+  back out as `image_url`. A handset must not need to read both names.
+- `publish_date`/`expiration_date` are ISO `YYYY-MM-DD`; `expiration_date` is
+  `""` when the advisory does not expire.
+- `priority` is one of `Emergency` \| `Warning` \| `Information` \| `Community`.
+- `source` identifies the issuer (`LGU` by default). This is a human-authored
+  official notice — it is never AqOne's own copy; compare
+  `data/welcome_advisory.dart` on the handset, which is marked unofficial and
+  never comes from this endpoint.
+
+### `GET /api/advisories`, `POST /api/advisories`, `PUT /api/advisories/{id}`, `DELETE /api/advisories/{id}`
+
+Operator-authenticated (`mdrrmo` / `lgu` / `admin`, via `require_user`). The
+list read here is **not** filtered by active/expired — an operator managing
+notices needs to see and edit drafts and past advisories too; only the
+public route above filters. Create/update accept `cover_image` as the
+write-side field name; the response echoes it back as `image_url` like every
+other advisory read.
+
 ## Daily outlook for the app — **contract agreed, not yet implemented**
 
 ### `GET /api/public/forecast`

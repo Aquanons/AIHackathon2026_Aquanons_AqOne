@@ -213,13 +213,16 @@ class VentureFeeds {
           await _backend.getJson(AqOneConfig.advisoriesPath) ??
           await _backend.getJson(AqOneConfig.publicAdvisoriesPath),
     );
-    // The welcome note is appended, never merged into the feed: it is ours,
-    // not the MDRRMO's, and it is present even when the fetch failed
-    // entirely. parseList has already sorted by urgency, and appending keeps
-    // it last so a real advisory is never pushed below it.
+    // null means the fetch failed (and no cached snapshot exists) - callers
+    // must show that as "could not load", not as "no active advisories".
+    // Turning an outage into an empty list-plus-welcome-note used to make
+    // every failure look like a successful check with nothing to report.
     if (decoded == null) {
-      return <Advisory>[WelcomeAdvisory.instance];
+      return null;
     }
+    // The welcome note is appended, never merged into the feed: it is ours,
+    // not the MDRRMO's. parseList has already sorted by urgency, and
+    // appending keeps it last so a real advisory is never pushed below it.
     return <Advisory>[
       ...Advisory.parseList(decoded),
       WelcomeAdvisory.instance,

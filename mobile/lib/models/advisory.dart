@@ -117,7 +117,10 @@ class Advisory {
           : null,
       publishDate: _date(value['publish_date']),
       expirationDate: _date(value['expiration_date']),
-      imageUrl: _text(value['image_url']),
+      // image_url is the documented public field (docs/05_PUBLIC_API.md).
+      // cover_image is accepted only as a fallback for a cached snapshot
+      // saved before the backend serialised the canonical name.
+      imageUrl: _text(value['image_url']) ?? _text(value['cover_image']),
     );
   }
 
