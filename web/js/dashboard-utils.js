@@ -300,6 +300,40 @@
     return list.map(tripCheckRowHtml).join('');
   }
 
+  /**
+   * Freshness/source/calibration line for the squall panel
+   * (docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 3 item 5),
+   * from the unified `GET /api/ai/squall/current` /
+   * `GET /api/public/squall` response shape (docs/05_PUBLIC_API.md "Squall
+   * nowcast"). Pure, like tripCheckRowHtml - reuses the same LIVE/DEMO
+   * badge and data-age string conventions rather than inventing new ones,
+   * since both are model-driven AqOne outputs on the same dashboard.
+   *
+   * `payload.level === 'unknown'` renders a neutral notice with the
+   * backend's `status_reason` - this is the "insufficient data" state,
+   * deliberately distinct from an empty "no active detections" panel: an
+   * alarm that cannot be evaluated must never look the same as "all clear".
+   */
+  function squallStatusHtml(payload) {
+    var p = payload || {};
+    var badge = alertBadge(p.source === 'live');
+    var ageText = formatDataAge(p.data_age_seconds);
+    var calibrationText = p.calibration === 'synthetic'
+      ? 'calibrated on simulated data'
+      : 'calibrated model';
+    var line =
+      '<div class="ai-squall-status-line">' +
+        '<span class="' + badge.cssClass + '">' + badge.text + '</span>' +
+        '<span class="ai-squall-status-age">' + escapeHtml(ageText) + '</span>' +
+        '<span class="ai-squall-status-calibration">' + escapeHtml(calibrationText) + '</span>' +
+      '</div>';
+    if (p.level === 'unknown') {
+      var reason = p.status_reason || 'Squall status cannot be confirmed right now.';
+      line += '<div class="ai-squall-status-reason">' + escapeHtml(reason) + '</div>';
+    }
+    return line;
+  }
+
   return {
     escapeHtml: escapeHtml,
     classifyFreshness: classifyFreshness,
@@ -311,6 +345,7 @@
     caseStatusLabel: caseStatusLabel,
     formatDataAge: formatDataAge,
     tripCheckRowHtml: tripCheckRowHtml,
-    tripChecksListHtml: tripChecksListHtml
+    tripChecksListHtml: tripChecksListHtml,
+    squallStatusHtml: squallStatusHtml
   };
 });

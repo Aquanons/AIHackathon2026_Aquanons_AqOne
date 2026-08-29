@@ -392,19 +392,19 @@
       "max": {"type": "int", "example": "50"}
     }
   },
-  "squallStaleTitle": "Squall nowcast: data too old to trust",
+  "squallStaleTitle": "Squall nowcast: status unavailable",
   "@squallStaleTitle": {
-    "description": "SAFETY CRITICAL. Heading on the neutral squall banner shown when the backend's synthetic pressure data is older than its freshness window. Must read as neutral/informational, never alarming - it replaces the RETURN NOW/watch banner, which never appears for stale data, and it must not be softened into implying the sea is calm."
+    "description": "SAFETY CRITICAL. Heading on the neutral squall banner shown whenever the backend cannot confirm a squall status - stale data, too few reporting buoys, or another quality problem, not staleness alone. Must read as neutral/informational, never alarming - it replaces the RETURN NOW/watch banner, which never appears in this state, and it must not be softened into implying the sea is calm."
   },
-  "squallStaleBodyWithAge": "Last reading {age} ago. Not showing a squall status until fresh data arrives.",
+  "squallStaleBodyWithAge": "Last known reading {age} ago. Not showing a squall status right now.",
   "@squallStaleBodyWithAge": {
-    "description": "SAFETY CRITICAL. Body text on the stale-squall notice when the backend supplied a last-reading time. {age} is a short duration like \"3h\" or \"45 min\", already formatted - do not add units around the placeholder.",
+    "description": "SAFETY CRITICAL. Body text on the neutral squall notice when the backend supplied a last-reading time. {age} is a short duration like \"3h\" or \"45 min\", already formatted - do not add units around the placeholder.",
     "placeholders": {
       "age": {"type": "String", "example": "3h"}
     }
   },
-  "squallStaleBodyNoAge": "Not showing a squall status until fresh data arrives.",
+  "squallStaleBodyNoAge": "Not showing a squall status right now.",
   "@squallStaleBodyNoAge": {
-    "description": "SAFETY CRITICAL. Body text on the stale-squall notice when no last-reading time is available at all."
+    "description": "SAFETY CRITICAL. Body text on the neutral squall notice when no last-reading time is available at all."
   }
 }

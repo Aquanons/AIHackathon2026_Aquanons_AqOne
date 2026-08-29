@@ -5,6 +5,24 @@
 /// the handset could disagree with the dashboard about whether a squall is
 /// happening, and the two must never tell different stories about the same
 /// weather.
+///
+/// Wire shape (docs/05_PUBLIC_API.md "Squall nowcast"):
+/// ```json
+/// {
+///   "source": "live",
+///   "calibration": "synthetic",
+///   "observed_at": "2026-08-16T02:00:00Z",
+///   "generated_at": "2026-08-16T02:03:00Z",
+///   "data_age_seconds": 180,
+///   "status_reason": null,
+///   "level": "clear",
+///   "return_now": false,
+///   "detections": [],
+///   "threshold": 0.55,
+///   "triggered_buoys": [],
+///   "lead_minutes": null
+/// }
+/// ```
 library;
 
 enum SquallLevel {
@@ -17,9 +35,10 @@ enum SquallLevel {
   /// At or above the threshold. This is the RETURN NOW condition.
   returnNow,
 
-  /// The model could not be evaluated - missing model file, no readings, or
-  /// no connection. Deliberately distinct from `clear`: an alarm that cannot
-  /// be evaluated must never be rendered as "all clear".
+  /// Telemetry is missing, stale, invalid, or an insufficiently distributed
+  /// array - or the model could not be evaluated, or the fetch failed.
+  /// Deliberately distinct from `clear`: an alarm that cannot be evaluated
+  /// must never be rendered as "all clear".
   unknown,
 }
 
@@ -29,10 +48,12 @@ class SquallWatch {
     required this.returnNow,
     this.leadMinutes,
     this.triggeredBuoys = const <String>[],
-    this.asOf,
+    this.observedAt,
+    this.generatedAt,
+    this.dataAgeSeconds,
     this.calibration,
-    this.stale = false,
-    this.staleReason,
+    this.source,
+    this.statusReason,
   });
 
   final SquallLevel level;
@@ -42,25 +63,31 @@ class SquallWatch {
   final int? leadMinutes;
 
   final List<String> triggeredBuoys;
-  final DateTime? asOf;
+
+  /// The newest real pressure reading the backend has ever seen, whether or
+  /// not the array currently qualifies for a live nowcast.
+  final DateTime? observedAt;
+
+  /// Server clock time this response was computed.
+  final DateTime? generatedAt;
+
+  final double? dataAgeSeconds;
 
   /// "synthetic" while the models are calibrated on simulated data. Surfaced
   /// in the UI rather than hidden, so the app never implies more certainty
   /// than the model has earned.
   final String? calibration;
 
-  /// True when the backend's own max-data-age guard rejected the latest
-  /// synthetic reading as too old to evaluate. Distinct from
-  /// [unavailable]/[SquallLevel.unknown] from a failed fetch: here the
-  /// backend answered and [asOf] names exactly how old its data is, which is
-  /// worth disclosing rather than just going silent - see
-  /// docs/05_PUBLIC_API.md.
-  final bool stale;
+  /// "live" or "synthetic" - which table this response was computed from.
+  final String? source;
 
-  /// Machine-readable-ish reason from the backend, e.g. "latest synthetic
-  /// reading is 6:00:00 old, past the 3:00:00 freshness window". Not
-  /// localized; shown as supporting detail, not the headline.
-  final String? staleReason;
+  /// Why [level] is [SquallLevel.unknown] - missing/stale/insufficient
+  /// telemetry, or the model being unavailable. `null` whenever level is
+  /// clear/watch/returnNow, since a successful evaluation needs no
+  /// explanation. Not localized and not shown verbatim to the fisher (it is
+  /// backend-internal wording, e.g. "only 2 of 3 required buoys...") - only
+  /// used to decide [shouldDisplay] and to derive a neutral, localized notice.
+  final String? statusReason;
 
   /// The state to show when the backend cannot be reached at all.
   static const SquallWatch unavailable = SquallWatch(
@@ -69,7 +96,9 @@ class SquallWatch {
   );
 
   bool get shouldDisplay =>
-      level == SquallLevel.watch || level == SquallLevel.returnNow || stale;
+      level == SquallLevel.watch ||
+      level == SquallLevel.returnNow ||
+      statusReason != null;
 
   static SquallLevel _levelFrom(String? raw) {
     switch (raw) {
@@ -99,7 +128,9 @@ class SquallWatch {
 
     final lead = decoded['lead_minutes'];
     final buoys = decoded['triggered_buoys'];
-    final asOfRaw = decoded['as_of'];
+    final observedAtRaw = decoded['observed_at'];
+    final generatedAtRaw = decoded['generated_at'];
+    final dataAge = decoded['data_age_seconds'];
 
     return SquallWatch(
       level: level,
@@ -108,19 +139,23 @@ class SquallWatch {
       triggeredBuoys: buoys is List
           ? buoys.whereType<String>().toList(growable: false)
           : const <String>[],
-      asOf: asOfRaw is String ? DateTime.tryParse(asOfRaw) : null,
+      observedAt:
+          observedAtRaw is String ? DateTime.tryParse(observedAtRaw) : null,
+      generatedAt:
+          generatedAtRaw is String ? DateTime.tryParse(generatedAtRaw) : null,
+      dataAgeSeconds: dataAge is num ? dataAge.toDouble() : null,
       calibration: decoded['calibration'] as String?,
-      stale: decoded['stale'] == true,
-      staleReason: decoded['stale_reason'] as String?,
+      source: decoded['source'] as String?,
+      statusReason: decoded['status_reason'] as String?,
     );
   }
 
   /// Identity for deciding whether this is the *same* squall the fisher has
   /// already acknowledged, or a new one that should alarm again.
   ///
-  /// Keyed on the affected buoys rather than the timestamp: `as_of` advances
-  /// every time the buoys report, so keying on it would re-fire the alarm
-  /// every poll for one continuous squall.
+  /// Keyed on the affected buoys rather than the timestamp: `observed_at`
+  /// advances every time the buoys report, so keying on it would re-fire the
+  /// alarm every poll for one continuous squall.
   String get identity => triggeredBuoys.isEmpty
       ? 'squall'
       : (List<String>.from(triggeredBuoys)..sort()).join(',');

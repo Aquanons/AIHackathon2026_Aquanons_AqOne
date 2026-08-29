@@ -49,6 +49,13 @@
       <div id="beats"></div>
     </section>
     <section>
+      <!-- docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 3: production
+           reads live pressure telemetry only, so the synthetic scenario's
+           squall status is only visible here, via GET /api/demo/squall. -->
+      <div class="status"><strong>Squall status (synthetic)</strong></div>
+      <p id="demo-squall-status">Enter the demo key to see the synthetic squall status.</p>
+    </section>
+    <section>
       <div class="arc-controls">
         <button id="pause">Pause</button>
         <button id="step">Step next beat</button>

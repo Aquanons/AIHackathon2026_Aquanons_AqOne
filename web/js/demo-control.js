@@ -11,6 +11,7 @@
   var message = document.getElementById('message');
   var connection = document.getElementById('connection');
   var connectionDot = document.getElementById('connection-dot');
+  var squallStatusEl = document.getElementById('demo-squall-status');
 
   localStorage.setItem('AQONE_WEATHER_BASE', '/api/demo/weather/forecast');
   localStorage.setItem('AQONE_MARINE_BASE', '/api/demo/weather/marine');
@@ -61,6 +62,25 @@
     setMessage(state.scenario ? 'Run ' + state.run_id + ' · current beat ' + state.beat : 'No active scenario');
   }
 
+  // docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 3: the synthetic
+  // scenario's squall status only appears here now - production dashboard/
+  // handset routes read live pressure telemetry only. Same unified shape as
+  // GET /api/public/squall (docs/05_PUBLIC_API.md), always source:
+  // "synthetic" here, visibly labelled as such.
+  function renderSquallStatus(status) {
+    if (!squallStatusEl) return;
+    var level = (status.level || 'unknown').toUpperCase();
+    var reason = status.status_reason ? ' — ' + status.status_reason : '';
+    var lead = typeof status.lead_minutes === 'number' ? ' · lead ' + status.lead_minutes + 'm' : '';
+    squallStatusEl.textContent = '[SYNTHETIC] ' + level + reason + lead;
+  }
+
+  function pollSquall() {
+    api('/squall').then(renderSquallStatus).catch(function (error) {
+      if (squallStatusEl) squallStatusEl.textContent = 'Squall status unavailable: ' + error.message;
+    });
+  }
+
   function poll() {
     api('/state').then(function (next) {
       connection.textContent = 'Connected';
@@ -71,6 +91,7 @@
       connectionDot.classList.remove('online');
       setMessage(error.message);
     });
+    pollSquall();
   }
 
   function fire(path) {

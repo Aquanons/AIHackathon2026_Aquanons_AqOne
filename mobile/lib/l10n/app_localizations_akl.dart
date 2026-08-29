@@ -425,14 +425,14 @@ class AppLocalizationsAkl extends AppLocalizations {
 
   @override
   String get squallStaleTitle =>
-      'Pagtantiya sa unos: daan nga datos, indi masaligan';
+      'Pagtantiya sa unos: waeay masaligan nga kahimtangan';
 
   @override
   String squallStaleBodyWithAge(String age) {
-    return 'Huling reading: $age na ang nakalabay. Waeay ipakita nga kahimtangan it unos hasta waeay bag-o nga datos.';
+    return 'Huling nahibaeuan nga reading: $age na ang nakalabay. Waeay ipakita nga kahimtangan it unos subong.';
   }
 
   @override
   String get squallStaleBodyNoAge =>
-      'Waeay ipakita nga kahimtangan it unos hasta waeay bag-o nga datos.';
+      'Waeay ipakita nga kahimtangan it unos subong.';
 }
