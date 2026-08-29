@@ -15,18 +15,38 @@ import '../data/identity_store.dart';
 // Model
 // ---------------------------------------------------------------------------
 
+/// What this handset actually knows about one of ITS OWN outgoing lines.
+///
+/// [queuedLocally] means the handset has retained the line but has not put it
+/// on the hub's WebSocket yet. [handedToHub] means this handset wrote the
+/// line to its active connection to the hub - the current protocol has no
+/// hub receipt, so this does not prove the hub stored it, another boat saw
+/// it, or it reached shore. Neither state says anything about the cloud
+/// relay, which is tracked separately on [ChatMessage.cloudStored] because
+/// the two legs succeed or fail independently.
+enum ChatHubState { queuedLocally, handedToHub }
+
 class ChatMessage {
   ChatMessage({
     required this.text,
     required this.from,
     required this.isMine,
     required this.time,
+    this.hubState = ChatHubState.handedToHub,
+    this.cloudStored = false,
   });
 
   final String text;
   final String from;
   final bool isMine;
   final DateTime time;
+
+  /// Only meaningful for [isMine] lines - see [ChatHubState].
+  ChatHubState hubState;
+
+  /// True only once `POST /api/mesh/chat` has returned 201 for this line.
+  /// Never inferred from network reachability - see docs/05_PUBLIC_API.md.
+  bool cloudStored;
 }
 
 /// One line this handset sent, remembered only long enough to recognise the
@@ -56,8 +76,11 @@ class ChatService extends ChangeNotifier {
   ChatService({
     this.host = '192.168.4.1',
     required this.displayName,
-    this.backendUrl = 'https://aqone-backend.up.railway.app',
-  });
+    this.backendUrl = AqOneConfig.backendBaseUrl,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
+
+  final http.Client _client;
 
   final String host;
 
@@ -112,6 +135,10 @@ class ChatService extends ChangeNotifier {
   /// hub's broadcast of them can be recognised and dropped. See [_isSelfEcho].
   final List<_SelfSend> _selfSends = [];
 
+  /// Guards [_relayToBackend] against sending the same still-pending line
+  /// twice while an earlier attempt for it is still in flight.
+  final Set<ChatMessage> _relayInFlight = {};
+
   bool _connected = false;
   bool _connecting = false;
   bool _disposed = false;
@@ -132,8 +159,15 @@ class ChatService extends ChangeNotifier {
     await _loadQueue();
     await _loadMessages();
     _connect();
+    unawaited(_retryPendingCloudRelays());
+    // Reuses the hub reconnect loop to also retry any of this handset's own
+    // lines that have not yet reached the cloud relay - the two networks
+    // (buoy WiFi, phone internet) are independent, so a line can be stuck on
+    // one leg while the other is fine.
     _reconnectTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!_connected && !_connecting && !_disposed) _connect();
+      if (_disposed) return;
+      if (!_connected && !_connecting) _connect();
+      unawaited(_retryPendingCloudRelays());
     });
   }
 
@@ -340,21 +374,46 @@ class ChatService extends ChangeNotifier {
     return retained;
   }
 
-  /// Fire-and-forget POST to the backend mesh chat endpoint.
-  /// Errors are silently ignored — the local Heltec relay is the primary path.
-  void _relayToBackend(String sender, String text) {
-    // .then<void> before .catchError is deliberate: catchError must return the
-    // future's own type, so attaching it straight to a Future<Response> throws
-    // at runtime on the exact failure this is meant to swallow.
-    http
-        .post(
-          Uri.parse('$backendUrl/api/mesh/chat'),
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'sender': sender, 'text': text}),
-        )
-        .timeout(const Duration(seconds: 5))
-        .then<void>((_) {})
-        .catchError((Object _) {});
+  /// POSTs one of this handset's own lines to the backend mesh chat endpoint.
+  /// Only a `201` counts as "cloud relay stored" — see docs/05_PUBLIC_API.md.
+  /// Any other outcome (timeout, non-201, no internet) leaves [msg] exactly
+  /// as it was; it is never dropped, and [_retryPendingCloudRelays] will try
+  /// it again on the next reconnect tick.
+  Future<void> _relayToBackend(ChatMessage msg) async {
+    if (msg.cloudStored || _relayInFlight.contains(msg)) return;
+    _relayInFlight.add(msg);
+    try {
+      final response = await _client
+          .post(
+            EndpointGuard.backend(backendUrl, '/api/mesh/chat'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'sender': msg.from, 'text': msg.text}),
+          )
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 201) {
+        msg.cloudStored = true;
+        _persistMessages();
+        _notify();
+      }
+    } catch (_) {
+      // Network/host failure: honest state is "still unknown", not "failed
+      // to send" — the hub/local queue above already carries the line.
+    } finally {
+      _relayInFlight.remove(msg);
+    }
+  }
+
+  /// Re-attempts the cloud relay for every one of this handset's own lines
+  /// that has not yet been confirmed `cloud relay stored`. Cheap to call
+  /// often: [_relayToBackend] no-ops once a line is stored or already
+  /// in flight, so a message that already succeeded costs nothing here.
+  Future<void> _retryPendingCloudRelays() async {
+    final List<ChatMessage> pending = _messages
+        .where((ChatMessage m) => m.isMine && !m.cloudStored)
+        .toList(growable: false);
+    for (final ChatMessage msg in pending) {
+      unawaited(_relayToBackend(msg));
+    }
   }
 
   // ----- Outgoing messages ------------------------------------------------
@@ -362,12 +421,22 @@ class ChatService extends ChangeNotifier {
   Future<void> sendMessage(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    if (trimmed.length > maxMessageLength) {
+      // Reject, never truncate: a truncated emergency-relevant sentence is
+      // worse than one that visibly did not send.
+      _lastError =
+          'message is longer than $maxMessageLength characters - not sent';
+      _notify();
+      return;
+    }
 
     final msg = ChatMessage(
       text: trimmed,
       from: displayName,
       isMine: true,
       time: DateTime.now(),
+      hubState:
+          _connected ? ChatHubState.handedToHub : ChatHubState.queuedLocally,
     );
     _messages.add(msg);
     _trimMessages();
@@ -381,8 +450,7 @@ class ChatService extends ChangeNotifier {
       _persistQueue();
     }
 
-    // Also relay to the cloud backend so the dashboard can display it.
-    _relayToBackend(displayName, trimmed);
+    unawaited(_relayToBackend(msg));
   }
 
   /// Puts one chat line on the wire and records it for [_isSelfEcho]. Every
@@ -394,6 +462,22 @@ class ChatService extends ChangeNotifier {
       'from': displayName,
       'text': text,
     }));
+  }
+
+  /// Advances the oldest still-[ChatHubState.queuedLocally] message with this
+  /// text to [ChatHubState.handedToHub] after [_flushQueue] puts it on the
+  /// wire. Matches by text (FIFO), not identity, because the queue only ever
+  /// stored raw strings — this is the same at-least-once/no-cross-hop-dedup
+  /// limitation documented in docs/05_PUBLIC_API.md, not a new one.
+  void _markHandedToHub(String text) {
+    for (final ChatMessage m in _messages) {
+      if (m.isMine && m.text == text && m.hubState == ChatHubState.queuedLocally) {
+        m.hubState = ChatHubState.handedToHub;
+        _persistMessages();
+        _notify();
+        return;
+      }
+    }
   }
 
   /// Whether [text] is the hub echoing back something we just sent, in which
@@ -413,7 +497,7 @@ class ChatService extends ChangeNotifier {
 
   Future<void> _backfillHistory() async {
     try {
-      final res = await http
+      final res = await _client
           .get(_historyUri)
           .timeout(const Duration(seconds: 4));
       if (res.statusCode != 200) return;
@@ -435,6 +519,7 @@ class ChatService extends ChangeNotifier {
     _pendingQueue.clear();
     for (final text in batch) {
       _sendChat(text);
+      _markHandedToHub(text);
       // Small delay so the Heltec relay can keep up.
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
@@ -466,12 +551,20 @@ class ChatService extends ChangeNotifier {
       _messages.clear();
       for (final entry in list) {
         if (entry is! Map<String, dynamic>) continue;
+        // 'hub_state'/'cloud_stored' are absent on rows written before this
+        // field existed. Defaulting to handedToHub/false is the honest
+        // reading: those older lines were always sent immediately, and an
+        // unknown cloud outcome must never be assumed stored.
         _messages.add(ChatMessage(
           text: entry['text'] as String? ?? '',
           from: entry['from'] as String? ?? '?',
           isMine: (entry['from'] as String?) == displayName,
           time: DateTime.tryParse(entry['time'] as String? ?? '') ??
               DateTime.now(),
+          hubState: (entry['hub_state'] as String?) == 'queuedLocally'
+              ? ChatHubState.queuedLocally
+              : ChatHubState.handedToHub,
+          cloudStored: entry['cloud_stored'] as bool? ?? false,
         ));
       }
       _trimMessages();
@@ -487,6 +580,8 @@ class ChatService extends ChangeNotifier {
                 'text': m.text,
                 'from': m.from,
                 'time': m.time.toIso8601String(),
+                'hub_state': m.hubState.name,
+                'cloud_stored': m.cloudStored,
               })
           .toList();
       await prefs.setString('chat_cached_messages', jsonEncode(data));

@@ -31,9 +31,15 @@ class AqOneConfig {
   /// failed host lookup, and because the error was swallowed the app reported
   /// only the buoy's timeout - so a phone with working internet showed
   /// "no buoy nearby, will send automatically" and never sent anything.
+  ///
+  /// Then briefly `incredible-liberation-production-aad7.up.railway.app`,
+  /// which `/healthz` now answers with Railway's own 404 "Application not
+  /// found" - that Railway service no longer exists. The live deployment,
+  /// confirmed against `/healthz` and matching `docs/05_PUBLIC_API.md`, is
+  /// `aihackathon2026aquanonsaqone-production.up.railway.app`.
   static const String backendBaseUrl = String.fromEnvironment(
     'BACKEND_BASE_URL',
-    defaultValue: 'https://incredible-liberation-production-aad7.up.railway.app',
+    defaultValue: 'https://aihackathon2026aquanonsaqone-production.up.railway.app',
   );
 
   static const int protocolVersion = 1;

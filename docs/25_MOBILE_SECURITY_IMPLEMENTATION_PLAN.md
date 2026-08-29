@@ -244,7 +244,7 @@ this phase.
 |---|---|---|
 | `http://192.168.4.1` | SOS payload: `v`, `vessel_id`, `boat`, optional `lat`/`lon`, optional `note`, `client_ts`; status lookup path/query with `vessel_id` | Only intended cleartext exception |
 | `ws://192.168.4.1:81` | Chat `hello` name and chat messages | Local buoy chat; `GET http://192.168.4.1/history` fetches cached history |
-| `https://incredible-liberation-production-aad7.up.railway.app` | Direct SOS payload plus `local_id` and `source`; vessel SOS lookup; fisher reply; catch logs and confirm-weight; public safety feed reads | Cloud traffic should remain HTTPS only |
+| `https://aihackathon2026aquanonsaqone-production.up.railway.app` | Direct SOS payload plus `local_id` and `source`; vessel SOS lookup; fisher reply; catch logs and confirm-weight; nearby-boat chat relay; public safety feed reads | Cloud traffic should remain HTTPS only |
 | `https://api.open-meteo.com/v1/forecast` | Query-string latitude/longitude and daily/current weather parameters | Third-party weather provider sees coarse trip area |
 | `https://marine-api.open-meteo.com/v1/marine` | Query-string marine sample latitude/longitude and forecast params | Third-party marine provider sees fixed offshore sample point |
 | `https://tile.openstreetmap.org` | Map tile requests and `User-Agent` | No profile or SOS payload, but reveals viewed map tiles |

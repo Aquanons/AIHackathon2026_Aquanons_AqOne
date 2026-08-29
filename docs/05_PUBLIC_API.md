@@ -269,6 +269,67 @@ Confirms the real reweighed catch figure.
 Requires a vessel-device bearer token. The backend updates the row only when it
 belongs to that token's vessel.
 
+## Nearby-boat group chat — **implemented**
+
+### `POST /api/mesh/chat`
+
+Relays one chat line from a handset (via the Heltec WiFi hub, or straight
+from the phone when it has internet) into the durable store the MDRRMO
+dashboard and other handsets read from. Unauthenticated — fishermen have no
+account, and neither does the hub.
+
+This is **nearby-boat group messaging**, not private or family messaging.
+`sender`, `text`, and `origin` are public group-chat metadata delivered to
+every listener of this endpoint; there is no recipient field, no consent
+model, and no private downlink. Do not build or document a "message to
+family" feature on top of this contract — that needs a new one.
+
+Body:
+
+```json
+{ "sender": "Maria Gracia", "text": "heading back, engine trouble", "origin": "app" }
+```
+
+| Field | Limit | Notes |
+|---|---|---|
+| `sender` | 1–64 chars | Self-declared boat/skipper name, not verified. |
+| `text` | 1–256 chars | Backend/hub-origin ceiling. The handset's own compose box enforces a tighter 50-character limit before a line is ever sent — see `ChatService.maxMessageLength` in `mobile/lib/ui/chathubb.dart`. |
+| `origin` | ≤16 chars, default `app` | Which leg the message arrived on (`app` or `hub`); lets the hub avoid rebroadcasting its own uplink back to the boats that just sent it. |
+
+Returns **`201` only once the row is committed** — this is the one fact a
+handset may treat as "cloud relay stored". A timeout, a non-`201` status, or
+no internet at all means the backend's state is simply unknown; the handset
+must not infer cloud delivery from network reachability alone, and must keep
+the line queued for retry rather than drop it.
+
+### `GET /api/mesh/chat?since_id=`
+
+Returns ordered nearby-group messages, unauthenticated. `since_id` (default
+`0`) returns messages with `id > since_id` in ascending order — "the next N
+after since_id" — so a hub or handset that was offline catches up in order
+instead of skipping a gap. Omitting `since_id` returns the most recent
+`limit` messages (default 50, max 200), oldest first.
+
+```json
+{
+  "messages": [
+    {
+      "id": 42,
+      "sender": "Maria Gracia",
+      "text": "heading back, engine trouble",
+      "origin": "app",
+      "created_at": "2026-08-16T04:00:00Z"
+    }
+  ]
+}
+```
+
+No cross-hop de-duplication is applied server-side or on the handset. The
+buoy firmware does not forward a stable message ID, so at-least-once
+delivery (a line possibly appearing twice across hub broadcast and cloud
+relay) is a known, accepted limitation, not a bug to mask with a text/time
+heuristic that could hide a real repeated distress call.
+
 ## Daily outlook for the app — **contract agreed, not yet implemented**
 
 ### `GET /api/public/forecast`

@@ -52,7 +52,7 @@ Overridable at build time:
 | Define | Default |
 |---|---|
 | `BUOY_BASE_URL` | `http://10.0.0.1` |
-| `BACKEND_BASE_URL` | `https://incredible-liberation-production-aad7.up.railway.app` |
+| `BACKEND_BASE_URL` | `https://aihackathon2026aquanonsaqone-production.up.railway.app` |
 
 ## Languages
 
