@@ -3,6 +3,8 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
 from app.ai.squall import (
+    QUALITY_MIN_BUOYS,
+    assess_array_quality,
     build_buoys,
     build_history,
     estimate_propagation_vector,
@@ -18,6 +20,14 @@ def _buoy_rows() -> list[dict[str, object]]:
         {'id': 'B02', 'lat': 11.6992, 'lon': 122.4667, 'contact_radius_m': 900},
         {'id': 'B03', 'lat': 11.7192, 'lon': 122.5667, 'contact_radius_m': 900},
         {'id': 'B04', 'lat': 11.7192, 'lon': 122.6667, 'contact_radius_m': 900},
+    ]
+
+
+def _collinear_buoy_rows() -> list[dict[str, object]]:
+    return [
+        {'id': 'B01', 'lat': 11.6892, 'lon': 122.3667, 'contact_radius_m': 900},
+        {'id': 'B02', 'lat': 11.6892, 'lon': 122.4667, 'contact_radius_m': 900},
+        {'id': 'B03', 'lat': 11.6892, 'lon': 122.5667, 'contact_radius_m': 900},
     ]
 
 
@@ -89,6 +99,123 @@ def test_propagation_vector_flags_collinear_geometry_and_caps_confidence():
 
     assert estimate.geometry_degenerate is True
     assert estimate.r2 == 0.0
+
+
+def _quality_readings(buoy_ids: list[str], as_of: datetime) -> list[dict[str, object]]:
+    """5-minute-step readings covering the full 90-minute lookback, no gaps."""
+    rows: list[dict[str, object]] = []
+    for offset_minutes in range(90, -1, -5):
+        at = as_of - timedelta(minutes=offset_minutes)
+        for index, buoy_id in enumerate(buoy_ids):
+            rows.append({'buoy_id': buoy_id, 'observed_at': at, 'pressure_hpa': 1015.0 - index * 0.02})
+    return rows
+
+
+def test_assess_array_quality_accepts_a_complete_fresh_non_collinear_array():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+    history = build_history(_quality_readings(['B01', 'B02', 'B03', 'B04'], as_of))
+
+    quality = assess_array_quality(history, buoys, as_of)
+
+    assert quality.ok is True
+    assert quality.reason is None
+    assert set(quality.qualifying_buoy_ids) == {'B01', 'B02', 'B03', 'B04'}
+    assert quality.newest_observed_at == as_of
+
+
+def test_assess_array_quality_reports_insufficient_data_when_no_readings_exist():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+
+    quality = assess_array_quality({}, buoys, as_of)
+
+    assert quality.ok is False
+    assert f'0 of {QUALITY_MIN_BUOYS}' in quality.reason
+    assert quality.newest_observed_at is None
+    assert quality.qualifying_buoy_ids == []
+
+
+def test_assess_array_quality_excludes_a_stale_buoy_but_still_qualifies_with_three():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+    rows = _quality_readings(['B01', 'B02', 'B03', 'B04'], as_of)
+    # B04's latest reading is 30 minutes old - well past the 10-minute freshness bound.
+    rows = [r for r in rows if not (r['buoy_id'] == 'B04' and r['observed_at'] > as_of - timedelta(minutes=30))]
+    history = build_history(rows)
+
+    quality = assess_array_quality(history, buoys, as_of)
+
+    assert quality.ok is True
+    assert set(quality.qualifying_buoy_ids) == {'B01', 'B02', 'B03'}
+
+
+def test_assess_array_quality_is_insufficient_with_only_two_fresh_buoys():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+    rows = _quality_readings(['B01', 'B02', 'B03', 'B04'], as_of)
+    stale_cutoff = as_of - timedelta(minutes=30)
+    rows = [r for r in rows if not (r['buoy_id'] in {'B03', 'B04'} and r['observed_at'] > stale_cutoff)]
+    history = build_history(rows)
+
+    quality = assess_array_quality(history, buoys, as_of)
+
+    assert quality.ok is False
+    assert 'B03' not in quality.qualifying_buoy_ids
+    assert 'B04' not in quality.qualifying_buoy_ids
+
+
+def test_assess_array_quality_rejects_a_buoy_with_out_of_range_pressure():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+    rows = _quality_readings(['B01', 'B02', 'B03', 'B04'], as_of)
+    for row in rows:
+        if row['buoy_id'] == 'B04' and row['observed_at'] == as_of:
+            row['pressure_hpa'] = 5000.0  # sensor fault, well outside the sanity range
+
+    quality = assess_array_quality(build_history(rows), buoys, as_of)
+
+    assert quality.ok is True
+    assert 'B04' not in quality.qualifying_buoy_ids
+
+
+def test_assess_array_quality_rejects_a_gap_wider_than_tolerance():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+    rows = _quality_readings(['B01', 'B02', 'B03', 'B04'], as_of)
+    # Drop a real 20-minute stretch out of B04's history, distinct from staleness.
+    gap_start = as_of - timedelta(minutes=50)
+    gap_end = as_of - timedelta(minutes=30)
+    rows = [r for r in rows if not (r['buoy_id'] == 'B04' and gap_start < r['observed_at'] < gap_end)]
+
+    quality = assess_array_quality(build_history(rows), buoys, as_of)
+
+    assert quality.ok is True
+    assert 'B04' not in quality.qualifying_buoy_ids
+
+
+def test_assess_array_quality_rejects_collinear_geometry_even_with_enough_fresh_buoys():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_collinear_buoy_rows())
+    history = build_history(_quality_readings(['B01', 'B02', 'B03'], as_of))
+
+    quality = assess_array_quality(history, buoys, as_of)
+
+    assert quality.ok is False
+    assert len(quality.qualifying_buoy_ids) == 3  # each buoy individually qualifies
+    assert 'geometry' in quality.reason or 'collinear' in quality.reason or 'degenerate' in quality.reason
+
+
+def test_assess_array_quality_reports_newest_observation_even_when_insufficient():
+    as_of = datetime.now(UTC)
+    buoys = build_buoys(_buoy_rows())
+    lone_reading_at = as_of - timedelta(minutes=3)
+    history = build_history([{'buoy_id': 'B01', 'observed_at': lone_reading_at, 'pressure_hpa': 1010.0}])
+
+    quality = assess_array_quality(history, buoys, as_of)
+
+    assert quality.ok is False
+    assert quality.newest_observed_at == lone_reading_at
 
 
 class _FakeSquallPool:
