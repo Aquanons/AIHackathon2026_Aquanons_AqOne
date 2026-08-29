@@ -1,3 +1,5 @@
+<p align="center"><img src="Assets/aqoneLogo.png" alt="AqOne logo" width="320"></p>
+
 # AqOne
 
 **An offline maritime safety network and AI-assisted search-and-rescue platform for municipal fishers operating beyond cellular coverage.**
