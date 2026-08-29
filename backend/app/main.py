@@ -21,6 +21,7 @@ from app.api.drift import router as drift_router
 from app.api.hotspots import router as hotspots_router
 from app.api.mesh import router as mesh_router
 from app.api.metrics import router as metrics_router
+from app.api.pressure_events import router as pressure_events_router
 from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
 from app.api.sos import protected_router as sos_read_router
@@ -71,6 +72,13 @@ app.include_router(catch_ingest_router)
 # manufacture a contact event, and a gateway key must not read dispatcher
 # data. See app/api/contacts.py.
 app.include_router(contacts_router)
+
+# Gateway-only pressure-event ingest (docs/04_INGEST_API.md "Pressure
+# events"), the trusted-telemetry source squall nowcasting is gated on
+# (docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 1). Same
+# per-route require_gateway_key guard as contacts_router, for the same
+# reason. See app/api/pressure_events.py.
+app.include_router(pressure_events_router)
 
 # Fishing spots (community-reported "fish hotspots") - both ingest and read
 # are unauthenticated here, unlike catch logging: this is public, shared
