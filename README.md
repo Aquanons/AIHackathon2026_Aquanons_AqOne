@@ -7,7 +7,7 @@
 Built by **Team Aquanons** for AI Fest 2026.
 For New Washington, Aklan, Philippines.
 
-**Live deployment:** https://incredible-liberation-production-aad7.up.railway.app/
+**Live deployment:** https://aihackathon2026aquanonsaqone-production.up.railway.app/
 **Evaluator login:** `tester@gmail.com` / `12345678`
 
 ---
@@ -37,28 +37,41 @@ This table precedes every other claim in this document.
 
 | Component | Status |
 |---|---|
-| **FastAPI + PostgreSQL backend on Railway** | ✅ Deployed, healthcheck green, 89 tests passing (1 expected failure) |
+| **FastAPI + PostgreSQL backend on Railway** | ✅ Live: `/healthz` and `/health/ready` returned 200 on 29 August 2026. The recorded 89-pass/1-expected-failure backend result predates the latest commit and has not been rerun in the current environment. |
 | **Drift prediction** (Monte Carlo Lagrangian) | ✅ Built, measured, live |
 | **Bayesian search re-tasking** | ✅ Built, measured, live |
-| **Squall nowcasting** (trained classifier) | ✅ Built, measured, live |
+| **Squall nowcasting** (trained classifier) | 🟡 Built and deployed, but the current public feed is synthetic and its newest reading is 14 August 2026; do not treat its active RETURN NOW alert as current conditions. |
 | **Trip anomaly / overdue detection** | ✅ Built, measured, live |
 | **Marine hazard model** (trained on real data) | ✅ Built, runs in the browser |
 | **SOS pipeline** phone → backend → dashboard | ✅ Working, with de-duplication |
 | **Responder loop** acknowledge → ETA → handset | ✅ Working |
 | **MDRRMO dashboard** | ✅ Live SOS feed, drift contours, squall watch |
-| **Flutter handset app** | ✅ SOS, offline outbox, squall alarm, weather, and vessel-device authorization for routine data |
+| **Flutter handset app** | 🟡 SOS, offline outbox, squall alarm, weather, and vessel-device authorization are implemented. After regenerating localization outputs, `dart analyze` still reports two constructor-call errors; the bundled APK predates recent changes. |
 | **Voluntary catch logging** | ✅ Offline queue with authenticated upload when the phone regains internet |
-| **Modelled fish-hotspot guidance** | ❌ Contract agreed; server-side model and public endpoint are not yet implemented |
+| **Catch-activity hotspot guidance** | 🟡 A deployed `catch-density-v1` endpoint aggregates consented logs into coarse cells with a three-reporter minimum. It returned no eligible cells on 29 August 2026 and is not a predictive catch model. |
 | **Buoy firmware** (WiFi AP + SOS gateway) | ✅ Written and flashed |
 | **Multi-hop LoRa mesh** | ❌ Frame spec written, relay code not implemented |
 | **Outdoor range test** | ❌ Not performed. All range figures are datasheet values |
 | **Live roster / headcount** | ❌ Roadmap (PRD §5.6) |
-| **Buoy REST endpoint** | ❌ Dashboard buoy markers still hardcoded |
+| **Buoy REST endpoint** | 🟡 Public buoy records are available; dashboard buoy markers and health data remain hardcoded/demo data. |
 
 **The end-to-end path that works today:** a phone joins the buoy's WiFi, sends
 an SOS, it reaches the deployed backend, appears on the MDRRMO dashboard within
 10 seconds, a dispatcher acknowledges with an ETA, and that ETA appears on the
 fisher's handset. **No LoRa hardware is required for this path.**
+
+#### Verification snapshot — 29 August 2026
+
+- The corrected Railway deployment, dashboard, `/healthz`, `/health/ready`, and
+  public buoy, squall, and hotspot feeds all returned HTTP 200.
+- Dashboard JavaScript passed syntax checks and the dashboard utility suite
+  passed 21/21 tests. Backend Python bytecode compilation also passed; the full
+  backend test suite could not be rerun in the available environment.
+- The public squall feed returned a synthetic RETURN NOW detection based on
+  data from 14 August 2026. It is stale demo/model data, not a current warning.
+- After `flutter gen-l10n`, `dart analyze` reports two errors in the chat-page
+  constructor call. Do not rebuild or present the bundled APK as reflecting the
+  current source until those errors are fixed and Flutter tests pass.
 
 ### Vessel-device authorization for routine data
 
@@ -79,14 +92,14 @@ for verified implementation status.
 AqOne also has an optional fisheries-intelligence track. Fishers may choose to
 record catch logs, which are stored locally first and uploaded only when the
 phone has internet; they never use LoRa airtime reserved for emergencies.
-Modelled fish-hotspot guidance is planned to combine consented, aggregated
-catch logs with seasonal and environmental indicators. It must show confidence,
-coverage, and data age, must not expose an individual fisher's productive
-location, and can never override a safety warning. It is **not implemented
-yet**: the app deliberately shows no hotspot layer until the server-side model
-and endpoint exist. See [`docs/23_INTEGRATED_SYSTEM_DESIGN.md`](docs/23_INTEGRATED_SYSTEM_DESIGN.md)
-for the proposed subsystem and [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md)
-for its current API status.
+Catch-activity hotspot guidance currently aggregates consented logs into coarse
+cells, requires at least three independent reporters, and never exposes an
+individual fisher's productive location. It is not a predictive catch model,
+does not use LoRa airtime, and can never override a safety warning. The public
+endpoint is deployed but returned no qualifying cells on 29 August 2026. See
+[`docs/23_INTEGRATED_SYSTEM_DESIGN.md`](docs/23_INTEGRATED_SYSTEM_DESIGN.md)
+and [`docs/05_PUBLIC_API.md`](docs/05_PUBLIC_API.md) for the subsystem and API
+contract.
 
 ### Week 1 dashboard/Flutter contract sprint (in progress)
 
@@ -261,7 +274,7 @@ Full declarations, including bias analysis and hardware disclosure, are in
 
 The system is deployed and can be evaluated without installing anything.
 
-**Dashboard:** https://incredible-liberation-production-aad7.up.railway.app/
+**Dashboard:** https://aihackathon2026aquanonsaqone-production.up.railway.app/
 
 **Evaluator login**
 
@@ -276,13 +289,13 @@ removed after evaluation.
 Confirm the backend is live:
 
 ```bash
-curl https://incredible-liberation-production-aad7.up.railway.app/healthz
+curl https://aihackathon2026aquanonsaqone-production.up.railway.app/healthz
 ```
 
 Send a test SOS and watch it appear on the dashboard map within 10 seconds:
 
 ```bash
-curl -X POST https://incredible-liberation-production-aad7.up.railway.app/api/sos \
+curl -X POST https://aihackathon2026aquanonsaqone-production.up.railway.app/api/sos \
   -H "Content-Type: application/json" \
   -d '{"vessel_id":"TEST-01","client_ts":1754300000,"boat":"Test Banca",
        "lat":11.6839,"lon":122.4471,"source":"buoy","buoy_id":"BUOY01","seq":1}'
