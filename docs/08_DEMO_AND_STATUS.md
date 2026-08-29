@@ -148,6 +148,171 @@ failures already present at the Phase 0 baseline of this handoff:**
   exception in all three locales; it does not confirm the words are
   correct.
 
+## 2026-08-29 — automatic distress detection: open-trip freshness window decided
+
+Per `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 2 item
+2, a stop-and-ask condition: "If the team has not selected a safe cadence,
+stop this phase for that decision; guessing it changes emergency behaviour."
+
+**Decision: `OPEN_TRIP_FRESHNESS_WINDOW = 12 hours`**
+(`backend/app/ai/anomaly_service.py`). Made by the project lead, not guessed.
+
+How long after a vessel's last buoy contact its most recent trip still counts
+as "possibly still open" for scoring, versus excluded as stale/completed.
+Rationale considered:
+
+- Too short would exclude a vessel that is *already* hours overdue — the
+  exact case this feature exists to catch, since an overdue vessel's defining
+  characteristic is a growing gap since its last contact.
+- Too long lets a trip from days or weeks ago re-alert just because the wall
+  clock advanced — the design flaw `docs/31_DEMO_VERIFICATION_01.md` found in
+  the previous dataset-max-timestamp approach, where the whole synthetic
+  fleet scored ≈0.85 and alerted because their contacts were days behind the
+  demo's freshly-written ones.
+- The synthetic generator (`backend/app/simulation/generator.py`) models full
+  trips — departure to return — of roughly 6–13 hours (departure ~04:20–06:35,
+  fishing 1.8–6.5h, return same day ~16:10–19:15). 12 hours covers a complete
+  trip cycle with headroom, while still excluding anything from a prior day.
+
+There is currently no explicit "trip completed" signal other than a new
+`trip_id` starting later, so this window is the only mechanism that
+distinguishes "still out, buoy just hasn't seen them for a while" from "went
+home a long time ago, nothing to worry about." It is a single named constant,
+not tuned per vessel or scenario, and Phase 2's own instruction was explicit
+that this work must not extend to retuning `trip_profile.py`'s model weights
+or thresholds — only this eligibility guard.
+
+## 2026-08-29 — automatic distress detection: offline evaluator fixed, false-alarm figure retracted
+
+Per `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 4.
+
+**The bug.** `backend/app/ai/trip_profile_eval.py`'s normal-trip path
+previously re-scored each trip only at its own historical contact
+timestamps (`as_of = contacts[idx - 1].observed_at`), never past its own
+final contact. `status == 'alert'` was therefore checked only at moments
+the vessel was, by construction, still actively checking in — the
+published **0% false-alarm rate across 496 normal trips was true by
+construction, not by measurement** (`docs/30_DEMO_DECISION_01_ANOMALY.md`
+§1.1 predicted exactly this).
+
+**The fix.** Normal trips now sweep `as_of` forward from their own last
+contact in 5-minute steps over the same 12-hour horizon the incident path
+already used (matching `OPEN_TRIP_FRESHNESS_WINDOW`, the Phase 2 decision
+above — the live pipeline never scores a trip past that age either, so this
+measures exactly the window production can reach). Core logic extracted
+into a pure `evaluate(rows, incidents)` function
+(`backend/app/ai/trip_profile_eval.py`) so it can be regression-tested
+without a database.
+
+**What was verified here, without a database** (`backend/tests/test_trip_profile_eval.py`,
+3/3 passing): with a controlled fixture — four historical trips on a fixed
+three-buoy route, then a fifth trip that completes the same route and then
+legitimately goes quiet — the corrected evaluator reaches `status: 'alert'`
+about **two hours** after the vessel's last real contact, purely because no
+further contact ever arrives. The pre-fix code could never reach this
+outcome for any trip, by construction, regardless of the underlying model.
+This reproduces exactly the mechanism `docs/31_DEMO_VERIFICATION_01.md`
+found separately (a model with no "trip complete" concept eventually reads
+silence as overdue) and confirms the fix actually exercises time the vessel
+was never observed at.
+
+**What was not run.** `python -m app.ai.trip_profile_eval` against the real
+496-normal-trip synthetic dataset — same blocker recorded throughout this
+file: no working local Postgres credential, Docker Desktop's engine
+unreachable. The real false-alarm rate is therefore **unmeasured**, not
+republished as a guess. `backend/app/ai/models/eval_results.json`'s
+`trip_anomaly.false_alarm_rate` has been set to `null` with a
+`retracted_reason` field explaining why, and the README's measured-performance
+table and status row were updated to match (say "retracted" / "demo,
+simulation-verified only" rather than the stale 0%) — per decision 30 §4:
+"Publish whatever it gives... The real number may be considerably worse than
+0%. That is the point." `median_detection_latency_minutes` (55 minutes) and
+`incidents_detected` (8) are unaffected; decision 30 already verified that
+sweep. Whoever next has a working local Postgres or a working Docker install
+should run `python -m app.simulation.generator --days 14 --seed 42` then
+`python -m app.ai.trip_profile_eval` and record the real number here.
+
+## 2026-08-29 — automatic distress detection Phase 5: release gate green, deployment/device verification not performed
+
+Per `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 5,
+same environment as every entry above: Windows 11 sandbox, Python 3.11.9,
+Node, on branch `codex/short-messaging-weather-advisories`, continuing
+directly from the Phase 1-4 work recorded above.
+
+**Automated release gate — green, same pre-existing failures as every other
+entry in this file:**
+
+- `cd backend && python -m pytest -q` — 164 passed, 1 xfailed,
+  1 pre-existing failure (`test_demo.py::test_firing_same_beat_is_idempotent`)
+  — identical to every earlier baseline in this file, unrelated to this work.
+  `ruff check .` — same 8 pre-existing issues confined to
+  `calibrate_demo_squall.py`, untouched.
+- `cd web && node --test test/dashboard-utils.test.js` — 51/51 passed
+  (baseline 32, +19 for the Trip Checks queue's pure render helpers added
+  in Phase 3).
+
+**What was directly verified, read-only, against the live deployment.**
+The current Railway URL from the README (not the dead
+`incredible-liberation-production-aad7` host retired in an earlier
+handoff):
+
+- `GET https://aihackathon2026aquanonsaqone-production.up.railway.app/healthz`
+  → `200 {"status":"ok"}`.
+- `GET .../api/ai/anomaly/active` (no token) → `401 {"detail":"authentication
+  required"}` — the pre-existing route's auth boundary is intact in
+  production.
+- `GET .../api/ai/anomaly/cases/open` (no token) → `404 {"detail":"Not
+  Found"}` — confirms, honestly, that **none of this handoff's Phase 1-4
+  code is deployed**. The new contact-ingest endpoint, the cases API, and
+  the three new migrations exist only on the local branch.
+
+No write request of any kind was made against the live deployment - these
+were plain unauthenticated `GET`s, per the same read-only discipline every
+earlier entry in this file used.
+
+**What was not done, and why, rather than skipped silently:**
+
+- **`GATEWAY_API_KEY` was not configured anywhere.** Doing so on the real
+  Railway service requires Railway account/project access this environment
+  does not have, and setting a production secret is exactly the kind of
+  infrastructure change that needs the project owner's own credentials, not
+  an agent guessing at deployment console access.
+- **No fixture contact stream was submitted anywhere**, staging or
+  production. Phase 5 item 2 requires a *non-production or explicitly
+  approved demo environment* for this - none was available, and this
+  handoff's own Phase 1-4 code is not deployed to try it against even if
+  one existed.
+- **The manual, device-level acceptance script (submit a fixture stream,
+  watch a verification case and a responder-attention case appear, act on
+  one, reload, confirm persistence, confirm a stale/normal fixture raises
+  nothing) could not be completed** - same root blocker as every earlier
+  entry in this file: no working local Postgres credential, Docker
+  Desktop's engine unreachable, so no local backend could be started to
+  drive even a local version of this script. The backend-level equivalent
+  of every piece of this script - low/high confidence routing, one case per
+  repeated evaluation, each responder action surviving a re-evaluation,
+  auth boundaries, a stale trip producing no case - is covered by
+  `backend/tests/test_anomaly_cases.py` (7/7 passing) and
+  `backend/tests/test_anomaly_source.py`/`test_anomaly_active_readonly.py`
+  against fake connection pools, not a real database or a real dispatcher's
+  screen.
+- **Nothing from this handoff has been pushed, merged, or deployed.**
+  Everything above is on the local branch only.
+
+**What this means concretely.** The five phases of docs/38 are implemented,
+unit- and route-level tested without a database, and the live deployment's
+existing surface was confirmed reachable and correctly protected - but
+distress-detection-over-a-real-gateway-connection remains exactly what
+`docs/38`'s own purpose section already says it is: unproven until a real
+gateway submits real contact events and a real Postgres instance is
+available to run migrations, the scheduled evaluator, and the manual
+acceptance script against. Whoever next has Railway project access and/or a
+working local Postgres/Docker should: set `GATEWAY_API_KEY` and confirm the
+Railway cron service for `python -m app.ai.run_anomaly_evaluation`
+(README "Scheduled anomaly evaluation"), run `migrate.py` to apply
+`016_contact_events.sql` and `017_anomaly_cases.sql`, then run this
+phase's manual acceptance script for real.
+
 ---
 
 ## Judging weights — build toward these

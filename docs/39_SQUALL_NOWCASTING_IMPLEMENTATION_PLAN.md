@@ -147,6 +147,42 @@ The finished software must satisfy all of these conditions:
 - Assert that synthetic rows are invisible to the live loader and vice versa.
 - Run targeted squall/ingest tests and `ruff check .` from `backend`.
 
+### Policy decision, recorded 2026-08-29
+
+Satisfies Work item 1's stop condition. Approved by the MDRRMO/technical
+owner via the user in this session:
+
+- Sample interval: every 5 minutes.
+- Latest-reading age: no more than 10 minutes behind server time.
+- Minimum array: 3 distinct fixed buoys with valid readings.
+- History requirement: each qualifying buoy must cover the 90-minute model
+  lookback; no gap may exceed 10 minutes.
+- Geometry: the qualifying buoy locations must be non-collinear, via the
+  existing `geometry_degenerate == false` check — no new distance threshold.
+- Pressure sanity range: 850.0–1100.0 hPa, finite numeric values only.
+- Any failed requirement returns `unknown`/`insufficient_data`, never
+  `clear` or `RETURN NOW`.
+- Synthetic data remains demo-only and visibly labelled.
+- `RETURN NOW` remains disabled for live use until the later
+  field-validation and MDRRMO approval gate (Phase 4) is met.
+
+Implemented as `assess_array_quality()` in `backend/app/ai/squall.py`,
+using the constants above (`QUALITY_SAMPLE_INTERVAL_MINUTES`,
+`QUALITY_MAX_READING_AGE_MINUTES`, `QUALITY_MIN_BUOYS`,
+`QUALITY_MAX_GAP_MINUTES`, `QUALITY_PRESSURE_MIN_HPA`,
+`QUALITY_PRESSURE_MAX_HPA`).
+
+**Scope landed in this pass vs. deferred:** the quality-assessment function
+itself is complete and unit-tested (`backend/tests/test_squall.py`). Wiring
+it into `app/api/squall.py`/`app/api/public.py` — switching production
+reads to live-only rows and rejecting an insufficient array before
+`extract_pressure_features()` runs — is deferred to land together with
+Phase 3's demo-only control surface, so the currently-working synthetic
+demo path is never left unable to display anything in between. Until that
+wiring lands, `_latest_before()`'s nominal-pressure fallback for an empty
+series is also left as-is: it is only unsafe on an unguarded read path, and
+today's only caller of that path is the synthetic demo, not a live array.
+
 ### Commit
 
 `fix(squall): reject stale and incomplete pressure arrays`

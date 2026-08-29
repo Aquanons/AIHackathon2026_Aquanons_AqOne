@@ -22,6 +22,21 @@ LOOKBACK_MINUTES = 90
 STEP_MINUTES = 5
 DEFAULT_THRESHOLD = 0.55
 
+# Telemetry-quality policy for live squall arrays
+# (docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 2), approved
+# 2026-08-29. Governs assess_array_quality() only - it decides which buoys
+# are trustworthy enough to feed a live nowcast, and is deliberately
+# separate from PressureEventIn's ingest-time sanity check
+# (app/api/pressure_events.py), which only rejects physically impossible
+# readings at write time. QUALITY_PRESSURE_MIN/MAX_HPA happen to match that
+# ingest bound exactly, by policy choice, not by code sharing.
+QUALITY_SAMPLE_INTERVAL_MINUTES = 5
+QUALITY_MAX_READING_AGE_MINUTES = 10
+QUALITY_MAX_GAP_MINUTES = 10
+QUALITY_MIN_BUOYS = 3
+QUALITY_PRESSURE_MIN_HPA = 850.0
+QUALITY_PRESSURE_MAX_HPA = 1100.0
+
 FEATURE_NAMES = [
     'mean_tendency_30',
     'min_tendency_30',
@@ -70,6 +85,22 @@ class BuoyFeatureRow:
     second_derivative: float
     deviation_from_mean: float
     onset_time: datetime | None
+
+
+@dataclass(frozen=True)
+class ArrayQuality:
+    """Whether a pressure array is trustworthy enough to nowcast from.
+
+    Produced by assess_array_quality(), which must run before
+    extract_pressure_features() on any array that might reach a live
+    detection - an insufficient array must report insufficient_data, never a
+    fabricated calm baseline (docs/39 Phase 2).
+    """
+
+    ok: bool
+    reason: str | None
+    newest_observed_at: datetime | None
+    qualifying_buoy_ids: list[str]
 
 
 @dataclass(frozen=True)
@@ -231,6 +262,23 @@ def _window_times(as_of: datetime, lookback_minutes: int) -> list[datetime]:
     return [_ensure_tz(as_of - timedelta(minutes=minutes)) for minutes in range(lookback_minutes, -1, -STEP_MINUTES)]
 
 
+def _geometry_degenerate(x: np.ndarray, y: np.ndarray) -> bool:
+    """SVD-based collinearity test on a set of local (x, y) positions.
+
+    Shared by estimate_propagation_vector (below) and
+    assess_array_quality's geometry check - the plan requires reusing this
+    exact test rather than inventing a separate distance threshold for the
+    quality gate (docs/39 Phase 2).
+    """
+    centered = np.column_stack((x - float(np.mean(x)), y - float(np.mean(y))))
+    singular_values = np.linalg.svd(centered, compute_uv=False)
+    return bool(
+        len(singular_values) < 2
+        or singular_values[-1] <= 1e-6
+        or (singular_values[0] / max(singular_values[-1], 1e-9)) >= 100.0
+    )
+
+
 def estimate_propagation_vector(onset_times: dict[str, datetime], buoys: dict[str, BuoyMeta]) -> PropagationEstimate:
     if len(onset_times) < 3:
         coverage = len(onset_times) / max(1, len(buoys))
@@ -247,13 +295,7 @@ def estimate_propagation_vector(onset_times: dict[str, datetime], buoys: dict[st
         [(onset_times[buoy_id] - anchor).total_seconds() / 60.0 for buoy_id in ordered_ids],
         dtype=float,
     )
-    centered = np.column_stack((x - float(np.mean(x)), y - float(np.mean(y))))
-    singular_values = np.linalg.svd(centered, compute_uv=False)
-    geometry_degenerate = bool(
-        len(singular_values) < 2
-        or singular_values[-1] <= 1e-6
-        or (singular_values[0] / max(singular_values[-1], 1e-9)) >= 100.0
-    )
+    geometry_degenerate = _geometry_degenerate(x, y)
 
     best_r2 = -1.0
     best_speed = float('inf') if geometry_degenerate else 0.0
@@ -309,6 +351,90 @@ def estimate_propagation_vector(onset_times: dict[str, datetime], buoys: dict[st
         origin_lon=origin_lon,
         onset_anchor=anchor,
         geometry_degenerate=geometry_degenerate,
+    )
+
+
+def _buoy_readings_are_sane(readings: list[PressureReading]) -> bool:
+    return all(
+        math.isfinite(reading.pressure_hpa)
+        and QUALITY_PRESSURE_MIN_HPA <= reading.pressure_hpa <= QUALITY_PRESSURE_MAX_HPA
+        for reading in readings
+    )
+
+
+def assess_array_quality(
+    history: dict[str, list[PressureReading]],
+    buoys: dict[str, BuoyMeta],
+    as_of: datetime,
+    lookback_minutes: int = LOOKBACK_MINUTES,
+) -> ArrayQuality:
+    """Decide whether the array is trustworthy enough to nowcast from.
+
+    Must run before extract_pressure_features() on any array that might
+    reach a live detection (docs/39 Phase 2). A buoy only qualifies if its
+    latest reading is fresh, its readings covering the lookback window have
+    no gap wider than the approved tolerance, and every value in that window
+    is a finite, physically-sane pressure. At least QUALITY_MIN_BUOYS must
+    qualify, and their locations must be non-degenerate (reusing
+    _geometry_degenerate - the same test estimate_propagation_vector uses,
+    per the plan's instruction not to invent a separate distance threshold).
+    """
+    as_of = _ensure_tz(as_of)
+    window_start = as_of - timedelta(minutes=lookback_minutes)
+    max_gap = timedelta(minutes=QUALITY_MAX_GAP_MINUTES)
+    max_age = timedelta(minutes=QUALITY_MAX_READING_AGE_MINUTES)
+    # A reading up to one gap-tolerance before window_start still covers the
+    # start of the lookback window, the same way _latest_before() carries a
+    # prior reading forward to a grid point - it just must not be older.
+    anchor_cutoff = window_start - max_gap
+
+    newest_observed_at: datetime | None = None
+    qualifying_buoy_ids: list[str] = []
+
+    for buoy_id in buoys:
+        series = history.get(buoy_id, [])  # build_history() sorts ascending
+        if not series:
+            continue
+        latest = series[-1].observed_at
+        if newest_observed_at is None or latest > newest_observed_at:
+            newest_observed_at = latest
+        if as_of - latest > max_age:
+            continue  # stale
+
+        windowed = [r for r in series if anchor_cutoff <= r.observed_at <= as_of]
+        if not windowed or not _buoy_readings_are_sane(windowed):
+            continue
+        if windowed[0].observed_at - window_start > max_gap:
+            continue  # no reading close enough to cover the start of the window
+        if any(b.observed_at - a.observed_at > max_gap for a, b in zip(windowed, windowed[1:], strict=False)):
+            continue  # a mid-window gap wider than tolerated
+
+        qualifying_buoy_ids.append(buoy_id)
+
+    if len(qualifying_buoy_ids) < QUALITY_MIN_BUOYS:
+        return ArrayQuality(
+            ok=False,
+            reason=(
+                f'only {len(qualifying_buoy_ids)} of {QUALITY_MIN_BUOYS} required buoys have '
+                f'fresh (<= {QUALITY_MAX_READING_AGE_MINUTES}min old), gap-free, in-range readings'
+            ),
+            newest_observed_at=newest_observed_at,
+            qualifying_buoy_ids=qualifying_buoy_ids,
+        )
+
+    lat = np.asarray([buoys[buoy_id].lat for buoy_id in qualifying_buoy_ids], dtype=float)
+    lon = np.asarray([buoys[buoy_id].lon for buoy_id in qualifying_buoy_ids], dtype=float)
+    x, y = _to_xy(lat, lon, float(lat.mean()), float(lon.mean()))
+    if _geometry_degenerate(x, y):
+        return ArrayQuality(
+            ok=False,
+            reason='qualifying buoy locations are collinear/degenerate - cannot estimate propagation',
+            newest_observed_at=newest_observed_at,
+            qualifying_buoy_ids=qualifying_buoy_ids,
+        )
+
+    return ArrayQuality(
+        ok=True, reason=None, newest_observed_at=newest_observed_at, qualifying_buoy_ids=qualifying_buoy_ids
     )
 
 

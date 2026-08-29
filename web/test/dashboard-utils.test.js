@@ -17,7 +17,12 @@ const {
   freshnessLabel,
   alertBadge,
   formatEta,
-  responderStatusHtml
+  responderStatusHtml,
+  caseTypeBadge,
+  caseStatusLabel,
+  formatDataAge,
+  tripCheckRowHtml,
+  tripChecksListHtml
 } = require('../js/dashboard-utils.js');
 
 test('escapeHtml', async (t) => {
@@ -216,5 +221,163 @@ test('responderStatusHtml', async (t) => {
     const html = responderStatusHtml({ acknowledgedAt: '2026-08-16T08:00:00Z' });
     assert.ok(!html.includes('Fisher Reply'));
     assert.ok(!html.includes('Responder Note'));
+  });
+});
+
+// docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md Phase 3: the
+// "Trip checks" queue, GET /api/ai/anomaly/cases/open.
+
+test('caseTypeBadge', async (t) => {
+  await t.test('low-confidence cases read Verification, never a severity word', () => {
+    const badge = caseTypeBadge('verification');
+    assert.equal(badge.text, 'Verification');
+    assert.equal(badge.cssClass, 'case-type-verification');
+  });
+
+  await t.test('high-confidence cases read Responder Attention', () => {
+    const badge = caseTypeBadge('responder_attention');
+    assert.equal(badge.text, 'Responder Attention');
+    assert.equal(badge.cssClass, 'case-type-responder-attention');
+  });
+});
+
+test('caseStatusLabel', async (t) => {
+  await t.test('a freshly created case with no action yet reads Open', () => {
+    assert.equal(caseStatusLabel({}).text, 'Open');
+  });
+
+  await t.test('shows the most-final action set, resolved beating everything else', () => {
+    assert.equal(caseStatusLabel({ acknowledgedAt: '2026-08-16T08:00:00Z' }).text, 'Acknowledged');
+    assert.equal(caseStatusLabel({ dismissedAt: '2026-08-16T08:00:00Z' }).text, 'Dismissed');
+    assert.equal(caseStatusLabel({ escalatedAt: '2026-08-16T08:00:00Z' }).text, 'Escalated');
+    assert.equal(
+      caseStatusLabel({ acknowledgedAt: '2026-08-16T08:00:00Z', resolvedAt: '2026-08-16T09:00:00Z' }).text,
+      'Resolved'
+    );
+  });
+});
+
+test('formatDataAge', async (t) => {
+  await t.test('shows minutes only for anything under an hour', () => {
+    assert.equal(formatDataAge(600), '10m old');
+  });
+
+  await t.test('shows hours and minutes past an hour', () => {
+    assert.equal(formatDataAge(7500), '2h 5m old');
+  });
+
+  await t.test('never claims a fresh age for missing or invalid data', () => {
+    assert.equal(formatDataAge(null), 'unknown age');
+    assert.equal(formatDataAge(undefined), 'unknown age');
+    assert.equal(formatDataAge(-5), 'unknown age');
+  });
+});
+
+test('tripCheckRowHtml / tripChecksListHtml', async (t) => {
+  await t.test('an empty queue reads as an honest empty state, not a blank panel', () => {
+    const html = tripChecksListHtml([]);
+    assert.ok(html.includes('No trip checks'));
+  });
+
+  await t.test('renders a verification (low-confidence) item with its type and reason', () => {
+    const html = tripChecksListHtml([{
+      id: 42,
+      vessel_id: 'NW-001',
+      trip_id: 'trip-current',
+      case_type: 'verification',
+      score: 0.42,
+      status: 'watch',
+      reasons: [{ code: 'overdue', contribution: 0.3, description: 'Late beyond the expected-contact window.' }],
+      source: 'live',
+      data_age_seconds: 3600,
+      acknowledged_at: null,
+      dismissed_at: null,
+      escalated_at: null,
+      resolved_at: null
+    }]);
+    assert.ok(html.includes('Verification'));
+    assert.ok(html.includes('case-type-verification'));
+    assert.ok(html.includes('NW-001'));
+    assert.ok(html.includes('Late beyond the expected-contact window.'));
+    assert.ok(html.includes('42%'));
+    assert.ok(html.includes('data-case-action="acknowledge"'));
+    assert.ok(html.includes('data-case-id="42"'));
+  });
+
+  await t.test('renders a responder-attention (high-confidence) item distinctly', () => {
+    const html = tripChecksListHtml([{
+      id: 7,
+      vessel_id: 'NW-002',
+      trip_id: 'trip-current',
+      case_type: 'responder_attention',
+      score: 0.88,
+      status: 'alert',
+      reasons: [{ code: 'overdue', contribution: 0.8, description: 'Late beyond the expected-contact window.' }],
+      source: 'live',
+      data_age_seconds: 9000,
+      acknowledged_at: null,
+      dismissed_at: null,
+      escalated_at: null,
+      resolved_at: null
+    }]);
+    assert.ok(html.includes('Responder Attention'));
+    assert.ok(html.includes('case-type-responder-attention'));
+    assert.ok(!html.includes('Verification'));
+  });
+
+  await t.test('the dominant (highest-contribution) factor is shown as the reason', () => {
+    const html = tripCheckRowHtml({
+      id: 1,
+      vessel_id: 'NW-003',
+      case_type: 'responder_attention',
+      score: 0.7,
+      reasons: [
+        { code: 'weather', contribution: 0.02, description: 'Adverse weather at the last known position/time.' },
+        { code: 'overdue', contribution: 0.6, description: 'Late beyond the expected-contact window.' }
+      ],
+      source: 'live',
+      data_age_seconds: 60
+    });
+    assert.ok(html.includes('Late beyond the expected-contact window.'));
+    assert.ok(!html.includes('Adverse weather'));
+  });
+
+  await t.test('a synthetic/demo case is labelled DEMO, never LIVE', () => {
+    const html = tripCheckRowHtml({
+      id: 2, vessel_id: 'NW-004', case_type: 'verification', score: 0.4, reasons: [], source: 'synthetic', data_age_seconds: 120
+    });
+    assert.ok(html.includes('DEMO'));
+    assert.ok(!html.includes('>LIVE<'));
+  });
+
+  await t.test('the acknowledge button disables once already acknowledged, not re-sent blindly', () => {
+    const html = tripCheckRowHtml({
+      id: 3, vessel_id: 'NW-005', case_type: 'verification', score: 0.4, reasons: [], source: 'live',
+      data_age_seconds: 60, acknowledged_at: '2026-08-16T08:00:00Z'
+    });
+    assert.match(html, /data-case-action="acknowledge"[^>]*disabled/);
+  });
+
+  await t.test('vessel id and reason text are escaped, never passed through raw', () => {
+    const html = tripCheckRowHtml({
+      id: 4,
+      vessel_id: '<script>alert(1)</script>',
+      case_type: 'verification',
+      score: 0.4,
+      reasons: [{ code: 'x', contribution: 1, description: '<img src=x onerror=alert(1)>' }],
+      source: 'live',
+      data_age_seconds: 60
+    });
+    assert.ok(!html.includes('<script>alert'));
+    assert.ok(!html.includes('<img src=x'));
+    assert.ok(html.includes('&lt;script&gt;'));
+  });
+
+  await t.test('a resolved case (defensive - the API already excludes these) shows no action buttons', () => {
+    const html = tripCheckRowHtml({
+      id: 5, vessel_id: 'NW-006', case_type: 'verification', score: 0.4, reasons: [], source: 'live',
+      data_age_seconds: 60, resolved_at: '2026-08-16T09:00:00Z'
+    });
+    assert.ok(!html.includes('data-case-action'));
   });
 });

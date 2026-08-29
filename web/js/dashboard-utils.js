@@ -177,12 +177,140 @@
     return rows.join('');
   }
 
+  /**
+   * Badge for a trip-anomaly case's case_type (docs/38 Phase 3 / GET
+   * /api/ai/anomaly/cases/open). Deliberately not a severity label - the
+   * distinction is model confidence (low-confidence cold-start profile vs.
+   * an established one), per the acceptance boundary: "Low-confidence
+   * results enter a verification queue. High-confidence results request
+   * responder attention."
+   */
+  function caseTypeBadge(caseType) {
+    return caseType === 'verification'
+      ? { text: 'Verification', cssClass: 'case-type-verification' }
+      : { text: 'Responder Attention', cssClass: 'case-type-responder-attention' };
+  }
+
+  /**
+   * A case's display state from its four independent, persistent action
+   * timestamps (docs/38 Phase 3 item 3). Checked most-final-first so a case
+   * that has been through more than one action still shows something
+   * meaningful; a case an evaluation refresh only just created has none of
+   * these set and reads as "Open".
+   */
+  function caseStatusLabel(caseRow) {
+    var c = caseRow || {};
+    if (c.resolvedAt) return { text: 'Resolved', cssClass: 'case-status-resolved' };
+    if (c.escalatedAt) return { text: 'Escalated', cssClass: 'case-status-escalated' };
+    if (c.dismissedAt) return { text: 'Dismissed', cssClass: 'case-status-dismissed' };
+    if (c.acknowledgedAt) return { text: 'Acknowledged', cssClass: 'case-status-acknowledged' };
+    return { text: 'Open', cssClass: 'case-status-open' };
+  }
+
+  /**
+   * Human-facing "how old is the trusted data behind this" label, from the
+   * API's `data_age_seconds` (docs/38 Phase 2 item 4 / Phase 3 item 4: "last
+   * trusted contact/data age" must be visible, not just a raw score). A
+   * negative or missing value never claims a fresh age it does not have.
+   */
+  function formatDataAge(seconds) {
+    if (seconds == null || !isFinite(seconds) || seconds < 0) return 'unknown age';
+    var totalMinutes = Math.floor(seconds / 60);
+    var hours = Math.floor(totalMinutes / 60);
+    var minutes = totalMinutes % 60;
+    if (hours <= 0) return minutes + 'm old';
+    return hours + 'h ' + minutes + 'm old';
+  }
+
+  /**
+   * One "Trip checks" queue row as an HTML string - pure, like
+   * responderStatusHtml, so the same markup is exercised by `node --test`
+   * without a DOM. Consumes the API response shape directly
+   * (docs/05_PUBLIC_API.md "Trip-anomaly review queue"): snake_case fields,
+   * `reasons` as the factor list `score_trip` produces. The dominant factor
+   * (highest `contribution`) is shown as *why it was raised*, per docs/38
+   * Phase 3 item 4.
+   *
+   * Action buttons are omitted once the case is resolved (defensive - the
+   * API already excludes resolved cases from GET /cases/open, so this
+   * should never render a resolved row in practice) and the Acknowledge
+   * button disables once already acknowledged, matching the idempotent
+   * intent of the action without a second network round trip to discover
+   * that.
+   */
+  function tripCheckRowHtml(caseRow) {
+    var c = caseRow || {};
+    var typeBadge = caseTypeBadge(c.case_type);
+    var statusBadge = caseStatusLabel({
+      resolvedAt: c.resolved_at,
+      escalatedAt: c.escalated_at,
+      dismissedAt: c.dismissed_at,
+      acknowledgedAt: c.acknowledged_at
+    });
+    var reasons = Array.isArray(c.reasons) ? c.reasons : [];
+    var topReason = reasons.reduce(function (best, item) {
+      var contribution = (item && item.contribution) || 0;
+      return (!best || contribution > best.contribution) ? { contribution: contribution, description: item.description } : best;
+    }, null);
+    var reasonText = (topReason && topReason.description) || 'No reason recorded.';
+    var ageText = formatDataAge(c.data_age_seconds);
+    var isSynthetic = c.source === 'synthetic';
+    var sourcePill = isSynthetic ? { text: 'DEMO', cssClass: 'alert-demo-badge' } : { text: 'LIVE', cssClass: 'alert-live-badge' };
+    var scoreText = typeof c.score === 'number' ? Math.round(c.score * 100) + '%' : '—';
+    var caseId = escapeHtml(c.id);
+
+    var actions = '';
+    if (!c.resolved_at) {
+      actions =
+        '<button class="trip-check-action" data-case-action="acknowledge" data-case-id="' + caseId + '"' +
+        (c.acknowledged_at ? ' disabled' : '') + '>Acknowledge</button>' +
+        '<button class="trip-check-action" data-case-action="dismiss" data-case-id="' + caseId + '">Dismiss</button>' +
+        '<button class="trip-check-action" data-case-action="escalate" data-case-id="' + caseId + '">Escalate</button>' +
+        '<button class="trip-check-action trip-check-action-resolve" data-case-action="resolve" data-case-id="' + caseId + '">Resolve</button>';
+    }
+
+    return (
+      '<div class="trip-check-row" data-case-id="' + caseId + '">' +
+        '<div class="trip-check-row-header">' +
+          '<span class="case-type-badge ' + typeBadge.cssClass + '">' + escapeHtml(typeBadge.text) + '</span>' +
+          '<span class="case-status-badge ' + statusBadge.cssClass + '">' + escapeHtml(statusBadge.text) + '</span>' +
+          '<span class="' + sourcePill.cssClass + '">' + sourcePill.text + '</span>' +
+        '</div>' +
+        '<div class="trip-check-row-body">' +
+          '<span class="trip-check-vessel">' + escapeHtml(c.vessel_id) + '</span>' +
+          '<span class="trip-check-score">Confidence score ' + scoreText + '</span>' +
+          '<span class="trip-check-reason">' + escapeHtml(reasonText) + '</span>' +
+          '<span class="trip-check-age">Last trusted contact: ' + escapeHtml(ageText) + '</span>' +
+        '</div>' +
+        '<div class="trip-check-row-actions">' + actions + '</div>' +
+      '</div>'
+    );
+  }
+
+  /**
+   * The whole "Trip checks" queue as one HTML string: an honest empty state
+   * (never a blank panel that reads as "still loading" or "broken") or the
+   * joined rows, newest first as the API already orders them.
+   */
+  function tripChecksListHtml(cases) {
+    var list = Array.isArray(cases) ? cases : [];
+    if (list.length === 0) {
+      return '<div class="trip-checks-empty">No trip checks right now - every recent trip is within its expected pattern.</div>';
+    }
+    return list.map(tripCheckRowHtml).join('');
+  }
+
   return {
     escapeHtml: escapeHtml,
     classifyFreshness: classifyFreshness,
     freshnessLabel: freshnessLabel,
     alertBadge: alertBadge,
     formatEta: formatEta,
-    responderStatusHtml: responderStatusHtml
+    responderStatusHtml: responderStatusHtml,
+    caseTypeBadge: caseTypeBadge,
+    caseStatusLabel: caseStatusLabel,
+    formatDataAge: formatDataAge,
+    tripCheckRowHtml: tripCheckRowHtml,
+    tripChecksListHtml: tripChecksListHtml
   };
 });

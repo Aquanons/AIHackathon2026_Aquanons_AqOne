@@ -1300,6 +1300,89 @@ body {
 .alert-status.status-acknowledged { background: rgba(241,196,15,0.25); color: #f1c40f; }
 .alert-status.status-resolved { background: rgba(46,204,113,0.2); color: #2ecc71; }
 
+
+/* ══════════════════════════════════════════════════════════════
+   TRIP CHECKS TAB (docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md
+   Phase 3) - a separate queue from Alerts: confidence-scored review
+   candidates from routine buoy contact, never an SOS.
+   ══════════════════════════════════════════════════════════════ */
+.trip-checks-empty {
+  padding: 16px 10px;
+  font-size: 11px;
+  opacity: 0.6;
+  text-align: center;
+}
+
+.trip-check-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: var(--radius-sm);
+}
+
+.trip-check-row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.case-type-badge, .case-status-badge {
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.case-type-badge.case-type-verification { background: rgba(241,196,15,0.25); color: #f1c40f; }
+.case-type-badge.case-type-responder-attention { background: rgba(231,76,60,0.25); color: #e74c3c; }
+
+.case-status-badge.case-status-open { background: rgba(255,255,255,0.1); color: var(--text-secondary); }
+.case-status-badge.case-status-acknowledged { background: rgba(241,196,15,0.25); color: #f1c40f; }
+.case-status-badge.case-status-dismissed { background: rgba(255,255,255,0.1); color: var(--text-secondary); }
+.case-status-badge.case-status-escalated { background: rgba(230,126,34,0.25); color: #e67e22; }
+.case-status-badge.case-status-resolved { background: rgba(46,204,113,0.2); color: #2ecc71; }
+
+.trip-check-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.trip-check-vessel { font-weight: 700; }
+.trip-check-score, .trip-check-reason, .trip-check-age { font-size: 10px; opacity: 0.75; }
+
+.trip-check-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.trip-check-action {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  cursor: pointer;
+}
+
+.trip-check-action:hover { background: rgba(255,255,255,0.12); }
+.trip-check-action:disabled { opacity: 0.4; cursor: default; }
+.trip-check-action-resolve { border-color: rgba(46,204,113,0.4); color: #2ecc71; }
+
 /* ══════════════════════════════════════════════════════════════
    PANEL CARDS (new right-column cards)
    ══════════════════════════════════════════════════════════════ */

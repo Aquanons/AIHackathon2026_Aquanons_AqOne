@@ -567,6 +567,94 @@ from our own buoys. The call should live behind this endpoint rather than in
 the handset, so attribution and rate terms are honoured in one place and no
 credential ships on a phone.
 
+## Trip-anomaly review queue — **implemented**
+
+The responder-facing side of `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md`.
+A case here is a review candidate produced by confidence-scored trip
+evaluation (`docs/04_INGEST_API.md` "Contact events" is its only trustworthy
+input) — **never an SOS, and never an automatic dispatch.** All routes are
+operator-authenticated (`require_user`); a public or handset caller cannot
+read or mutate this queue.
+
+### `GET /api/ai/anomaly/active`
+
+Read-only. Never triggers evaluation or writes — dashboard polling cannot
+rebuild the underlying tables. Each row carries `source` (`live` \|
+`synthetic`), `evaluated_at`, and `data_age_seconds` alongside the score, so
+the dashboard can say plainly how current a result is.
+
+### `GET /api/ai/anomaly/cases/open`
+
+The persistent "Trip checks" queue: every unresolved case, newest first.
+Read-only, same guarantee as `GET /active`. Response `200`:
+
+```json
+[
+  {
+    "id": 42,
+    "vessel_id": "NW-001",
+    "trip_id": "trip-2026-08-29-01",
+    "case_type": "responder_attention",
+    "score": 0.82,
+    "status": "alert",
+    "reasons": [{"code": "overdue", "weight": 0.85, "contribution": 0.78, "description": "Late beyond the expected-contact window."}],
+    "source": "live",
+    "score_evaluated_at": "2026-08-29T05:10:00Z",
+    "last_contact_at": "2026-08-29T02:00:00Z",
+    "data_age_seconds": 11400,
+    "is_synthetic": false,
+    "created_at": "2026-08-29T05:10:00Z",
+    "updated_at": "2026-08-29T09:10:00Z",
+    "acknowledged_at": null,
+    "acknowledged_by": null,
+    "dismissed_at": null,
+    "dismissed_by": null,
+    "dismissed_reason": null,
+    "escalated_at": null,
+    "escalated_by": null,
+    "escalated_reason": null,
+    "resolved_at": null,
+    "resolved_by": null
+  }
+]
+```
+
+`case_type` is `verification` for a low-confidence (cold-start) vessel
+profile, or `responder_attention` for a high-confidence one — never a
+severity label. A case is created or refreshed only while its underlying
+trip still scores non-`normal`; a periodic re-evaluation updates `score`,
+`status`, `reasons` and the two timestamps but never touches the
+acknowledged/dismissed/escalated/resolved columns, so a responder's decision
+survives every later refresh.
+
+### `POST /api/ai/anomaly/cases/{id}/acknowledge`
+
+Marks the case seen. Idempotent — a retry keeps the first `acknowledged_by`
+and `acknowledged_at`. No body required.
+
+### `POST /api/ai/anomaly/cases/{id}/dismiss`
+
+Marks the case a false or expected positive. Requires a short reason:
+
+```json
+{ "reason": "known route deviation, confirmed safe by radio" }
+```
+
+Idempotent — a retry keeps the original `dismissed_reason` rather than
+overwriting it.
+
+### `POST /api/ai/anomaly/cases/{id}/escalate`
+
+Hands the case to real-world handling — a human decision; this call never
+dispatches anything itself. Same `{ "reason": "..." }` body and idempotency
+as dismiss.
+
+### `POST /api/ai/anomaly/cases/{id}/resolve`
+
+Closes the case; it drops out of `GET /cases/open` on the next poll.
+Idempotent, no body required. Because evaluation never writes `resolved_at`,
+a later score refresh can never reopen a case a responder closed.
+
 ## Roles
 
 - `mdrrmo` and `admin` may list and ack. `admin` may also register devices and

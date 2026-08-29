@@ -107,6 +107,125 @@ call `POST /api/v1/devices/register`.
 Returns `200` with the assigned UUID. The backend owns this mapping and never
 reassigns an external id.
 
+## Contact events (routine vessel-buoy contact)
+
+Distinct from the mesh frames above. A contact event is a routine, low-
+priority record that a vessel was in range of a buoy during an active trip —
+the only trustworthy input to the trip-anomaly/overdue detector
+(`docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md`). It is not a
+distress signal and carries no priority/TTL/hop metadata.
+
+### `POST /api/v1/contacts` — submit one contact event
+
+Same transport and `X-Api-Key` auth as `/api/v1/ingest` above, via its own
+`GATEWAY_API_KEY` credential.
+
+Request body (JSON):
+
+```json
+{
+  "v": 1,
+  "event_id": "gw-01-000042",
+  "vessel_id": "NW-001",
+  "trip_id": "trip-2026-08-29-01",
+  "buoy_id": "BUOY01",
+  "observed_at": "2026-08-29T05:00:00Z",
+  "latitude": 11.6050,
+  "longitude": 122.3125,
+  "source": "live"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `v` | yes | `1` |
+| `event_id` | yes | Upstream event id from the gateway. The idempotency key — resubmitting the same `event_id` returns the original contact, never a duplicate row. |
+| `vessel_id` | yes | Vessel identifier, ≤ 32 chars. |
+| `trip_id` | yes | Identifies the vessel's current trip, ≤ 64 chars. |
+| `buoy_id` | yes | Must already be a registered buoy; an unrecognized id is rejected rather than silently creating one. |
+| `observed_at` | yes | RFC 3339 timestamp of the contact itself, not the ingest time. |
+| `latitude` / `longitude` | no | Last known position at this contact, if the buoy has it. |
+| `source` | yes | `live` for a real field contact, `synthetic` for demo/test data. Production trip-anomaly evaluation only ever reads `live` rows — see docs/38 Phase 1 item 5. Neither the handset nor the public dashboard can submit a contact event at all, live or synthetic; only a holder of `GATEWAY_API_KEY` can. |
+
+Success `200`:
+
+```json
+{
+  "accepted": true,
+  "event_id": "gw-01-000042",
+  "deduped": false,
+  "contact_id": 1042,
+  "vessel_id": "NW-001",
+  "trip_id": "trip-2026-08-29-01"
+}
+```
+
+`deduped: true` means `event_id` was already stored; the response reflects
+the original contact, not a new one — no second logical contact is ever
+created, and the response is otherwise identical either way so a retrying
+gateway does not need to branch on it.
+
+Errors: `401` bad/missing API key; `422` malformed body (bad timestamp,
+empty/oversized id, missing/invalid `source`); `400` unknown `buoy_id`.
+
+## Pressure events (buoy barometric telemetry)
+
+The trusted-telemetry contract squall nowcasting is gated on
+(`docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md` Phase 1). Squall
+nowcasting reads only rows that arrived through this endpoint with
+`source: 'live'`; nothing else is a live pressure reading no matter what a
+model or dashboard route later claims.
+
+### `POST /api/v1/pressure-events` — submit one pressure reading
+
+Same transport and `X-Api-Key` auth as `/api/v1/ingest` above, via its own
+`GATEWAY_API_KEY` credential (the same one `/api/v1/contacts` uses).
+
+Request body (JSON):
+
+```json
+{
+  "v": 1,
+  "event_id": "gw-01-000099",
+  "buoy_id": "BUOY01",
+  "observed_at": "2026-08-29T05:00:00Z",
+  "pressure_hpa": 1008.4,
+  "source": "live"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `v` | yes | `1` |
+| `event_id` | yes | Upstream event id from the gateway. The idempotency key — resubmitting the same `event_id` returns the original reading, never a duplicate row. |
+| `buoy_id` | yes | Must already be a registered buoy; an unrecognized id is rejected rather than silently creating one. |
+| `observed_at` | yes | RFC 3339 timestamp of the reading itself, not the ingest time. Rejected if more than 5 minutes ahead of the server clock — that indicates a broken buoy clock, not a real future reading. No lower bound: a delayed gateway resend after an outage still carries a genuinely old `observed_at` and must still be accepted here — whether data that old is still *trustworthy* for a live nowcast is a separate freshness decision made at read time (squall Phase 2), not an ingest rejection. |
+| `pressure_hpa` | yes | Rejected outside `850`–`1100` hPa. This is a physical-plausibility guard against malformed input only — the lowest sea-level pressure ever recorded is ~870 hPa (in a typhoon) and the highest ~1085 hPa. It is deliberately **not** the tighter operational sanity range squall Phase 2 must set from an MDRRMO/technical-owner decision; that range decides whether an array is trustworthy enough to nowcast from, this one only rejects garbage. |
+| `source` | yes | `live` for a real field reading, `synthetic` for demo/test data. Unlike `/api/v1/contacts`, a `synthetic` pressure event is **not** accepted through the gateway key alone: it additionally requires `DEMO_MODE` enabled and a valid `X-Demo-Key` header (the same credential `/api/demo/*` routes use), because a squall reading can reach a handset `RETURN NOW` alarm and a demo/test value must never be able to fabricate one. `live` readings are always evaluated by squall nowcasting; `synthetic` readings never are. |
+
+Success `200`:
+
+```json
+{
+  "accepted": true,
+  "event_id": "gw-01-000099",
+  "deduped": false,
+  "reading_id": 5031,
+  "buoy_id": "BUOY01",
+  "source": "live"
+}
+```
+
+`deduped: true` means `event_id` was already stored; the response reflects
+the original reading, not a new one — no second logical reading is ever
+created, and the response is otherwise identical either way so a retrying
+gateway does not need to branch on it.
+
+Errors: `401` bad/missing gateway API key; `403` `source: 'synthetic'`
+submitted without `DEMO_MODE` and a valid `X-Demo-Key`; `422` malformed body
+(bad/future timestamp, empty/oversized id, pressure outside sanity range,
+missing/invalid `source`); `400` unknown `buoy_id`.
+
 ## Dedupe and ordering
 
 - Dedupe key: `(src_ext_id, seq)`. The first accepted submission wins; later

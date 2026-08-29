@@ -41,6 +41,7 @@
   };
   var formatEta = dashboardUtils.formatEta || function () { return ''; };
   var responderStatusHtml = dashboardUtils.responderStatusHtml || function () { return ''; };
+  var tripChecksListHtml = dashboardUtils.tripChecksListHtml || function () { return ''; };
 
 
   // ===== CONFIG =====
@@ -307,6 +308,7 @@
   ns.alertBadge = alertBadge;
   ns.formatEta = formatEta;
   ns.responderStatusHtml = responderStatusHtml;
+  ns.tripChecksListHtml = tripChecksListHtml;
   ns.OPS_CENTER = OPS_CENTER;
   ns.OPS_ZOOM = OPS_ZOOM;
   ns.TILES = TILES;

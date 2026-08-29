@@ -41,7 +41,7 @@ This table precedes every other claim in this document.
 | **Drift prediction** (Monte Carlo Lagrangian) | ✅ Built, measured, live |
 | **Bayesian search re-tasking** | ✅ Built, measured, live |
 | **Squall nowcasting** (trained classifier) | 🟡 Built and deployed, but the current public feed is synthetic and its newest reading is 14 August 2026; do not treat its active RETURN NOW alert as current conditions. |
-| **Trip anomaly / overdue detection** | ✅ Built, measured, live |
+| **Trip anomaly / overdue detection** | 🟡 Live-queue path built and honest (docs/38 Phases 1-3: read-only polling, non-destructive scoring, persistent responder review). The published false-alarm figure below was found to be a measurement artifact and retracted (Phase 4) - not yet re-measured against a live database. |
 | **Marine hazard model** (trained on real data) | ✅ Built, runs in the browser |
 | **SOS pipeline** phone → backend → dashboard | ✅ Working, with de-duplication |
 | **Responder loop** acknowledge → ETA → handset | ✅ Working |
@@ -182,9 +182,11 @@ Produced by `backend/app/ai/*_eval.py`. Every figure is tagged
 | Drift runtime | 131 ms |
 | Current observations used (vs synthetic fallback) | **100%** |
 | Overdue detection — median latency | **55 minutes** |
-| Overdue detection — false alarm rate | **0%** across 496 normal trips |
+| Overdue detection — false alarm rate | **retracted** - see note below |
 | Squall precision / recall | 0.286 / 0.133 |
 | Squall mean lead time | **50 minutes** |
+
+**The overdue-detection false-alarm figure above was retracted.** It was previously reported as 0% across 496 normal trips. That number came from a normal-trip evaluation bug (`docs/30_DEMO_DECISION_01_ANOMALY.md` section 1.1): every normal sample was re-scored only at its own historical contact timestamps, never past its own final contact, so `status == 'alert'` was structurally unreachable and 0% was true by construction, not by measurement. Fixed in `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 4 (`backend/app/ai/trip_profile_eval.py`); the corrected evaluator has not yet been re-run against a live database in this environment (no working local Postgres - see `docs/08_DEMO_AND_STATUS.md`), so the real number is unmeasured pending that run rather than published as a guess. `median_detection_latency_minutes` (55 minutes) and `incidents_detected` (8) are unaffected - decision 30 already verified that sweep. Treat overdue/trip-anomaly detection as demo/simulation-verified only until a real, consented contact dataset and outdoor workflow are available.
 
 **These figures should be read conservatively.** Containment of 100% across
 eight incidents is encouraging, not proof. Squall recall of 0.133 is weak — the
@@ -344,6 +346,23 @@ Generate the synthetic dataset, which the evaluation scripts require:
 ```bash
 python -m app.simulation.generator --days 14 --seed 42
 ```
+
+#### Scheduled anomaly evaluation (Railway cron)
+
+Trip-anomaly scoring (`docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md`)
+no longer runs on every dashboard poll - `GET /api/ai/anomaly/active` is
+read-only. Something has to call the scorer on a schedule instead:
+
+```bash
+python -m app.ai.run_anomaly_evaluation
+```
+
+It is idempotent (safe to run twice, or to overlap a slow run with the next
+one) and needs only `DATABASE_URL`. On Railway, add a second service from
+this same repo, set its start command to the line above, and set its
+schedule (Settings → Cron Schedule) to run every few minutes - it does not
+need its own dependency, queue, or app, only its own cron trigger against
+the existing backend image.
 
 ### 2. Dashboard
 

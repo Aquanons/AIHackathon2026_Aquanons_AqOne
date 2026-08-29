@@ -11,14 +11,17 @@ from fastapi.staticfiles import StaticFiles
 from app.api.advisories import public_router as public_advisories_router
 from app.api.advisories import router as advisories_router
 from app.api.anomaly import router as anomaly_router
+from app.api.anomaly_cases import router as anomaly_cases_router
 from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
+from app.api.contacts import router as contacts_router
 from app.api.demo import router as demo_router
 from app.api.drift import router as drift_router
 from app.api.hotspots import router as hotspots_router
 from app.api.mesh import router as mesh_router
 from app.api.metrics import router as metrics_router
+from app.api.pressure_events import router as pressure_events_router
 from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
 from app.api.sos import protected_router as sos_read_router
@@ -63,6 +66,20 @@ app.include_router(sos_ingest_router)
 # the mobile app use its own credential type while SOS ingest stays open.
 app.include_router(catch_ingest_router)
 
+# Gateway-only contact-event ingest (docs/04_INGEST_API.md "Contact events").
+# Guarded per-route by its own require_gateway_key, not the blanket operator
+# dependency below - a dashboard operator token must not be able to
+# manufacture a contact event, and a gateway key must not read dispatcher
+# data. See app/api/contacts.py.
+app.include_router(contacts_router)
+
+# Gateway-only pressure-event ingest (docs/04_INGEST_API.md "Pressure
+# events"), the trusted-telemetry source squall nowcasting is gated on
+# (docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 1). Same
+# per-route require_gateway_key guard as contacts_router, for the same
+# reason. See app/api/pressure_events.py.
+app.include_router(pressure_events_router)
+
 # Fishing spots (community-reported "fish hotspots") - both ingest and read
 # are unauthenticated here, unlike catch logging: this is public, shared
 # data every fisherman with the app needs to see, not per-vessel dispatcher
@@ -97,6 +114,7 @@ app.include_router(public_advisories_router)
 # direction to fail.
 _protected = [Depends(require_user)]
 app.include_router(anomaly_router, dependencies=_protected)
+app.include_router(anomaly_cases_router, dependencies=_protected)
 app.include_router(drift_router, dependencies=_protected)
 app.include_router(squall_router, dependencies=_protected)
 app.include_router(sea_condition_router, dependencies=_protected)
