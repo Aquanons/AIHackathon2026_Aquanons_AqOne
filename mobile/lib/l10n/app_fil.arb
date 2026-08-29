@@ -94,5 +94,17 @@
   "avatarUpdateError": "Hindi ma-update ang iyong larawan sa profile.",
   "avatarTakePhoto": "Kumuha ng larawan",
   "avatarChooseGallery": "Pumili mula sa gallery",
-  "avatarRemovePhoto": "Alisin ang larawan"
+  "avatarRemovePhoto": "Alisin ang larawan",
+  "responderStatusReceived": "Natanggap ng MDRRMO ang iyong tawag",
+  "responderStatusDispatched": "Papunta na ang bangkang panagip",
+  "responderStatusCoastGuard": "Naabisuhan na ang Coast Guard",
+  "responderStatusNearestVessel": "Naalertuhan na ang mga malapit na bangka",
+  "responderStatusDelayed": "Naantala — papunta pa rin",
+  "responderReplyStillInDanger": "Nasa panganib pa rin",
+  "responderReplySafeNow": "Ligtas na",
+  "responderReplyConfirmBody": "Sasabihin nito sa MDRRMO na hindi mo na kailangan ng sagip, at maaari nilang ipadala ang tulong sa iba. Kumpirmahin lamang kung talagang ligtas ka na.",
+  "responderReplyConfirmConfirm": "Oo, ligtas ako",
+  "responderReplySentStillInDanger": "Alam ng MDRRMO na naghihintay ka pa rin ng tulong.",
+  "responderReplySentSafeNow": "Nasabihan na ang MDRRMO na ligtas ka na.",
+  "responderReplyPending": "Hindi pa naipapadala — awtomatikong ipapadala kapag may koneksyon na."
 }

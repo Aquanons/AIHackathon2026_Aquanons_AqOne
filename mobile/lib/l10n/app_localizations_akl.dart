@@ -169,4 +169,243 @@ class AppLocalizationsAkl extends AppLocalizations {
   @override
   String get hotspotLegendDisclaimer =>
       'Estimate from catch logs. Not a promise of fish, and not a safe-to-go-out signal.';
+
+  @override
+  String get onboardingWelcomeBack => 'Maayad nga pagbalik';
+
+  @override
+  String get onboardingRegisterBoat => 'Irehistro ro imong baroto';
+
+  @override
+  String get onboardingReturningBody =>
+      'Siguruhon nga husto gihapon ro imong mga detalye. Ilisi ro may nagbag-o.';
+
+  @override
+  String get onboardingIntroBody =>
+      'Waeay password. Kaupod ro mga detalye sa imong SOS agud mahibaluan it MDRRMO kon sin-o ro pangitaon.';
+
+  @override
+  String get onboardingSaveError =>
+      'Indi ma-save ro imong mga detalye. Palihog magsueod liwat.';
+
+  @override
+  String get fieldFullName => 'Bug-os nga ngaran';
+
+  @override
+  String get fieldBoatNameOrRegistration => 'Ngaran ukon rehistro it baroto';
+
+  @override
+  String get fieldRegistrationType => 'Klase it rehistro';
+
+  @override
+  String fieldRegistrationNumber(String type) {
+    return 'Numero it $type';
+  }
+
+  @override
+  String get fieldMobileNumber => 'Numero it mobile';
+
+  @override
+  String get actionContinue => 'Magpadayon';
+
+  @override
+  String get helpSupport => 'Bulig ag Suporta';
+
+  @override
+  String get aboutAqOne => 'Parte sa AqOne';
+
+  @override
+  String get safetyNotice => 'Pahibalo sa kaluwasan';
+
+  @override
+  String get agreementPrefix => 'Sa pagpadayon, nagauyon ka sa';
+
+  @override
+  String get privacyPolicy => 'Patakaran sa Privacy';
+
+  @override
+  String get agreementAnd => ' ag ';
+
+  @override
+  String get termsOfUse => 'Mga Kondisyon it Paggamit';
+
+  @override
+  String get rememberDevice => 'Dumdumon ako sa device nga ini';
+
+  @override
+  String get identityUnverifiedNotice =>
+      'Indi masusi it AqOne ro mga detalye kontra sa BFAR ukon sa imong LGU. Ginarekord sanda bilang imong kaugalingong deklarasyon ag ginapakita sa MDRRMO kaupod it imong SOS. Ro pagpadala it bueaan nga distress call hay isa ka paglapas.';
+
+  @override
+  String get licenseBoatRHint =>
+      'Rehistro it municipal nga baroto (3 GT paubos)';
+
+  @override
+  String get licenseFishRHint =>
+      'Numero it rehistro it municipal nga mananagat';
+
+  @override
+  String get licenseCfvglHint =>
+      'Lisensya it commercial nga sakayan (3.1 GT paibabaw)';
+
+  @override
+  String get licenseNoneLabel => 'Indi pa rehistrado';
+
+  @override
+  String get licenseNoneHint => 'Mahimo mo ini idugang sa settings sa ulihi';
+
+  @override
+  String get trustSelfDeclared => 'Kaugalingong deklarasyon';
+
+  @override
+  String get trustPhoneVerified => 'Nasusi ro telepono';
+
+  @override
+  String get trustResponderConfirmed => 'Ginkumpirma it responder';
+
+  @override
+  String get validatorFullNameRequired => 'Isueod ro imong bug-os nga ngaran';
+
+  @override
+  String get validatorNameTooShort => 'Masadong maikli ro ngaran';
+
+  @override
+  String validatorMaxCharacters(int max) {
+    return 'Pabilina ini sa idaeom it $max ka karakter';
+  }
+
+  @override
+  String get validatorNameNotNumber => 'Isueod ro imong ngaran, indi numero';
+
+  @override
+  String get validatorBoatRequired => 'Isueod ro ngaran it imong baroto';
+
+  @override
+  String get validatorMobileRequired => 'Isueod ro numero it mobile';
+
+  @override
+  String get validatorMobileInvalid =>
+      'Isueod ro PH mobile number, hal. 0912 345 6789';
+
+  @override
+  String validatorLicenseRequired(String type, String noneLabel) {
+    return 'Isueod ro numero it $type, ukon pilia ro ‘$noneLabel’';
+  }
+
+  @override
+  String validatorLicenseTooShort(String type) {
+    return 'Masadong maikli ro numero it $type';
+  }
+
+  @override
+  String validatorLicenseTooLong(String type) {
+    return 'Masadong maeaba ro numero it $type';
+  }
+
+  @override
+  String get validatorLicenseCharacters =>
+      'Gamiton eamang ro letra, numero, ag dash';
+
+  @override
+  String validatorLicenseDigit(String type) {
+    return 'Kinahanglan may bisan sangka digit ro numero it $type';
+  }
+
+  @override
+  String get validatorFishrDigitsOnly => 'Mga digit eamang ro numero it FishR';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileEdit => 'Ilisi ro profile';
+
+  @override
+  String get profileUpdated => 'Na-update ro profile';
+
+  @override
+  String get profileNoName => 'Waeay nakabutang nga ngaran';
+
+  @override
+  String get profileBoatName => 'Ngaran it baroto';
+
+  @override
+  String get profileVesselId => 'ID it baroto';
+
+  @override
+  String get settingsTitle => 'Mga Setting';
+
+  @override
+  String get darkMode => 'Madueom nga mode';
+
+  @override
+  String get actionCancel => 'Kanselahon';
+
+  @override
+  String get actionSaveChanges => 'I-save ro mga pagbag-o';
+
+  @override
+  String get profileEditTrustNotice =>
+      'Kon ilisan ro imong mga detalye, mabalik sa kaugalingong deklarasyon ro antas it pagsalig. Kinahanglan nga kumpirmahon liwat it responder ro imong pagkakakilanlan.';
+
+  @override
+  String get logoutAction => 'Magguwa';
+
+  @override
+  String get logoutConfirmation =>
+      'Kinahanglan mo magrehistro liwat agud magamit ro AqOne. Magapabilin sa device nga ini ro history it imong SOS.';
+
+  @override
+  String get avatarUpdateError => 'Indi ma-update ro imong litrato sa profile.';
+
+  @override
+  String get avatarTakePhoto => 'Magkuha it litrato';
+
+  @override
+  String get avatarChooseGallery => 'Magpili halin sa gallery';
+
+  @override
+  String get avatarRemovePhoto => 'Kuhaa ro litrato';
+
+  @override
+  String get responderStatusReceived => 'Nabaton it MDRRMO ro imong tawag';
+
+  @override
+  String get responderStatusDispatched =>
+      'Nagapakadto ron ro sakayan nga panagip';
+
+  @override
+  String get responderStatusCoastGuard => 'Napahibaeuan ron ro Coast Guard';
+
+  @override
+  String get responderStatusNearestVessel =>
+      'Napahibaeuan ron ro mga hueapit nga sakayan';
+
+  @override
+  String get responderStatusDelayed => 'Naulang — nagapakadto pa gihapon';
+
+  @override
+  String get responderReplyStillInDanger => 'Peligro pa gihapon';
+
+  @override
+  String get responderReplySafeNow => 'Seguro ron';
+
+  @override
+  String get responderReplyConfirmBody =>
+      'Ini magasugid sa MDRRMO nga waea mo na kinahanglana ro pagsagip, kag mahimo nila ipadaea ro bueig sa iban. Kumpirmahon lamang kon seguro ka gid ron.';
+
+  @override
+  String get responderReplyConfirmConfirm => 'Huo, seguro ako';
+
+  @override
+  String get responderReplySentStillInDanger =>
+      'Naeaman it MDRRMO nga nagahueat ka pa gihapon it bueig.';
+
+  @override
+  String get responderReplySentSafeNow =>
+      'Napahibaeuan ron ro MDRRMO nga seguro ka ron.';
+
+  @override
+  String get responderReplyPending =>
+      'Owa pa napadaea — automatiko nga ipapadaea kon may koneksyon ron.';
 }

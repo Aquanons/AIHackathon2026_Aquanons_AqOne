@@ -393,6 +393,426 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Estimate from catch logs. Not a promise of fish, and not a safe-to-go-out signal.'**
   String get hotspotLegendDisclaimer;
+
+  /// Heading on the vessel details screen for a returning user.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back'**
+  String get onboardingWelcomeBack;
+
+  /// Heading on the first-run vessel registration screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Register your boat'**
+  String get onboardingRegisterBoat;
+
+  /// Instructions under the returning-user heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your details are still correct. Update them here if anything has changed.'**
+  String get onboardingReturningBody;
+
+  /// Explanation under the vessel registration heading. Keep SOS and MDRRMO untranslated.
+  ///
+  /// In en, this message translates to:
+  /// **'No password. These details travel with your SOS so the MDRRMO knows who to look for.'**
+  String get onboardingIntroBody;
+
+  /// Error shown when vessel details cannot be saved locally.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save your details. Please try again.'**
+  String get onboardingSaveError;
+
+  /// Label for the skipper's full-name field.
+  ///
+  /// In en, this message translates to:
+  /// **'Full name'**
+  String get fieldFullName;
+
+  /// Label for the boat name or registration field.
+  ///
+  /// In en, this message translates to:
+  /// **'Boat name or registration'**
+  String get fieldBoatNameOrRegistration;
+
+  /// Label for the registration-type selector.
+  ///
+  /// In en, this message translates to:
+  /// **'Registration type'**
+  String get fieldRegistrationType;
+
+  /// Label for a registration number field. {type} is BoatR, FishR, or CFVGL.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} number'**
+  String fieldRegistrationNumber(String type);
+
+  /// Label for the skipper's Philippine mobile-number field.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile number'**
+  String get fieldMobileNumber;
+
+  /// Primary button that saves registration and continues into the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get actionContinue;
+
+  /// Title and link for the help page.
+  ///
+  /// In en, this message translates to:
+  /// **'Help & Support'**
+  String get helpSupport;
+
+  /// Title and link for the AqOne information page.
+  ///
+  /// In en, this message translates to:
+  /// **'About AqOne'**
+  String get aboutAqOne;
+
+  /// Link to the safety and terms notice.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety notice'**
+  String get safetyNotice;
+
+  /// Text before Privacy Policy and Terms of Use links.
+  ///
+  /// In en, this message translates to:
+  /// **'By continuing you agree to the'**
+  String get agreementPrefix;
+
+  /// Link and title for the privacy policy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Policy'**
+  String get privacyPolicy;
+
+  /// Connector between Privacy Policy and Terms of Use links. Preserve surrounding spaces.
+  ///
+  /// In en, this message translates to:
+  /// **' and '**
+  String get agreementAnd;
+
+  /// Link and title for terms of use.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms of Use'**
+  String get termsOfUse;
+
+  /// Checkbox label controlling whether identity remains stored on the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember me on this device'**
+  String get rememberDevice;
+
+  /// Warning that registration details are self-declared and false SOS calls are offences. Keep AqOne, BFAR, LGU, MDRRMO, and SOS untranslated.
+  ///
+  /// In en, this message translates to:
+  /// **'AqOne cannot check these details against BFAR or your LGU. They are recorded as your own declaration and shown to the MDRRMO with your SOS. Sending a false distress call is an offence.'**
+  String get identityUnverifiedNotice;
+
+  /// Explanation of the BoatR registration option.
+  ///
+  /// In en, this message translates to:
+  /// **'Municipal boat registration (3 GT and below)'**
+  String get licenseBoatRHint;
+
+  /// Explanation of the FishR registration option.
+  ///
+  /// In en, this message translates to:
+  /// **'Municipal fisherfolk registration number'**
+  String get licenseFishRHint;
+
+  /// Explanation of the CFVGL registration option.
+  ///
+  /// In en, this message translates to:
+  /// **'Commercial vessel licence (3.1 GT and above)'**
+  String get licenseCfvglHint;
+
+  /// Registration selector option for a skipper with no available registration.
+  ///
+  /// In en, this message translates to:
+  /// **'Not registered yet'**
+  String get licenseNoneLabel;
+
+  /// Explanation under the Not registered yet option.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add this later in settings'**
+  String get licenseNoneHint;
+
+  /// Identity trust label when details were entered only on this phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-declared'**
+  String get trustSelfDeclared;
+
+  /// Identity trust label when the phone number was verified.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone verified'**
+  String get trustPhoneVerified;
+
+  /// Identity trust label after a responder confirms the vessel.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed by responder'**
+  String get trustResponderConfirmed;
+
+  /// Validation error for an empty skipper name.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter your full name'**
+  String get validatorFullNameRequired;
+
+  /// Validation error for a one-character skipper name.
+  ///
+  /// In en, this message translates to:
+  /// **'That name looks too short'**
+  String get validatorNameTooShort;
+
+  /// Validation error when a field exceeds its maximum length.
+  ///
+  /// In en, this message translates to:
+  /// **'Please keep this under {max} characters'**
+  String validatorMaxCharacters(int max);
+
+  /// Validation error when a skipper name contains no letters.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter your name, not a number'**
+  String get validatorNameNotNumber;
+
+  /// Validation error for an empty boat name.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter your boat name'**
+  String get validatorBoatRequired;
+
+  /// Validation error for an empty mobile number.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a mobile number'**
+  String get validatorMobileRequired;
+
+  /// Validation error for a malformed Philippine mobile number.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a PH mobile number, e.g. 0912 345 6789'**
+  String get validatorMobileInvalid;
+
+  /// Validation error for an empty required registration number.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your {type} number, or choose ‘{noneLabel}’'**
+  String validatorLicenseRequired(String type, String noneLabel);
+
+  /// Validation error for a short registration number.
+  ///
+  /// In en, this message translates to:
+  /// **'That {type} number looks too short'**
+  String validatorLicenseTooShort(String type);
+
+  /// Validation error for a long registration number.
+  ///
+  /// In en, this message translates to:
+  /// **'That {type} number looks too long'**
+  String validatorLicenseTooLong(String type);
+
+  /// Validation error for invalid registration-number characters.
+  ///
+  /// In en, this message translates to:
+  /// **'Use letters, numbers and dashes only'**
+  String get validatorLicenseCharacters;
+
+  /// Validation error when a registration number has no digit.
+  ///
+  /// In en, this message translates to:
+  /// **'A {type} number contains at least one digit'**
+  String validatorLicenseDigit(String type);
+
+  /// Validation error when a FishR number contains letters.
+  ///
+  /// In en, this message translates to:
+  /// **'FishR numbers are digits only'**
+  String get validatorFishrDigitsOnly;
+
+  /// Title of the vessel profile screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get profileTitle;
+
+  /// Tooltip for editing the vessel profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get profileEdit;
+
+  /// Confirmation shown after saving profile changes.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile updated'**
+  String get profileUpdated;
+
+  /// Fallback when the skipper has no saved name.
+  ///
+  /// In en, this message translates to:
+  /// **'No name set'**
+  String get profileNoName;
+
+  /// Label for the saved boat name on the profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Boat name'**
+  String get profileBoatName;
+
+  /// Label for the automatically generated vessel identifier.
+  ///
+  /// In en, this message translates to:
+  /// **'Vessel ID'**
+  String get profileVesselId;
+
+  /// Heading above application settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// Setting that enables the dark color theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark mode'**
+  String get darkMode;
+
+  /// Cancels the current edit or dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get actionCancel;
+
+  /// Saves edits to the vessel profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get actionSaveChanges;
+
+  /// Warning shown before saving edited identity details.
+  ///
+  /// In en, this message translates to:
+  /// **'Editing your details resets your trust tier to self-declared. A responder will need to re-confirm your identity.'**
+  String get profileEditTrustNotice;
+
+  /// Signs the current identity out of this device.
+  ///
+  /// In en, this message translates to:
+  /// **'Log out'**
+  String get logoutAction;
+
+  /// Confirmation shown before logging out. Keep AqOne and SOS untranslated.
+  ///
+  /// In en, this message translates to:
+  /// **'You will need to register again to use AqOne. Your SOS history on this device will be kept.'**
+  String get logoutConfirmation;
+
+  /// Error shown when a profile photo cannot be saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update your profile photo.'**
+  String get avatarUpdateError;
+
+  /// Profile photo option that opens the camera.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get avatarTakePhoto;
+
+  /// Profile photo option that opens the image gallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from gallery'**
+  String get avatarChooseGallery;
+
+  /// Profile photo option that deletes the current picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove photo'**
+  String get avatarRemovePhoto;
+
+  /// SAFETY CRITICAL. Responder status code 1 of 5 (docs/13_RESPONDER_LOOP.md), shown in the responder dialog once a dispatcher has acknowledged the SOS. Means only that the call was seen, not that help has left yet.
+  ///
+  /// In en, this message translates to:
+  /// **'MDRRMO has your call'**
+  String get responderStatusReceived;
+
+  /// SAFETY CRITICAL. Responder status code 2 of 5. A rescue boat has actually left to respond.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescue boat on the way'**
+  String get responderStatusDispatched;
+
+  /// SAFETY CRITICAL. Responder status code 3 of 5. Keep 'Coast Guard' as the closest local equivalent term, not a literal dictionary translation.
+  ///
+  /// In en, this message translates to:
+  /// **'Coast Guard notified'**
+  String get responderStatusCoastGuard;
+
+  /// SAFETY CRITICAL. Responder status code 4 of 5. Other fishing boats near the distress position have been asked to help.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby boats alerted'**
+  String get responderStatusNearestVessel;
+
+  /// SAFETY CRITICAL. Responder status code 5 of 5. Must not read as help has been cancelled - it is still coming, just later than first said.
+  ///
+  /// In en, this message translates to:
+  /// **'Delayed — still coming'**
+  String get responderStatusDelayed;
+
+  /// SAFETY CRITICAL. Button in the responder dialog. One tap tells MDRRMO the fisher received the ETA and the emergency is not over.
+  ///
+  /// In en, this message translates to:
+  /// **'Still in danger'**
+  String get responderReplyStillInDanger;
+
+  /// SAFETY CRITICAL. Button in the responder dialog. Tapping this leads to a confirmation before it is sent, because it tells MDRRMO to stand the rescue down.
+  ///
+  /// In en, this message translates to:
+  /// **'Safe now'**
+  String get responderReplySafeNow;
+
+  /// SAFETY CRITICAL. Confirmation text shown before sending 'Safe now', since it can redirect a rescue already underway.
+  ///
+  /// In en, this message translates to:
+  /// **'This tells MDRRMO you no longer need rescue, and they may send help elsewhere instead. Only confirm if you are actually safe.'**
+  String get responderReplyConfirmBody;
+
+  /// SAFETY CRITICAL. Confirms the 'Safe now' reply after the warning text. Must read as a deliberate, informed choice, not a casual OK.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, I\'m safe'**
+  String get responderReplyConfirmConfirm;
+
+  /// Shown after the fisher taps Still in danger and the reply has been recorded (sent or queued).
+  ///
+  /// In en, this message translates to:
+  /// **'MDRRMO knows you are still waiting for help.'**
+  String get responderReplySentStillInDanger;
+
+  /// Shown after the fisher confirms Safe now and the reply has been recorded (sent or queued).
+  ///
+  /// In en, this message translates to:
+  /// **'MDRRMO has been told you are safe.'**
+  String get responderReplySentSafeNow;
+
+  /// SAFETY CRITICAL. Shown when a reply could not reach the backend immediately and is saved locally to retry later. Must not imply the reply already reached MDRRMO.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent yet — will send automatically once you have a connection.'**
+  String get responderReplyPending;
 }
 
 class _AppLocalizationsDelegate
