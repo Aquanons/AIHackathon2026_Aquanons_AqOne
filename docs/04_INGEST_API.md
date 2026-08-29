@@ -107,6 +107,67 @@ call `POST /api/v1/devices/register`.
 Returns `200` with the assigned UUID. The backend owns this mapping and never
 reassigns an external id.
 
+## Contact events (routine vessel-buoy contact)
+
+Distinct from the mesh frames above. A contact event is a routine, low-
+priority record that a vessel was in range of a buoy during an active trip —
+the only trustworthy input to the trip-anomaly/overdue detector
+(`docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md`). It is not a
+distress signal and carries no priority/TTL/hop metadata.
+
+### `POST /api/v1/contacts` — submit one contact event
+
+Same transport and `X-Api-Key` auth as `/api/v1/ingest` above, via its own
+`GATEWAY_API_KEY` credential.
+
+Request body (JSON):
+
+```json
+{
+  "v": 1,
+  "event_id": "gw-01-000042",
+  "vessel_id": "NW-001",
+  "trip_id": "trip-2026-08-29-01",
+  "buoy_id": "BUOY01",
+  "observed_at": "2026-08-29T05:00:00Z",
+  "latitude": 11.6050,
+  "longitude": 122.3125,
+  "source": "live"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `v` | yes | `1` |
+| `event_id` | yes | Upstream event id from the gateway. The idempotency key — resubmitting the same `event_id` returns the original contact, never a duplicate row. |
+| `vessel_id` | yes | Vessel identifier, ≤ 32 chars. |
+| `trip_id` | yes | Identifies the vessel's current trip, ≤ 64 chars. |
+| `buoy_id` | yes | Must already be a registered buoy; an unrecognized id is rejected rather than silently creating one. |
+| `observed_at` | yes | RFC 3339 timestamp of the contact itself, not the ingest time. |
+| `latitude` / `longitude` | no | Last known position at this contact, if the buoy has it. |
+| `source` | yes | `live` for a real field contact, `synthetic` for demo/test data. Production trip-anomaly evaluation only ever reads `live` rows — see docs/38 Phase 1 item 5. Neither the handset nor the public dashboard can submit a contact event at all, live or synthetic; only a holder of `GATEWAY_API_KEY` can. |
+
+Success `200`:
+
+```json
+{
+  "accepted": true,
+  "event_id": "gw-01-000042",
+  "deduped": false,
+  "contact_id": 1042,
+  "vessel_id": "NW-001",
+  "trip_id": "trip-2026-08-29-01"
+}
+```
+
+`deduped: true` means `event_id` was already stored; the response reflects
+the original contact, not a new one — no second logical contact is ever
+created, and the response is otherwise identical either way so a retrying
+gateway does not need to branch on it.
+
+Errors: `401` bad/missing API key; `422` malformed body (bad timestamp,
+empty/oversized id, missing/invalid `source`); `400` unknown `buoy_id`.
+
 ## Dedupe and ordering
 
 - Dedupe key: `(src_ext_id, seq)`. The first accepted submission wins; later

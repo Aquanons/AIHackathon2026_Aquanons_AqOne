@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
@@ -10,17 +11,48 @@ from app.db import get_pool
 router = APIRouter(prefix='/api/ai/anomaly', tags=['anomaly'])
 
 
-async def _load_trip_rows(conn) -> list[dict[str, object]]:
+def _demo_evaluation_enabled() -> bool:
+    """Whether this deployment may fold labelled synthetic contacts into
+    evaluation, alongside live ones.
+
+    Mirrors main.py's own DEMO_MODE gate for mounting /api/demo - the same
+    flag that already means "this deployment is running the presenter demo,
+    not serving real responders." Production candidates must never be
+    derived only from synthetic data (docs/38 acceptance boundary), so a
+    deployment that never sets DEMO_MODE only ever evaluates live contacts,
+    even if that means an empty queue until a gateway is connected.
+    """
+    return os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+async def _load_trip_rows(conn, *, include_synthetic: bool) -> list[dict[str, object]]:
+    source_clause = "bc.source IN ('live', 'synthetic')" if include_synthetic else "bc.source = 'live'"
     rows = await conn.fetch(
-        '''
-        SELECT bc.vessel_id, bc.trip_id, bc.buoy_id, bc.observed_at, bc.latitude, bc.longitude
+        f'''
+        SELECT bc.vessel_id, bc.trip_id, bc.buoy_id, bc.observed_at, bc.latitude,
+               bc.longitude, bc.is_synthetic
         FROM buoy_contacts bc
         JOIN buoys b ON b.id = bc.buoy_id
-        WHERE bc.is_synthetic = TRUE
+        WHERE {source_clause}
         ORDER BY bc.vessel_id, bc.trip_id, bc.observed_at
         '''
     )
     return [dict(row) for row in rows]
+
+
+def _trip_is_synthetic(rows: list[dict[str, object]]) -> dict[tuple[str, str], bool]:
+    """Per (vessel_id, trip_id), whether any contributing contact is synthetic.
+
+    Only reachable with a synthetic contact in the mix at all when
+    DEMO_MODE is on, since a plain live deployment never loads one. Kept
+    per-trip (not hardcoded) so a mixed trip is honestly labelled rather than
+    silently marked live.
+    """
+    flags: dict[tuple[str, str], bool] = {}
+    for row in rows:
+        key = (str(row['vessel_id']), str(row['trip_id']))
+        flags[key] = flags.get(key, False) or bool(row['is_synthetic'])
+    return flags
 
 
 def _group_latest_trips(rows: list[dict[str, object]]) -> list[tuple[str, str, list[ContactPoint]]]:
@@ -45,10 +77,12 @@ def _group_latest_trips(rows: list[dict[str, object]]) -> list[tuple[str, str, l
 
 async def _rebuild_and_score() -> list[dict[str, object]]:
     pool = get_pool()
+    include_synthetic = _demo_evaluation_enabled()
     async with pool.acquire() as conn:
-        rows = await _load_trip_rows(conn)
+        rows = await _load_trip_rows(conn, include_synthetic=include_synthetic)
         profiles = build_profiles_from_contacts(rows)
         latest_rows = _group_latest_trips(rows)
+        trip_is_synthetic = _trip_is_synthetic(rows)
         dataset_now = max((row['observed_at'] for row in rows), default=None)
 
         await conn.execute('TRUNCATE TABLE vessel_profiles, vessel_anomaly_scores')
@@ -58,23 +92,25 @@ async def _rebuild_and_score() -> list[dict[str, object]]:
             as_of = dataset_now or contacts[-1].observed_at
             score = score_trip(profile, contacts, as_of=as_of)
             score_rows.append(score.to_response())
+            is_synthetic = trip_is_synthetic.get((vessel_id, trip_id), True)
             await conn.execute(
                 '''
                 INSERT INTO vessel_profiles (
                   vessel_id, profile_json, trip_count, low_confidence, rebuilt_at, is_synthetic
-                ) VALUES ($1, $2::jsonb, $3, $4, $5, TRUE)
+                ) VALUES ($1, $2::jsonb, $3, $4, $5, $6)
                 ON CONFLICT (vessel_id) DO UPDATE SET
                   profile_json = EXCLUDED.profile_json,
                   trip_count = EXCLUDED.trip_count,
                   low_confidence = EXCLUDED.low_confidence,
                   rebuilt_at = EXCLUDED.rebuilt_at,
-                  is_synthetic = TRUE
+                  is_synthetic = EXCLUDED.is_synthetic
                 ''',
                 vessel_id,
                 profile.to_json(),
                 profile.trip_count,
                 profile.low_confidence,
                 datetime.now(UTC),
+                is_synthetic,
             )
             await conn.execute(
                 '''
@@ -83,7 +119,7 @@ async def _rebuild_and_score() -> list[dict[str, object]]:
                   factors, expected_next_buoy_id, expected_window_start,
                   expected_window_end, is_active, low_confidence, updated_at,
                   is_synthetic
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, TRUE)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)
                 ON CONFLICT (vessel_id, trip_id) DO UPDATE SET
                   observed_at = EXCLUDED.observed_at,
                   last_contact_at = EXCLUDED.last_contact_at,
@@ -96,7 +132,7 @@ async def _rebuild_and_score() -> list[dict[str, object]]:
                   is_active = EXCLUDED.is_active,
                   low_confidence = EXCLUDED.low_confidence,
                   updated_at = EXCLUDED.updated_at,
-                  is_synthetic = TRUE
+                  is_synthetic = EXCLUDED.is_synthetic
                 ''',
                 vessel_id,
                 trip_id,
@@ -111,6 +147,7 @@ async def _rebuild_and_score() -> list[dict[str, object]]:
                 score.status in {'watch', 'overdue', 'alert'},
                 profile.low_confidence,
                 datetime.now(UTC),
+                is_synthetic,
             )
     return score_rows
 

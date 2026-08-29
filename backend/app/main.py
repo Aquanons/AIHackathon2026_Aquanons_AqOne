@@ -14,6 +14,7 @@ from app.api.anomaly import router as anomaly_router
 from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
+from app.api.contacts import router as contacts_router
 from app.api.demo import router as demo_router
 from app.api.drift import router as drift_router
 from app.api.hotspots import router as hotspots_router
@@ -62,6 +63,13 @@ app.include_router(sos_ingest_router)
 # dispatcher token. Keeping it off the blanket operator dependency here lets
 # the mobile app use its own credential type while SOS ingest stays open.
 app.include_router(catch_ingest_router)
+
+# Gateway-only contact-event ingest (docs/04_INGEST_API.md "Contact events").
+# Guarded per-route by its own require_gateway_key, not the blanket operator
+# dependency below - a dashboard operator token must not be able to
+# manufacture a contact event, and a gateway key must not read dispatcher
+# data. See app/api/contacts.py.
+app.include_router(contacts_router)
 
 # Fishing spots (community-reported "fish hotspots") - both ingest and read
 # are unauthenticated here, unlike catch logging: this is public, shared
