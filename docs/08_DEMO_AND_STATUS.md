@@ -232,6 +232,87 @@ sweep. Whoever next has a working local Postgres or a working Docker install
 should run `python -m app.simulation.generator --days 14 --seed 42` then
 `python -m app.ai.trip_profile_eval` and record the real number here.
 
+## 2026-08-29 — automatic distress detection Phase 5: release gate green, deployment/device verification not performed
+
+Per `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 5,
+same environment as every entry above: Windows 11 sandbox, Python 3.11.9,
+Node, on branch `codex/short-messaging-weather-advisories`, continuing
+directly from the Phase 1-4 work recorded above.
+
+**Automated release gate — green, same pre-existing failures as every other
+entry in this file:**
+
+- `cd backend && python -m pytest -q` — 164 passed, 1 xfailed,
+  1 pre-existing failure (`test_demo.py::test_firing_same_beat_is_idempotent`)
+  — identical to every earlier baseline in this file, unrelated to this work.
+  `ruff check .` — same 8 pre-existing issues confined to
+  `calibrate_demo_squall.py`, untouched.
+- `cd web && node --test test/dashboard-utils.test.js` — 51/51 passed
+  (baseline 32, +19 for the Trip Checks queue's pure render helpers added
+  in Phase 3).
+
+**What was directly verified, read-only, against the live deployment.**
+The current Railway URL from the README (not the dead
+`incredible-liberation-production-aad7` host retired in an earlier
+handoff):
+
+- `GET https://aihackathon2026aquanonsaqone-production.up.railway.app/healthz`
+  → `200 {"status":"ok"}`.
+- `GET .../api/ai/anomaly/active` (no token) → `401 {"detail":"authentication
+  required"}` — the pre-existing route's auth boundary is intact in
+  production.
+- `GET .../api/ai/anomaly/cases/open` (no token) → `404 {"detail":"Not
+  Found"}` — confirms, honestly, that **none of this handoff's Phase 1-4
+  code is deployed**. The new contact-ingest endpoint, the cases API, and
+  the three new migrations exist only on the local branch.
+
+No write request of any kind was made against the live deployment - these
+were plain unauthenticated `GET`s, per the same read-only discipline every
+earlier entry in this file used.
+
+**What was not done, and why, rather than skipped silently:**
+
+- **`GATEWAY_API_KEY` was not configured anywhere.** Doing so on the real
+  Railway service requires Railway account/project access this environment
+  does not have, and setting a production secret is exactly the kind of
+  infrastructure change that needs the project owner's own credentials, not
+  an agent guessing at deployment console access.
+- **No fixture contact stream was submitted anywhere**, staging or
+  production. Phase 5 item 2 requires a *non-production or explicitly
+  approved demo environment* for this - none was available, and this
+  handoff's own Phase 1-4 code is not deployed to try it against even if
+  one existed.
+- **The manual, device-level acceptance script (submit a fixture stream,
+  watch a verification case and a responder-attention case appear, act on
+  one, reload, confirm persistence, confirm a stale/normal fixture raises
+  nothing) could not be completed** - same root blocker as every earlier
+  entry in this file: no working local Postgres credential, Docker
+  Desktop's engine unreachable, so no local backend could be started to
+  drive even a local version of this script. The backend-level equivalent
+  of every piece of this script - low/high confidence routing, one case per
+  repeated evaluation, each responder action surviving a re-evaluation,
+  auth boundaries, a stale trip producing no case - is covered by
+  `backend/tests/test_anomaly_cases.py` (7/7 passing) and
+  `backend/tests/test_anomaly_source.py`/`test_anomaly_active_readonly.py`
+  against fake connection pools, not a real database or a real dispatcher's
+  screen.
+- **Nothing from this handoff has been pushed, merged, or deployed.**
+  Everything above is on the local branch only.
+
+**What this means concretely.** The five phases of docs/38 are implemented,
+unit- and route-level tested without a database, and the live deployment's
+existing surface was confirmed reachable and correctly protected - but
+distress-detection-over-a-real-gateway-connection remains exactly what
+`docs/38`'s own purpose section already says it is: unproven until a real
+gateway submits real contact events and a real Postgres instance is
+available to run migrations, the scheduled evaluator, and the manual
+acceptance script against. Whoever next has Railway project access and/or a
+working local Postgres/Docker should: set `GATEWAY_API_KEY` and confirm the
+Railway cron service for `python -m app.ai.run_anomaly_evaluation`
+(README "Scheduled anomaly evaluation"), run `migrate.py` to apply
+`016_contact_events.sql` and `017_anomaly_cases.sql`, then run this
+phase's manual acceptance script for real.
+
 ---
 
 ## Judging weights — build toward these
