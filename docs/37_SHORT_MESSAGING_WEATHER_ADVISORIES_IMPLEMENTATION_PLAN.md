@@ -399,3 +399,43 @@ four focused implementation commits plus this verification commit.
 - PAGASA integration, real buoy-fusion risk scoring, production model training,
   or claiming the synthetic squall model is operationally validated.
 - Posting test data or deploying to the production Railway environment.
+
+## Execution record — 2026-08-29
+
+Executed on branch `codex/short-messaging-weather-advisories`, four
+implementation commits plus this verification pass (Phase 5 is a docs-only
+change, not a fifth code commit, since the automated gate found nothing to
+fix). Full command output and what was/was not verified is recorded in
+`docs/08_DEMO_AND_STATUS.md`'s "2026-08-29 — short messaging / weather /
+advisories verification" entry — summary here, not a duplicate:
+
+- **Phase 1 (chat):** `ChatService` now uses `AqOneConfig.backendBaseUrl`
+  through `EndpointGuard.backend()`. That constant's own default was itself
+  found stale during Phase 0 (`incredible-liberation-production-aad7...`
+  answers Railway's own 404) and corrected to the verified live host
+  alongside the `ChatService` fix — a second stale-URL bug in the same
+  gap the plan named, not something the plan's own text anticipated.
+  Per-message `hubState`/`cloudStored` tracking, length rejection, and
+  cloud-relay retry (reusing the existing reconnect timer) are in place and
+  tested.
+- **Phase 2 (advisories):** public reads now filter to active/published
+  server-side and serialise `image_url`; `VentureFeeds.advisories()`
+  returns `null` on a genuine outage instead of a welcome-note-shaped
+  false "nothing to report" — `AdvisoriesPage`'s existing failed/empty
+  distinction was already written for this and needed no changes itself.
+- **Phase 3 (weather/squall):** `GET /api/public/forecast` implemented as a
+  transparent Open-Meteo/marine proxy (`source: "open-meteo"`, no `risk`
+  block); the mobile `AqOneForecastProvider` precedence/fallback needed no
+  changes, only tests, since it already implemented this contract.
+  `GET /api/public/squall` gained a 3-hour max-data-age guard that runs
+  before the model loads, returning `stale`/`stale_reason` with
+  `level: "unknown"`/`return_now: false`.
+- **Phase 4 (localization):** the new chat-status and stale-squall strings
+  moved into `app_en.arb` with descriptions and machine-drafted `fil`/`akl`
+  counterparts, tested in all three locales for rendering and the honest
+  state distinctions.
+
+**Not done, deliberately:** the manual staging/device acceptance script
+(Phase 5's own section) — no reachable local Postgres credential, no
+Docker engine, no attached device in this environment. Nothing was
+deployed, and no chat/advisory/squall data was posted anywhere.

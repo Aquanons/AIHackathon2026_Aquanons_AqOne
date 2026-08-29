@@ -64,6 +64,90 @@ real time for this phase. That remains open work for whoever has a real
 Postgres credential or a working Docker install in this environment (or is
 running this on a machine already set up per `backend/.env.example`).
 
+## 2026-08-29 — short messaging / weather / advisories verification
+
+Recorded per `docs/37_SHORT_MESSAGING_WEATHER_ADVISORIES_IMPLEMENTATION_PLAN.md`
+Phase 5, same environment as the responder-loop entry above: Windows 11
+sandbox, Python 3.11.9, Flutter (via `C:\Users\User\flutter`), Node, no
+attached Android/iOS device, on branch
+`codex/short-messaging-weather-advisories`.
+
+**Automated release gate — all green except the same pre-existing, unrelated
+failures already present at the Phase 0 baseline of this handoff:**
+
+- `cd backend && python -m pytest -q` — 125 passed, 1 xfailed, 1 pre-existing
+  failure (`test_demo.py::test_firing_same_beat_is_idempotent`) and 2
+  pre-existing errors (`test_dashboard_coords.py`, still missing
+  `web/js/dashboard.js` at its old pre-modularisation path) — identical to
+  the Phase 0 baseline, unrelated to this work. `ruff check .` — same 8
+  pre-existing issues confined to `calibrate_demo_squall.py`, also
+  unrelated and untouched.
+- `cd mobile && flutter analyze` — 0 issues. `flutter test` — 180/180
+  passed (baseline 151, +29 across the four phases: chat relay/status,
+  advisory expiry/field-compat, forecast precedence/fallback, stale squall
+  parsing and banner, and the new chat/squall ARB keys in all three
+  locales).
+- `cd web && node --test test/dashboard-utils.test.js` — 32/32 passed
+  (unchanged; this handoff did not touch `web/`).
+
+**What was directly verified, and how:**
+
+- The live Railway base URL. `GET /healthz` against
+  `https://aihackathon2026aquanonsaqone-production.up.railway.app` returned
+  `200 {"status":"ok"}` before any code changes. The URL `ChatService` and
+  `AqOneConfig.backendBaseUrl` previously defaulted to,
+  `incredible-liberation-production-aad7.up.railway.app`, answered
+  Railway's own `404 Application not found` — that deployment does not
+  exist. This was an unannounced regression beyond the plan's own framing
+  of the bug (which assumed `AqOneConfig.backendBaseUrl` was already
+  correct); both defaults are now the verified live host. No write request
+  was made against the live deployment — this was a read-only `/healthz`
+  check only, per the plan's Phase 0 instruction.
+- Every backend route change (mesh chat ordering/persistence, advisory
+  expiry filtering and field naming, `/api/public/forecast`, the squall
+  staleness guard) is exercised by `TestClient` against the real FastAPI
+  routes and real SQL query text, with only the database connection faked
+  (in-memory fake pools modelled on the existing `test_vessel_auth.py`
+  pattern) — not mocked at the HTTP boundary. This is real route-level
+  verification, not a unit test of isolated functions.
+- Local Postgres was checked again for this handoff (same blocker as the
+  responder-loop entry above): a server is running on `localhost:5432`, but
+  connecting as `postgres:postgres` (the `.env.example` default) fails with
+  `InvalidPasswordError`, and no other credential is known in this
+  environment. Docker Desktop's engine is still not reachable
+  (`npipe:////./pipe/dockerDesktopLinuxEngine`). No password was guessed or
+  brute-forced.
+
+**What was not verified, and is not claimed as done:**
+
+- **No live device or staging acceptance script was run.** The manual
+  script in the implementation plan (send a chat line and watch a `201`
+  land in a real database with internet on/off; join a real Heltec hub over
+  WiFi and check history backfill/no self-echo; create a future-dated and
+  an expired advisory as a staging operator; watch the backend forecast and
+  a fresh vs. stale squall fixture on a running app; switch locales on a
+  live screen) needs a real Postgres connection, a Heltec buoy on WiFi, and
+  a device/emulator, none of which were available here. Nothing above
+  should be read as claiming that script ran.
+- **None of this handoff's code changes are deployed.** Everything above
+  is on the local branch only, not pushed, not merged, and not built onto
+  the Railway deployment checked for `/healthz`. The live backend still
+  runs whatever was deployed before this handoff.
+- **No chat message, advisory, or squall reading was created against any
+  real database** — local, staging, or production — consistent with the
+  plan's instruction not to post test data anywhere without the owner's
+  explicit approval.
+- The Aklanon and Tagalog strings added in Phase 4
+  (`chatStatus*`, `chatCharacterLimitLabel`, `squallStale*` in
+  `mobile/lib/l10n/app_fil.arb` / `app_akl.arb`) are machine/AI-drafted,
+  exactly like every other string in those two files per
+  `mobile/lib/l10n/README.md` — untranslated by a human, not reviewed by a
+  native speaker, and not verified against a running app in either
+  language. `flutter test` confirms they render without a
+  `MaterialLocalizations` exception and without a build-time overflow
+  exception in all three locales; it does not confirm the words are
+  correct.
+
 ---
 
 ## Judging weights — build toward these
