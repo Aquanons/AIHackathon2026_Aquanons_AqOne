@@ -313,17 +313,27 @@
    * backend's `status_reason` - this is the "insufficient data" state,
    * deliberately distinct from an empty "no active detections" panel: an
    * alarm that cannot be evaluated must never look the same as "all clear".
+   *
+   * The LIVE/DEMO badge only renders when `payload.source` is an actual
+   * "live" or "synthetic" string from a real backend response. A client-side
+   * fallback for a fetch that never reached the backend at all (no `source`
+   * field) must not be badged DEMO - that would misrepresent a plain
+   * connectivity failure as deliberately-synthetic data.
    */
   function squallStatusHtml(payload) {
     var p = payload || {};
-    var badge = alertBadge(p.source === 'live');
     var ageText = formatDataAge(p.data_age_seconds);
     var calibrationText = p.calibration === 'synthetic'
       ? 'calibrated on simulated data'
       : 'calibrated model';
+    var badgeHtml = '';
+    if (p.source === 'live' || p.source === 'synthetic') {
+      var badge = alertBadge(p.source === 'live');
+      badgeHtml = '<span class="' + badge.cssClass + '">' + badge.text + '</span>';
+    }
     var line =
       '<div class="ai-squall-status-line">' +
-        '<span class="' + badge.cssClass + '">' + badge.text + '</span>' +
+        badgeHtml +
         '<span class="ai-squall-status-age">' + escapeHtml(ageText) + '</span>' +
         '<span class="ai-squall-status-calibration">' + escapeHtml(calibrationText) + '</span>' +
       '</div>';

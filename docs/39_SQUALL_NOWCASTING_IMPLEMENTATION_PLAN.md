@@ -349,6 +349,48 @@ is explicitly not done and not fabricated, per the user's direction.
   insufficient telemetry, a demo simulation, and an official advisory; a
   fisherman never receives a new alarm from stale or synthetic data.
 
+### Status, recorded 2026-08-29
+
+Full results in `docs/08_DEMO_AND_STATUS.md`'s dated entry for this phase
+and in the README's "Squall nowcasting Phase 5 verification" section. Summary
+against each work item:
+
+1. **Not performed.** Configuring Railway environment variables requires
+   deployment-platform access this session does not have. No credential or
+   flag value was set, printed, or fabricated anywhere.
+2. **Partially performed.** No live database was available to POST a real
+   pressure fixture and watch an HTTP-observed clear→watch→unknown
+   transition end to end (same constraint every prior phase recorded; a
+   local Postgres service is running on this machine, but its credentials
+   are unknown and the user declined pursuing them further for this phase).
+   Substituted with: the full automated suite, which exercises the identical
+   code paths against fake pools (`backend/tests/test_squall.py`), and a
+   real local browser DOM check of the frontend's rendering of that same
+   state machine with no backend reachable at all - which is itself the
+   `unknown` end of the transition, confirmed live in a real browser rather
+   than only asserted in a unit test.
+3. **Partially performed**, directly against the real Railway deployment
+   (read-only checks, one deliberately-unauthenticated POST, no writes):
+   Railway health endpoint ✅ confirmed; ingest authorization ✅ confirmed
+   (`POST /api/v1/pressure-events` correctly 401s with no key); public
+   stale/unknown response ✅ confirmed, though it reflects the pre-Phase-3
+   build still running in production; dashboard status rendering — confirmed
+   locally (real browser, static frontend, no backend) rather than against
+   the live deployment, since production has not been redeployed with this
+   session's work; handset no-new-alarm behaviour — confirmed via the mobile
+   automated suite only, no physical device; absence of synthetic rows from
+   production output — true by construction once this branch is deployed
+   (production reads live rows only), not independently observable from
+   outside without a database credential.
+4. **Done.** `docs/08_DEMO_AND_STATUS.md` and the README updated with exact
+   environment, timestamps, checks, and results; no other files touched for
+   this item.
+
+**Net effect on readiness:** unchanged from Phase 4 - `RETURN NOW` remains
+unavailable for live use, both because `SQUALL_RETURN_NOW_ENABLED` defaults
+off in code and because the code that enforces any of this has not yet been
+merged to `master`/redeployed to the live instance this session could reach.
+
 ### Commit
 
 `docs(squall): record staged nowcast verification`

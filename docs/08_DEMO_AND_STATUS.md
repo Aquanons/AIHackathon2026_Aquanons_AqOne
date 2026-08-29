@@ -313,6 +313,71 @@ Railway cron service for `python -m app.ai.run_anomaly_evaluation`
 `016_contact_events.sql` and `017_anomaly_cases.sql`, then run this
 phase's manual acceptance script for real.
 
+## 2026-08-29 — squall nowcasting Phase 5: staged verification, production not yet redeployed
+
+Recorded per `docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md` Phase 5, same
+environment as the entries above: Windows 11, Python 3.11.9, Flutter 3.44.7,
+Node v24.14.0. A local PostgreSQL 18 service is running on this machine, but
+its credentials are not the documented default and were not pursued further
+at the user's explicit direction; Docker Desktop's engine did not start.
+
+**Automated release gate — all green except the same pre-existing, unrelated
+failures already present at this session's baseline:**
+
+- `cd backend && python -m pytest -q` — 200 passed, 1 xfailed.
+  `test_demo.py::test_firing_same_beat_is_idempotent` fails on a real
+  pre-existing `NameError` in `fire_beat()` (`app/demo/scenarios.py`),
+  unrelated to squall work and already tracked as its own task.
+- `cd backend && ruff check .` — 8 pre-existing issues confined to
+  `calibrate_demo_squall.py` and `app/demo/scenarios.py`, also unrelated.
+- `cd mobile && flutter analyze` — no issues found;
+  `flutter test test/squall_alert_test.dart` — 14/14 passed.
+- `cd web && node --test test/dashboard-utils.test.js` — 58/58 passed.
+
+**Two verification avenues not available in prior phases were used here:**
+
+1. **Direct HTTP checks against the real Railway deployment**
+   (`https://aihackathon2026aquanonsaqone-production.up.railway.app`),
+   unauthenticated GETs and one deliberately-credential-less POST, no writes:
+   - `GET /healthz` → `200 {"status":"ok"}`.
+   - `GET /api/public/squall` → `200`, still the pre-Phase-3 response shape
+     (`as_of`/`stale`/`stale_reason`), reporting a stale synthetic reading
+     from 14 August 2026 — production has **not** been redeployed with this
+     session's Phase 2-3 work (live-only reads, the quality gate, the
+     alarm-safety clamp).
+   - `POST /api/v1/pressure-events` with no `X-Api-Key` → `401` — Phase 1's
+     gateway-only ingest endpoint **is** live and correctly gated.
+   - `GET /api/demo/squall` → `404`, expected regardless of deployment
+     state (this route only mounts when `DEMO_MODE` is set).
+   - Confirmed via `git log`: local `HEAD` was 1 commit ahead of
+     `origin/codex/short-messaging-weather-advisories` (Phase 4) and 3
+     commits ahead of `origin/master` (Phase 3, a line-ending fix, and
+     Phase 4) at the start of this phase.
+2. **A real local browser DOM check** of the dashboard's new squall panel,
+   serving this checkout's `web/` directory statically with no backend
+   running (every fetch legitimately fails). Confirmed the panel renders a
+   neutral "Squall status cannot be confirmed right now" state - never a
+   false "no active detections" - and the RETURN NOW/header badges read
+   `UNKNOWN`, not `MONITORING`. This check caught a real bug before it
+   shipped: the client-side fallback for a totally unreachable backend was
+   labelled `DEMO`, misrepresenting a plain connectivity failure as
+   deliberately-synthetic data. Fixed in
+   `web/js/dashboard-utils.js`'s `squallStatusHtml()` and covered by a new
+   `web/test/dashboard-utils.test.js` case.
+
+**What this means concretely.** The quality gate, live-only reads, the
+`SQUALL_RETURN_NOW_ENABLED` safety clamp, and the demo-only presenter
+surface are implemented, unit- and route-level tested, and now also directly
+observed to behave correctly in a real browser against the real static
+frontend - but, per the plan's own instruction not to overstate readiness:
+nobody has watched a real phone, buoy, and dispatcher screen agree with each
+other for this feature, production is still serving the pre-Phase-3 build,
+and RETURN NOW remains unavailable for live use in every environment
+pending a field-validation log this plan does not fabricate (see below).
+Whoever next has Railway/GitHub merge access should merge this branch to
+`master` and redeploy before treating any of the above as production
+behavior.
+
 ---
 
 ## Squall field-validation log (template)

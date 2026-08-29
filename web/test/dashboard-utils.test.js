@@ -422,6 +422,19 @@ test('squallStatusHtml', async (t) => {
     assert.ok(html.includes('cannot be confirmed right now'));
   });
 
+  await t.test('a client-side fetch-failure fallback with no source is not badged DEMO or LIVE', () => {
+    // The exact shape initAIOperations() renders when the backend was never
+    // reached at all (dashboard-ai-ops.js) - found via a live browser check
+    // showing this incorrectly read as "DEMO", misrepresenting a plain
+    // connectivity failure as deliberately-synthetic data.
+    const html = squallStatusHtml({
+      level: 'unknown', detections: [], status_reason: 'unable to reach the squall service'
+    });
+    assert.ok(!html.includes('DEMO'));
+    assert.ok(!html.includes('>LIVE<'));
+    assert.ok(html.includes('unable to reach the squall service'));
+  });
+
   await t.test('status_reason text is escaped, never passed through raw', () => {
     const html = squallStatusHtml({
       source: 'live', level: 'unknown', status_reason: '<img src=x onerror=alert(1)>'
