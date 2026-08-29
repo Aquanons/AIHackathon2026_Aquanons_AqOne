@@ -182,6 +182,56 @@ not tuned per vessel or scenario, and Phase 2's own instruction was explicit
 that this work must not extend to retuning `trip_profile.py`'s model weights
 or thresholds — only this eligibility guard.
 
+## 2026-08-29 — automatic distress detection: offline evaluator fixed, false-alarm figure retracted
+
+Per `docs/38_AUTOMATIC_DISTRESS_DETECTION_IMPLEMENTATION_PLAN.md` Phase 4.
+
+**The bug.** `backend/app/ai/trip_profile_eval.py`'s normal-trip path
+previously re-scored each trip only at its own historical contact
+timestamps (`as_of = contacts[idx - 1].observed_at`), never past its own
+final contact. `status == 'alert'` was therefore checked only at moments
+the vessel was, by construction, still actively checking in — the
+published **0% false-alarm rate across 496 normal trips was true by
+construction, not by measurement** (`docs/30_DEMO_DECISION_01_ANOMALY.md`
+§1.1 predicted exactly this).
+
+**The fix.** Normal trips now sweep `as_of` forward from their own last
+contact in 5-minute steps over the same 12-hour horizon the incident path
+already used (matching `OPEN_TRIP_FRESHNESS_WINDOW`, the Phase 2 decision
+above — the live pipeline never scores a trip past that age either, so this
+measures exactly the window production can reach). Core logic extracted
+into a pure `evaluate(rows, incidents)` function
+(`backend/app/ai/trip_profile_eval.py`) so it can be regression-tested
+without a database.
+
+**What was verified here, without a database** (`backend/tests/test_trip_profile_eval.py`,
+3/3 passing): with a controlled fixture — four historical trips on a fixed
+three-buoy route, then a fifth trip that completes the same route and then
+legitimately goes quiet — the corrected evaluator reaches `status: 'alert'`
+about **two hours** after the vessel's last real contact, purely because no
+further contact ever arrives. The pre-fix code could never reach this
+outcome for any trip, by construction, regardless of the underlying model.
+This reproduces exactly the mechanism `docs/31_DEMO_VERIFICATION_01.md`
+found separately (a model with no "trip complete" concept eventually reads
+silence as overdue) and confirms the fix actually exercises time the vessel
+was never observed at.
+
+**What was not run.** `python -m app.ai.trip_profile_eval` against the real
+496-normal-trip synthetic dataset — same blocker recorded throughout this
+file: no working local Postgres credential, Docker Desktop's engine
+unreachable. The real false-alarm rate is therefore **unmeasured**, not
+republished as a guess. `backend/app/ai/models/eval_results.json`'s
+`trip_anomaly.false_alarm_rate` has been set to `null` with a
+`retracted_reason` field explaining why, and the README's measured-performance
+table and status row were updated to match (say "retracted" / "demo,
+simulation-verified only" rather than the stale 0%) — per decision 30 §4:
+"Publish whatever it gives... The real number may be considerably worse than
+0%. That is the point." `median_detection_latency_minutes` (55 minutes) and
+`incidents_detected` (8) are unaffected; decision 30 already verified that
+sweep. Whoever next has a working local Postgres or a working Docker install
+should run `python -m app.simulation.generator --days 14 --seed 42` then
+`python -m app.ai.trip_profile_eval` and record the real number here.
+
 ---
 
 ## Judging weights — build toward these
