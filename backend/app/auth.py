@@ -26,6 +26,10 @@ VALID_ROLES = {'mdrrmo', 'lgu', 'admin'}
 # device management is reserved for lgu/admin per docs/00_START_HERE.md.
 RESPONDER_ROLES = ('mdrrmo', 'lgu', 'admin')
 DEVICE_ADMIN_ROLES = ('lgu', 'admin')
+# Global audit search/export (docs/41 Phase 3) is the one place lgu is NOT
+# treated as equal to admin - seeing every operator's action history across
+# every case is a narrower privilege than the operational actions above.
+ADMIN_ROLES = ('admin',)
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -145,6 +149,7 @@ def require_roles(*roles: str):
 # across routes since they carry no per-request state of their own.
 require_responder_roles = Depends(require_roles(*RESPONDER_ROLES))
 require_device_admin_roles = Depends(require_roles(*DEVICE_ADMIN_ROLES))
+require_admin_role = Depends(require_roles(*ADMIN_ROLES))
 
 
 async def require_vessel_device(

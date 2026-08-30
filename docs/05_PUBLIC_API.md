@@ -202,8 +202,13 @@ Operator-authenticated, responder roles (`mdrrmo` / `lgu` / `admin` — see
 server-side to an absolute `eta_at`, never trusting the browser's clock),
 `responder_status` (the code table in `docs/13_RESPONDER_LOOP.md`) and an
 optional `responder_note`. `resolve` marks the incident resolved, removing it
-from `GET /api/sos/active` on the next poll. Both are idempotent — re-calling
-either after it already applied returns the same result rather than erroring.
+from `GET /api/sos/active` on the next poll, and accepts an optional
+`reason` — persisted as distinct `resolved_by`/`resolved_reason` columns
+(docs/41 Phase 3; previously `resolve` reused `acked_by`, conflating the
+acknowledger with the resolver). Both are idempotent — re-calling either
+after it already applied returns the same result rather than erroring;
+`acknowledge` is additionally re-callable with a new `responder_status` to
+report progress, which is a real transition each time, not a duplicate.
 
 ### `GET /api/v1/sos/stream` — SSE live feed
 
@@ -923,12 +928,45 @@ Gated by `DEMO_MODE` (the route is only mounted when it is set) plus
 `X-Demo-Key`, and additionally `404`s on any incident that isn't synthetic —
 a demo key alone can never unlock a real case's data.
 
+## Operations audit — **implemented**
+
+docs/41 Phase 2 wired one append-only `operations_audit_events` ledger into
+every high-impact write above. Phase 3 exposes it through two read paths;
+neither ever returns a raw domain row, only the redacted columns
+(`id, occurred_at, actor_*, action, resource_type, resource_id, outcome,
+correlation_key, is_demo, metadata`).
+
+### `GET /api/ops/cases/{resource_type}/{resource_id}/timeline`
+
+Operator-authenticated, responder roles (`mdrrmo` / `lgu` / `admin` — see
+[Roles](#roles)). `resource_type` is one of `sos_event`, `anomaly_case`,
+`drift_incident`; anything else is `422`. Returns up to 200 events for
+that one case, newest first — never a bulk cross-case listing. Recording
+the view itself is deduplicated: at most one `ops.case_view` access event
+per actor/case per rolling 15 minutes, so re-polling or re-opening the
+same case tab doesn't turn into an event storm.
+
+### `GET /api/ops/audit` and `GET /api/ops/audit/export`
+
+Administrator-only (`admin` — **not** `lgu`; see [Roles](#roles)). Filters:
+`actor_email`, `action`, `resource_type`, `resource_id`,
+`date_from`/`date_to` (bounded to a 90-day span, defaults to the last 7
+days if both are omitted). `/audit` is opaque-cursor-paginated
+(`limit`, default 50, max 100; `cursor` is a base64 token for the last row
+of the previous page — a malformed cursor is `400`), newest-first and
+stable. `/audit/export` takes the same filters plus `format=csv|json`
+(default `csv`) and returns one `Content-Disposition: attachment`
+response capped at 5000 rows, stamped with `generated_at`, the applied
+filters, and whether the cap truncated the result. Each call to either
+route records its own `ops.audit_search`/`ops.audit_export` access event
+(not deduplicated — an admin's own deliberate query is not polling).
+
 ## Roles
 
 Approved action matrix (docs/41_OPERATIONS_CONSOLE_AUDITABILITY_IMPLEMENTATION_PLAN.md
-Phase 1). Enforced server-side by `app.auth.require_roles(...)`, not by
-hiding dashboard controls — a role never gets an action merely because the
-dashboard shows it a panel.
+Phases 1 and 3). Enforced server-side by `app.auth.require_roles(...)`, not
+by hiding dashboard controls — a role never gets an action merely because
+the dashboard shows it a panel.
 
 | Action category | Routes | `mdrrmo` | `lgu` | `admin` |
 |---|---|---|---|---|
@@ -936,14 +974,19 @@ dashboard shows it a panel.
 | Advisory / sea-condition publication | `GET/POST/PUT/DELETE /api/advisories`, `POST /api/advisories/alert`, `POST /api/sea-condition` | Yes | Yes | Yes |
 | Vessel-device pairing & revocation | `POST /api/vessel-auth/pairing-codes`, `POST /api/vessel-auth/devices/{id}/revoke` | No | Yes | Yes |
 | Operator-account setup | `POST /api/admin-signup` | Gated by `ADMIN_SETUP_KEY` (not a role check) |||
-| Audit/case viewing | not yet built — planned for Phase 3 of docs/41 | — | — | — |
+| Case timeline (one case) | `GET /api/ops/cases/{resource_type}/{resource_id}/timeline` | Yes | Yes | Yes |
+| Global audit search / export | `GET /api/ops/audit`, `GET /api/ops/audit/export` | No | **No** | Yes |
 
-`lgu` has the same permissions as `admin` for every action above (owner
-decision, 2026-08-30); `admin`'s only distinct capability outside this table
-is back-office API-key revocation, not documented here. `mdrrmo` cannot pair
-or revoke vessel devices — a narrowing from previous behaviour, where any
-authenticated operator role could — but no dashboard UI exists yet for those
-two actions, so this is a backend-only guard for now.
+`lgu` has the same permissions as `admin` for every action above **except**
+global audit search/export (owner decision, 2026-08-30 for the operational
+rows; reaffirmed narrower for audit visibility itself on the same date) —
+seeing every operator's action history across every case is a different
+kind of privilege than the operational writes above. `admin`'s only other
+distinct capability outside this table is back-office API-key revocation,
+not documented here. `mdrrmo` cannot pair or revoke vessel devices — a
+narrowing from previous behaviour, where any authenticated operator role
+could — but no dashboard UI exists yet for those two actions, so this is a
+backend-only guard for now.
 
 `fisherman` reads safety feeds without auth, but per-vessel status / reply /
 catch routes now require a paired vessel-device credential.

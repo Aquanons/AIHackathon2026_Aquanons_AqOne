@@ -57,6 +57,8 @@ class _FakePool:
             'fisher_reply': None,
             'fisher_replied_at': None,
             'resolved_at': None,
+            'resolved_by': None,
+            'resolved_reason': None,
             'is_synthetic': False,
         }
         base.update(row)
@@ -125,12 +127,13 @@ class _FakePool:
             return event
 
         if 'UPDATE sos_events' in query and 'SET resolved_at' in query:
-            event_id, acked_by = args
+            event_id, resolved_by, resolved_reason = args
             event = self.sos_events.get(int(event_id))
             if event is None:
                 return None
             event['resolved_at'] = event['resolved_at'] or datetime.now(UTC)
-            event['acked_by'] = event['acked_by'] or acked_by
+            event['resolved_by'] = event['resolved_by'] or resolved_by
+            event['resolved_reason'] = event['resolved_reason'] or resolved_reason
             return event
 
         if 'UPDATE sos_events' in query and 'SET fisher_reply' in query:
@@ -203,6 +206,31 @@ def test_resolve_records_one_audit_event_and_a_retry_is_no_change(monkeypatch):
     assert first.json()['resolved_at'] == second.json()['resolved_at']
     assert [e['outcome'] for e in pool.audit_events] == ['updated', 'no_change']
     assert all(e['action'] == 'sos.resolve' for e in pool.audit_events)
+
+
+def test_resolve_records_a_distinct_resolver_and_reason(monkeypatch):
+    """docs/41 Phase 3: resolving previously reused `acked_by` for the
+    resolver too and recorded no reason at all - resolved_by/resolved_reason
+    must now be distinct from whoever acknowledged, and the reason (free
+    text) must never leak into the audit metadata.
+    """
+    pool = _FakePool()
+    pool.seed(id=8, acknowledged_at=datetime.now(UTC), acked_by='ranger-01')
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/sos/8/resolve',
+            headers=_operator_headers(),
+            json={'reason': 'vessel returned safely to port'},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['acked_by'] == 'ranger-01'
+    assert body['resolved_by'] == 'ranger@example.com'
+    assert body['resolved_reason'] == 'vessel returned safely to port'
+    assert 'vessel returned safely' not in pool.audit_events[-1]['metadata']
 
 
 def test_acknowledged_but_unresolved_sos_stays_in_the_active_feed(monkeypatch):

@@ -311,11 +311,21 @@ async def acknowledge(
     }
 
 
+class ResolveIn(BaseModel):
+    """An optional resolver note - never required, since a fisher's own
+    SAFE_NOW reply also resolves the incident with no dispatcher involved.
+    """
+
+    reason: str | None = Field(default=None, max_length=280)
+
+
 @protected_router.post('/{event_id}/resolve')
 async def resolve_sos(
     event_id: int,
+    payload: ResolveIn | None = None,
     user: dict = require_responder_roles,
 ) -> dict[str, object]:
+    body = payload or ResolveIn()
     pool = get_pool()
     async with pool.acquire() as conn, conn.transaction():
         prior = await conn.fetchrow(
@@ -329,13 +339,16 @@ async def resolve_sos(
             '''
             UPDATE sos_events
                SET resolved_at = COALESCE(resolved_at, NOW()),
-                   acked_by = COALESCE(acked_by, $2)
+                   resolved_by = COALESCE(resolved_by, $2),
+                   resolved_reason = COALESCE(resolved_reason, $3)
              WHERE id = $1
-            RETURNING id, resolved_at, acked_by, is_synthetic
+            RETURNING id, resolved_at, resolved_by, resolved_reason, acked_by, is_synthetic
             ''',
             event_id,
             user.get('email') or 'unknown',
+            body.reason,
         )
+        # resolved_reason is free text and never logged (docs/41 Phase 2).
         await record_audit_event(
             conn,
             actor=user,
@@ -349,6 +362,8 @@ async def resolve_sos(
         'ok': True,
         'id': row['id'],
         'resolved_at': _iso(row['resolved_at']),
+        'resolved_by': row['resolved_by'],
+        'resolved_reason': row['resolved_reason'],
         'acked_by': row['acked_by'],
     }
 
