@@ -655,7 +655,7 @@ Closes the case; it drops out of `GET /cases/open` on the next poll.
 Idempotent, no body required. Because evaluation never writes `resolved_at`,
 a later score refresh can never reopen a case a responder closed.
 
-## Drift prediction and search re-tasking — **implemented (Phases 1-2: case lifecycle, quality-gated runs)**
+## Drift prediction and search re-tasking — **implemented (Phases 1-3: case lifecycle, quality-gated runs, search re-tasking)**
 
 The responder-facing side of
 `docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md`. A case
@@ -757,6 +757,7 @@ environmental inputs. Response shape for a real case:
   "prediction": { "object_class": "person_in_water", "wind_source": "open-meteo", "degraded": false },
   "posterior_grid": { "...": "DensityGrid" },
   "contours": [ "...": "50/75/95% GeoJSON polygons" ],
+  "next_area": { "label": "recommendation for responder review", "bounds": { "...": "..." }, "centroid": { "...": "..." }, "remaining_mass": 0.71 },
   "search_sectors": [ "..." ]
 }
 ```
@@ -787,14 +788,64 @@ applies to a real case). Response shape matches `POST /cases`' tail:
 { "id": 101, "run_number": 2, "environmental_status": "ok", "insufficiency_reason": null }
 ```
 
-### `POST /api/ai/drift/incident/{id}/searched`
+### `POST /api/ai/drift/incident/{id}/searched` — report a searched sector (Phase 3)
 
-Records a searched sector against the case's *current* run and returns the
-updated posterior. Rejects with `409` once the case is `resolved` or
-`cancelled`, or if the current run is `insufficient_environmental_data`
-(there is no field to search). (Phase 3 replaces the raw metre-offset body
-and adds an idempotency key; this phase only adds the case-state and
-run-status gates.)
+Real cases only — a case with no drift run (demo/synthetic, or a case that
+predates Phase 2) cannot report through this route. The responder draws a
+rectangle on the map; the backend converts it to the grid's local metre
+space, not the other way around:
+
+```json
+{ "run_number": 1, "south": 11.65, "west": 122.30, "north": 11.68, "east": 122.34, "method": "moderate", "idempotency_key": "b1e2c3-...", "notes": "surface pattern, calm seas" }
+```
+
+`run_number` is whatever the client last saw from `GET /incident/{id}` — a
+report against a run that has since been superseded by a rerun is rejected.
+`method` is one of the responder-approved detection-probability presets
+(docs/05 table below); the UI submits the preset name, never a raw
+probability. `idempotency_key` is client-generated (e.g. a UUID); a retry
+with the same key against the same case is a no-op, returning the current
+state (`"duplicate": true`) rather than applying the negative evidence
+twice. `notes` is optional, ≤ 280 characters.
+
+**Detection-method presets** — approved by the project owner alongside the
+Phase 2 policy, same date/source:
+
+| `method` | Probability | Meaning |
+|---|---|---|
+| `poor` | 0.3 | Poor visibility / air search only |
+| `moderate` | 0.6 | Daylight surface vessel search |
+| `good` | 0.9 | Good conditions, multi-asset close pattern |
+
+No preset reaches 1.0 — a search is never perfect.
+
+Atomic: locks the case and its current run, rejects a stale/superseded run,
+deduplicates the idempotency key, applies the Bayesian update exactly once,
+saves the new posterior, and appends the audit record (`reported_by`,
+`method`, `notes`, `idempotency_key`) — all in one transaction. Rejects with
+`409` if the case is `resolved`/`cancelled`, the run is stale, or the
+current run is `insufficient_environmental_data` (no field to search), and
+`422` for a reversed/degenerate rectangle or one that doesn't overlap the
+grid at all. Response `200`:
+
+```json
+{
+  "posterior_grid": { "...": "updated DensityGrid" },
+  "contours": [ "...": "50/75/95% GeoJSON polygons" ],
+  "next_area": {
+    "label": "recommendation for responder review",
+    "bounds": { "south": 11.66, "west": 122.31, "north": 11.665, "east": 122.315 },
+    "centroid": { "lat": 11.6625, "lon": 122.3125 },
+    "remaining_mass": 0.34
+  },
+  "search_sectors": [ "..." ],
+  "duplicate": false
+}
+```
+
+`next_area` is the single highest remaining-mass grid cell — **a
+recommendation for responder review, never an asset assignment, route, or
+automatic re-tasking.** It never plots a course or names a crew.
 
 ### `POST /api/ai/drift/cases/{id}/resolve`
 

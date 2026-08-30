@@ -5,13 +5,14 @@ from datetime import datetime
 from typing import Literal
 
 import asyncpg
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.ai import environment
 from app.ai.current_field import count_nearby_fresh_buoys, create_current_field_factory
-from app.ai.drift import MODEL_VERSION, ObjectClass, predict_drift
-from app.ai.search import contours_from_grid, update_posterior
+from app.ai.drift import MODEL_VERSION, ObjectClass, _to_xy, predict_drift
+from app.ai.search import contours_from_grid, recommend_next_area, update_posterior
 from app.auth import require_user
 from app.db import get_pool
 
@@ -26,19 +27,54 @@ SOS_OPEN_REASON = 'manual_sos_confirmed'
 ANOMALY_OPEN_REASON = 'anomaly_escalated'
 
 _RUN_COLUMNS = '''
-    run_number, object_class, forecast_hours, model_version, computed_at, computed_by,
+    id, run_number, object_class, forecast_hours, model_version, computed_at, computed_by,
     environmental_status, insufficiency_reason, observed_coverage,
     current_max_age_seconds, nearby_buoy_count, wind_source, wind_degraded,
     max_wind_age_seconds, prior_grid, posterior_grid
 '''
 
+# Responder-approved detection-probability presets (docs/40 Phase 3 item 2).
+# Approved by the project owner (Lenard) on 2026-08-30 alongside the Phase 2
+# environmental policy - see docs/05_PUBLIC_API.md "Drift prediction and
+# search re-tasking". The UI submits one of these named presets, never a
+# free-form probability, and none reaches 1.0 - a search is never perfect.
+DETECTION_PRESETS: dict[str, float] = {
+    'poor': 0.3,
+    'moderate': 0.6,
+    'good': 0.9,
+}
+DETECTION_METHOD_LABELS: dict[str, str] = {
+    'poor': 'Poor visibility / air search only',
+    'moderate': 'Daylight surface vessel search',
+    'good': 'Good conditions, multi-asset close pattern',
+}
 
-class SearchSectorRequest(BaseModel):
-    x_min_m: float
-    x_max_m: float
-    y_min_m: float
-    y_max_m: float
-    detection_probability: float = Field(..., gt=0.0, le=1.0)
+
+class SectorReportRequest(BaseModel):
+    """The protected search-sector report contract (docs/40 Phase 3 item 1).
+
+    A responder draws a rectangle on the map - the backend converts it to
+    the grid's local metre space, not the other way around. `run_number` is
+    whatever the client last saw from GET /incident/{id}: the server rejects
+    a report against a run that has since been superseded by a rerun.
+    """
+
+    run_number: int = Field(..., ge=1)
+    south: float = Field(..., ge=-90, le=90)
+    west: float = Field(..., ge=-180, le=180)
+    north: float = Field(..., ge=-90, le=90)
+    east: float = Field(..., ge=-180, le=180)
+    method: Literal['poor', 'moderate', 'good']
+    idempotency_key: str = Field(..., min_length=1, max_length=64)
+    notes: str | None = Field(default=None, max_length=280)
+
+    @model_validator(mode='after')
+    def _validate_rectangle(self) -> SectorReportRequest:
+        if self.north <= self.south:
+            raise ValueError('north must be greater than south')
+        if self.east <= self.west:
+            raise ValueError('east must be greater than west')
+        return self
 
 
 def _resolved_object_class(row) -> ObjectClass:
@@ -495,6 +531,7 @@ async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) ->
             } if is_ok else None,
             'posterior_grid': _grid(run['posterior_grid']) if is_ok else None,
             'contours': contours_from_grid(_grid(run['posterior_grid'])) if is_ok else [],
+            'next_area': recommend_next_area(_grid(run['posterior_grid'])) if is_ok else None,
             'search_sectors': await _fetch_sectors(pool, incident_id),
         }
         return response
@@ -529,89 +566,180 @@ async def incident_prediction(incident_id: int, forecast_hours: float = 24.0) ->
     return response
 
 
-@router.post('/incident/{incident_id}/searched')
-async def record_searched_sector(
-    incident_id: int, body: SearchSectorRequest,
+def _rect_to_metres(
+    south: float, west: float, north: float, east: float, origin_lat: float, origin_lon: float,
+) -> tuple[float, float, float, float]:
+    """Converts a map-space rectangle to the grid's local metre space
+    (docs/40 Phase 3 item 1) - the backend does this conversion, not the
+    responder. `_to_xy` computes x from the lon array and y from the lat
+    array independently, so pairing south/north with west/east here is just
+    a convenient way to get both edges from one call.
+    """
+    x, y = _to_xy(np.array([south, north]), np.array([west, east]), origin_lat, origin_lon)
+    return float(x[0]), float(x[1]), float(y[0]), float(y[1])
+
+
+def _grid_bounds_m(grid_dict: dict) -> tuple[float, float, float, float]:
+    x_edges = grid_dict['x_edges_m']
+    y_edges = grid_dict['y_edges_m']
+    return float(x_edges[0]), float(x_edges[-1]), float(y_edges[0]), float(y_edges[-1])
+
+
+async def record_legacy_search_sector(
+    incident_id: int, *,
+    x_min_m: float, x_max_m: float, y_min_m: float, y_max_m: float, detection_probability: float,
 ) -> dict[str, object]:
+    """The pre-Phase-3 raw metre-offset primitive, kept only for the
+    synthetic/demo scenario engine (app/demo/scenarios.py), which calls this
+    directly in-process rather than through the protected HTTP contract
+    below - "preserve existing synthetic sectors and replay ability" (docs/40
+    Phase 3 item 3). A real case never reaches this function.
+    """
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
             SELECT id, last_contact_at, last_contact_lat, last_contact_lon,
-                   abnormal_reason, object_class, prior_grid, posterior_grid,
-                   resolved_at, cancelled_at
-            FROM incidents
-            WHERE id = $1
+                   abnormal_reason, object_class, prior_grid, posterior_grid
+            FROM incidents WHERE id = $1
             ''',
             incident_id,
         )
     if row is None:
         raise HTTPException(status_code=404, detail='incident not found')
-    if row['resolved_at'] is not None or row['cancelled_at'] is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=f'case is {_case_state(row)}; cannot record a new search',
-        )
 
+    current_fn = await create_current_field_factory(pool)
+    prior_grid = row['prior_grid']
+    prior_grid = _grid(prior_grid) if prior_grid is not None else await _get_or_compute_prior(
+        pool, incident_id, row, current_fn, 24.0,
+    )
+    posterior_grid = _grid(row['posterior_grid']) or prior_grid
     sector = {
-        'x_min_m': body.x_min_m,
-        'x_max_m': body.x_max_m,
-        'y_min_m': body.y_min_m,
-        'y_max_m': body.y_max_m,
-        'detection_probability': body.detection_probability,
+        'x_min_m': x_min_m, 'x_max_m': x_max_m, 'y_min_m': y_min_m, 'y_max_m': y_max_m,
+        'detection_probability': detection_probability,
     }
-
-    run = await _latest_run(pool, incident_id)
-    if run is not None:
-        # Real case: the posterior lives on the current drift run, not on
-        # incidents.posterior_grid (docs/40 Phase 2).
-        if run['environmental_status'] != 'ok':
-            raise HTTPException(
-                status_code=409,
-                detail='insufficient environmental data; no search field to update',
-            )
-        posterior_grid = _grid(run['posterior_grid'])
-        updated_grid = update_posterior(posterior_grid, [sector])
-        async with pool.acquire() as conn:
-            await conn.execute(
-                '''
-                UPDATE drift_runs SET posterior_grid = $1
-                 WHERE incident_id = $2 AND run_number = $3
-                ''',
-                json.dumps(updated_grid), incident_id, run['run_number'],
-            )
-    else:
-        # Legacy/demo-fixture path - unchanged pre-Phase-2 behaviour.
-        current_fn = await create_current_field_factory(pool)
-        prior_grid = row['prior_grid']
-        prior_grid = _grid(prior_grid) if prior_grid is not None else await _get_or_compute_prior(
-            pool, incident_id, row, current_fn, 24.0,
-        )
-        posterior_grid = _grid(row['posterior_grid']) or prior_grid
-        updated_grid = update_posterior(posterior_grid, [sector])
-        async with pool.acquire() as conn:
-            await conn.execute(
-                'UPDATE incidents SET posterior_grid = $1 WHERE id = $2',
-                json.dumps(updated_grid), incident_id,
-            )
+    updated_grid = update_posterior(posterior_grid, [sector])
 
     async with pool.acquire() as conn:
+        await conn.execute(
+            'UPDATE incidents SET posterior_grid = $1 WHERE id = $2',
+            json.dumps(updated_grid), incident_id,
+        )
         await conn.execute(
             '''
             INSERT INTO search_sectors
                 (incident_id, x_min_m, x_max_m, y_min_m, y_max_m, detection_probability)
             VALUES ($1, $2, $3, $4, $5, $6)
             ''',
-            incident_id,
-            body.x_min_m,
-            body.x_max_m,
-            body.y_min_m,
-            body.y_max_m,
-            body.detection_probability,
+            incident_id, x_min_m, x_max_m, y_min_m, y_max_m, detection_probability,
         )
 
     return {
         'posterior_grid': updated_grid,
         'contours': contours_from_grid(updated_grid),
         'search_sectors': await _fetch_sectors(pool, incident_id),
+    }
+
+
+@router.post('/incident/{incident_id}/searched')
+async def record_searched_sector(
+    incident_id: int, body: SectorReportRequest, user: dict = Depends(require_user),
+) -> dict[str, object]:
+    """The protected search-sector report contract (docs/40 Phase 3).
+
+    Real cases only - a case with no drift run yet (demo/synthetic, or one
+    that predates Phase 2) cannot report through this route at all. Atomic:
+    locks the case and its current run, rejects a stale/superseded run,
+    deduplicates the idempotency key, applies the negative-evidence update
+    exactly once, and appends the audit record - all in one transaction.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        incident = await conn.fetchrow(
+            'SELECT id, resolved_at, cancelled_at FROM incidents WHERE id = $1 FOR UPDATE',
+            incident_id,
+        )
+        if incident is None:
+            raise HTTPException(status_code=404, detail='incident not found')
+        if incident['resolved_at'] is not None or incident['cancelled_at'] is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f'case is {_case_state(incident)}; cannot record a new search',
+            )
+
+        run = await conn.fetchrow(
+            f'SELECT {_RUN_COLUMNS} FROM drift_runs WHERE incident_id = $1 '
+            'ORDER BY run_number DESC LIMIT 1 FOR UPDATE',
+            incident_id,
+        )
+        if run is None:
+            raise HTTPException(
+                status_code=409, detail='this case has no run yet; open or rerun it first',
+            )
+        if run['run_number'] != body.run_number:
+            raise HTTPException(
+                status_code=409,
+                detail=f'stale run: case is now on run {run["run_number"]}; reload before reporting',
+            )
+        if run['environmental_status'] != 'ok':
+            raise HTTPException(
+                status_code=409,
+                detail='insufficient environmental data; no search field to update',
+            )
+
+        posterior_grid = _grid(run['posterior_grid'])
+
+        existing = await conn.fetchrow(
+            'SELECT id FROM search_sectors WHERE incident_id = $1 AND idempotency_key = $2',
+            incident_id, body.idempotency_key,
+        )
+        if existing is not None:
+            # A retry of the same report: return the current state rather
+            # than applying the negative evidence a second time.
+            return {
+                'posterior_grid': posterior_grid,
+                'contours': contours_from_grid(posterior_grid),
+                'next_area': recommend_next_area(posterior_grid),
+                'search_sectors': await _fetch_sectors(pool, incident_id),
+                'duplicate': True,
+            }
+
+        origin = posterior_grid['origin']
+        x_min, x_max, y_min, y_max = _rect_to_metres(
+            body.south, body.west, body.north, body.east, origin['lat'], origin['lon'],
+        )
+        grid_x_min, grid_x_max, grid_y_min, grid_y_max = _grid_bounds_m(posterior_grid)
+        if x_max <= grid_x_min or x_min >= grid_x_max or y_max <= grid_y_min or y_min >= grid_y_max:
+            raise HTTPException(
+                status_code=422, detail='searched rectangle does not overlap the search grid',
+            )
+
+        detection_probability = DETECTION_PRESETS[body.method]
+        sector = {
+            'x_min_m': x_min, 'x_max_m': x_max, 'y_min_m': y_min, 'y_max_m': y_max,
+            'detection_probability': detection_probability,
+        }
+        updated_grid = update_posterior(posterior_grid, [sector])
+
+        await conn.execute(
+            'UPDATE drift_runs SET posterior_grid = $1 WHERE id = $2',
+            json.dumps(updated_grid), run['id'],
+        )
+        await conn.execute(
+            '''
+            INSERT INTO search_sectors
+                (incident_id, x_min_m, x_max_m, y_min_m, y_max_m, detection_probability,
+                 run_id, reported_by, method, notes, idempotency_key)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            ''',
+            incident_id, x_min, x_max, y_min, y_max, detection_probability,
+            run['id'], user.get('email') or 'unknown', body.method, body.notes, body.idempotency_key,
+        )
+
+    return {
+        'posterior_grid': updated_grid,
+        'contours': contours_from_grid(updated_grid),
+        'next_area': recommend_next_area(updated_grid),
+        'search_sectors': await _fetch_sectors(pool, incident_id),
+        'duplicate': False,
     }
