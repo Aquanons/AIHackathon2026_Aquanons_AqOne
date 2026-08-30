@@ -355,7 +355,11 @@
          body: JSON.stringify(body)
        })
          .then(function (res) {
-           if (!res.ok) throw new Error('HTTP ' + res.status);
+           if (!res.ok) {
+             var httpErr = new Error('HTTP ' + res.status);
+             httpErr.status = res.status;
+             throw httpErr;
+           }
            return res.json();
          })
          .then(function (data) {
@@ -367,7 +371,12 @@
          })
          .catch(function (err) {
            console.error('[AqOne] Failed to set sea condition:', err.message);
-           showToast('Error', 'Failed to update sea condition.', true);
+           // docs/41 Phase 4 "render server 403 errors clearly".
+           if (err.status === 403) {
+             showToast('Not permitted', "You don't have permission to declare a sea condition.", true);
+           } else {
+             showToast('Error', 'Failed to update sea condition.', true);
+           }
          });
      });
    }

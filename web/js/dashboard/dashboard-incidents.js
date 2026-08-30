@@ -25,6 +25,7 @@
   const sosBtnResolve      = document.getElementById('sos-btn-resolve');
   const sosBtnBroadcast    = document.getElementById('sos-btn-broadcast');
   const sosBtnCheckin      = document.getElementById('sos-btn-checkin');
+  const sosBtnActivity     = document.getElementById('sos-btn-activity');
   const sosBroadcastMsg    = document.getElementById('sos-broadcast-msg');
 
   let sosTimerInterval  = null;
@@ -285,7 +286,11 @@
         })
       })
         .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
+          if (!res.ok) {
+            var httpErr = new Error('HTTP ' + res.status);
+            httpErr.status = res.status;
+            throw httpErr;
+          }
           return res.json();
         })
         .then(function () {
@@ -296,7 +301,13 @@
         })
         .catch(function (err) {
           console.warn('[AqOne] Acknowledgement not delivered:', err.message);
-          showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
+          // 403 is a distinct, honest reason from a network/server failure -
+          // docs/41 Phase 4 "render server 403 errors clearly".
+          if (err.status === 403) {
+            showToast('Not permitted', "You don't have permission to acknowledge this incident.", true);
+          } else {
+            showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
+          }
           // Roll back to the pre-attempt state rather than leaving the button
           // stuck on "Acknowledging…".
           if (currentDrawerData && currentDrawerData.sosEventId === eventId) {
@@ -353,7 +364,11 @@
       method: 'POST'
     })
       .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) {
+          var httpErr = new Error('HTTP ' + res.status);
+          httpErr.status = res.status;
+          throw httpErr;
+        }
         closeSOSDrawer();
         // The event has actually left storage server-side now, so let the
         // next active-feed refresh remove its marker/row rather than
@@ -362,7 +377,11 @@
       })
       .catch(function (err) {
         console.warn('[AqOne] Resolve not delivered:', err.message);
-        showToast('Not delivered', 'The incident is still active until this succeeds.', true);
+        if (err.status === 403) {
+          showToast('Not permitted', "You don't have permission to resolve this incident.", true);
+        } else {
+          showToast('Not delivered', 'The incident is still active until this succeeds.', true);
+        }
       })
       .finally(function () {
         sosBtnResolve.disabled = false;
@@ -376,6 +395,17 @@
   sosBtnCheckin.addEventListener('click', function () {
     sosBroadcastMsg.textContent = 'Silent check-in request queued at surrounding buoys \u2014 awaiting next contact';
   });
+
+  // A demo row has no backend sos_event to have an audit trail for
+  // (docs/41 Phase 4) - same "no real incident behind this" guard as the
+  // acknowledge/resolve handlers above.
+  if (sosBtnActivity) {
+    sosBtnActivity.addEventListener('click', function () {
+      var eventId = currentDrawerData && currentDrawerData.sosEventId;
+      if (!eventId || !ns.openActivityDrawer) return;
+      ns.openActivityDrawer('sos_event', eventId, 'SOS Case Activity');
+    });
+  }
 
   ns.sosDrawer = sosDrawer;
   ns.sosDrawerHeader = sosDrawerHeader;

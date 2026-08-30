@@ -542,6 +542,13 @@ body {
   transition: background 0.18s ease, color 0.18s ease;
   position: relative;
 }
+.rail-btn[hidden] {
+  /* The rail's own `display: flex` above would otherwise beat the
+     browser's default [hidden] rule (same fix as .ack-modal-overlay[hidden])
+     - without this, a role the audit button is meant to be omitted for
+     (docs/41 Phase 4) would see it anyway. */
+  display: none;
+}
 
 .rail-btn:hover {
   background: rgba(255,255,255,0.08);
@@ -938,6 +945,10 @@ body {
 
 .action-btn:hover { background: rgba(255,255,255,0.12); }
 .action-btn:last-child { margin-bottom: 0; }
+/* Same fix as .ack-modal-overlay[hidden]/.rail-btn[hidden]: the rule above's
+   own `display: flex` would otherwise beat the browser's default [hidden]
+   rule, e.g. leaving #audit-load-more-btn visible with nothing to load. */
+.action-btn[hidden] { display: none; }
 
 /* ══════════════════════════════════════════════════════════════
    STATS WIDGET (now inside panel-column)
@@ -1382,6 +1393,96 @@ body {
 .trip-check-action:hover { background: rgba(255,255,255,0.12); }
 .trip-check-action:disabled { opacity: 0.4; cursor: default; }
 .trip-check-action-resolve { border-color: rgba(46,204,113,0.4); color: #2ecc71; }
+
+/* ══════════════════════════════════════════════════════════════
+   OPERATIONS / AUDIT CONSOLE (docs/41 Phase 4) - the Case Activity
+   drawer and the admin-only Global Audit panel share this row styling,
+   modelled directly on .trip-check-row above.
+   ══════════════════════════════════════════════════════════════ */
+.activity-drawer .sos-drawer-header { background: var(--surface); color: var(--text); }
+
+.audit-event-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
+.audit-event-row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.audit-event-time { opacity: 0.7; }
+.audit-event-outcome {
+  margin-left: auto;
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+}
+
+.audit-event-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.audit-event-action { font-weight: 700; }
+.audit-event-actor { opacity: 0.75; }
+.audit-event-metadata { font-size: 10px; opacity: 0.6; }
+
+.audit-timeline-empty, .audit-timeline-loading, .audit-timeline-unavailable {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.audit-timeline-unavailable { color: #f59e0b; opacity: 0.9; }
+
+.audit-filter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.audit-filter-form .action-btn { margin-top: 6px; }
+
+.audit-export-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.audit-export-row .action-btn { width: auto; flex: 1; justify-content: center; }
+
+.audit-applied-filters {
+  margin-top: 8px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.audit-results { padding: 0 18px; }
+
+.audit-error {
+  margin: 0 18px 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(220, 38, 38, 0.12);
+  color: #f87171;
+  font-size: 11px;
+}
+
+.audit-load-more-btn { margin: 0 18px 14px; width: calc(100% - 36px); }
 
 /* ══════════════════════════════════════════════════════════════
    PANEL CARDS (new right-column cards)

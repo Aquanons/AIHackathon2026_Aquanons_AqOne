@@ -259,9 +259,11 @@
     var scoreText = typeof c.score === 'number' ? Math.round(c.score * 100) + '%' : '—';
     var caseId = escapeHtml(c.id);
 
-    var actions = '';
+    // "View Activity" is always available, even once resolved - it opens the
+    // authorized timeline (docs/41 Phase 4), which is a read, not a mutation.
+    var actions = '<button class="trip-check-action" data-case-action="activity" data-case-id="' + caseId + '">View Activity</button>';
     if (!c.resolved_at) {
-      actions =
+      actions +=
         '<button class="trip-check-action" data-case-action="acknowledge" data-case-id="' + caseId + '"' +
         (c.acknowledged_at ? ' disabled' : '') + '>Acknowledge</button>' +
         '<button class="trip-check-action" data-case-action="dismiss" data-case-id="' + caseId + '">Dismiss</button>' +
@@ -373,6 +375,100 @@
     return line;
   }
 
+  /**
+   * Plain-language label for one operations_audit_events `action` code
+   * (docs/41_OPERATIONS_CONSOLE_AUDITABILITY_IMPLEMENTATION_PLAN.md Phase 4
+   * item 2: "show the authorized timeline in plain language"). Falls back to
+   * the raw code itself for anything not in this table, so a future action
+   * added on the backend renders as *something* readable rather than a blank
+   * row - the whole point of a plain-language label is lost if a missing
+   * entry instead hides the event.
+   */
+  var AUDIT_ACTION_LABELS = {
+    'sos.acknowledge': 'Acknowledged SOS',
+    'sos.resolve': 'Resolved SOS',
+    'anomaly.acknowledge': 'Acknowledged anomaly case',
+    'anomaly.dismiss': 'Dismissed anomaly case',
+    'anomaly.escalate': 'Escalated anomaly case',
+    'anomaly.resolve': 'Resolved anomaly case',
+    'drift.open': 'Opened search case',
+    'drift.rerun': 'Reran drift prediction',
+    'drift.resolve': 'Resolved search case',
+    'drift.cancel': 'Cancelled search case',
+    'drift.search_sector_report': 'Reported a searched sector',
+    'sea_condition.declare': 'Declared sea condition',
+    'advisory.create': 'Created advisory',
+    'advisory.update': 'Updated advisory',
+    'advisory.delete': 'Deleted advisory',
+    'advisory.alert': 'Published danger-zone alert',
+    'vessel_device.pairing_code_issue': 'Issued device pairing code',
+    'vessel_device.revoke': 'Revoked vessel device',
+    'auth.login_success': 'Logged in',
+    'auth.login_failure': 'Failed login attempt',
+    'auth.admin_signup': 'Created operator account',
+    'ops.case_view': 'Viewed case timeline',
+    'ops.audit_search': 'Searched audit log',
+    'ops.audit_export': 'Exported audit log'
+  };
+
+  function formatAuditAction(action) {
+    return AUDIT_ACTION_LABELS[action] || String(action || 'unknown action');
+  }
+
+  /**
+   * One row of a case's authorized timeline or the admin audit search
+   * (docs/41 Phase 4) as an HTML string - pure, like tripCheckRowHtml, and
+   * built from exactly the redacted columns
+   * GET /api/ops/cases/.../timeline and GET /api/ops/audit already return
+   * (docs/05_PUBLIC_API.md "Operations audit"). `metadata` is a small
+   * whitelist of enum/id-only fields by construction on the backend
+   * (app/audit.py) - rendered as escaped `key: value` text with no
+   * per-action formatting, since nothing in it is free text needing special
+   * handling.
+   *
+   * `event.actor_email` is null for a system/bootstrap event (a failed
+   * login, or admin-signup before any operator session exists) - shown as
+   * "System" rather than a blank actor, which would read as a rendering
+   * bug rather than an honest "no human was signed in yet".
+   */
+  function auditEventRowHtml(event) {
+    var e = event || {};
+    var badge = alertBadge(!e.is_demo);
+    var actorText = e.actor_email || 'System';
+    var metadata = e.metadata && typeof e.metadata === 'object' ? e.metadata : {};
+    var metadataText = Object.keys(metadata)
+      .map(function (key) { return key + ': ' + metadata[key]; })
+      .join(', ');
+
+    return (
+      '<div class="audit-event-row">' +
+        '<div class="audit-event-row-header">' +
+          '<span class="' + badge.cssClass + '">' + badge.text + '</span>' +
+          '<span class="audit-event-time">' + escapeHtml(e.occurred_at) + '</span>' +
+          '<span class="audit-event-outcome">' + escapeHtml(e.outcome) + '</span>' +
+        '</div>' +
+        '<div class="audit-event-row-body">' +
+          '<span class="audit-event-action">' + escapeHtml(formatAuditAction(e.action)) + '</span>' +
+          '<span class="audit-event-actor">' + escapeHtml(actorText) + '</span>' +
+          (metadataText ? '<span class="audit-event-metadata">' + escapeHtml(metadataText) + '</span>' : '') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  /**
+   * A case's whole timeline as one HTML string - an honest empty state, not
+   * a blank panel indistinguishable from "still loading" (same reasoning as
+   * tripChecksListHtml).
+   */
+  function auditTimelineHtml(events) {
+    var list = Array.isArray(events) ? events : [];
+    if (list.length === 0) {
+      return '<div class="audit-timeline-empty">No recorded activity for this case yet.</div>';
+    }
+    return list.map(auditEventRowHtml).join('');
+  }
+
   return {
     escapeHtml: escapeHtml,
     classifyFreshness: classifyFreshness,
@@ -386,6 +482,9 @@
     tripCheckRowHtml: tripCheckRowHtml,
     tripChecksListHtml: tripChecksListHtml,
     eligibleForSearchReport: eligibleForSearchReport,
-    squallStatusHtml: squallStatusHtml
+    squallStatusHtml: squallStatusHtml,
+    formatAuditAction: formatAuditAction,
+    auditEventRowHtml: auditEventRowHtml,
+    auditTimelineHtml: auditTimelineHtml
   };
 });
