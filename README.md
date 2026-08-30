@@ -38,8 +38,8 @@ This table precedes every other claim in this document.
 | Component | Status |
 |---|---|
 | **FastAPI + PostgreSQL backend on Railway** | ✅ Live: `/healthz` and `/health/ready` returned 200 on 29 August 2026. The recorded 89-pass/1-expected-failure backend result predates the latest commit and has not been rerun in the current environment. |
-| **Drift prediction** (Monte Carlo Lagrangian) | ✅ Built, measured, live |
-| **Bayesian search re-tasking** | ✅ Built, measured, live |
+| **Drift prediction** (Monte Carlo Lagrangian) | 🟡 The particle model and its synthetic-evaluation numbers (below) are built and measured. `docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md` Phases 1-4 (protected case lifecycle, environmental quality gate, immutable run snapshots, map-based search reporting) are built and unit/API-tested but **not yet deployed** - confirmed by a read-only check against the live URL on 30 August 2026 (`docs/08_DEMO_AND_STATUS.md`). With zero buoys in the water, a real case will read `insufficient_environmental_data` even once deployed, by design - not a bug. |
+| **Bayesian search re-tasking** | 🟡 Same status as drift prediction above: built and tested, not yet deployed, and gated on the same buoy-current prerequisite. |
 | **Squall nowcasting** (trained classifier) | 🟡 Built and deployed, but the current public feed is synthetic and its newest reading is 14 August 2026; do not treat its active RETURN NOW alert as current conditions. |
 | **Trip anomaly / overdue detection** | 🟡 Live-queue path built and honest (docs/38 Phases 1-3: read-only polling, non-destructive scoring, persistent responder review). The published false-alarm figure below was found to be a measurement artifact and retracted (Phase 4) - not yet re-measured against a live database. |
 | **Marine hazard model** (trained on real data) | ✅ Built, runs in the browser |

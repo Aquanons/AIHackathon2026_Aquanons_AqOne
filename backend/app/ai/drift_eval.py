@@ -65,6 +65,7 @@ async def main() -> None:
             current_fn = None
 
     contained = 0
+    excluded_low_quality = 0
     area_factors: list[float] = []
     runtimes: list[float] = []
     observation_fractions: list[float] = []
@@ -73,6 +74,12 @@ async def main() -> None:
         if isinstance(track, str):
             track = json.loads(track)
         if len(track) < 2:
+            # A single-point track carries no drift distance to evaluate
+            # containment or area reduction against - not evidence either
+            # way, so it is excluded rather than silently dropped from the
+            # denominator (docs/40 Phase 5 item 1 "excluded low-quality
+            # runs").
+            excluded_low_quality += 1
             continue
 
         forecast_hours = (len(track) - 1) * 0.5
@@ -106,7 +113,13 @@ async def main() -> None:
     if pool is not None:
         await pool.close()
 
-    containment_rate = contained / len(incidents)
+    evaluated = len(incidents) - excluded_low_quality
+    if evaluated == 0:
+        print('containment_rate: n/a (0 incidents cleared the minimum track length)')
+        print(f'excluded_low_quality_runs: {excluded_low_quality}')
+        return
+
+    containment_rate = contained / evaluated
     reduction_factor = sum(area_factors) / len(area_factors)
     runtime_ms = sum(runtimes) / len(runtimes)
     avg_obs_fraction = sum(observation_fractions) / len(observation_fractions) if observation_fractions else 0.0
@@ -114,13 +127,15 @@ async def main() -> None:
     print(f'search_area_reduction_factor: {reduction_factor:.2f}x')
     print(f'prediction_runtime_ms: {runtime_ms:.3f}')
     print(f'observation_fraction: {avg_obs_fraction:.3%}')
+    print(f'excluded_low_quality_runs: {excluded_low_quality}')
     write_section(
         'drift',
         {
             'containment_rate': containment_rate,
             'search_area_reduction_factor': reduction_factor,
             'prediction_runtime_ms': runtime_ms,
-            'incidents_evaluated': len(incidents),
+            'incidents_evaluated': evaluated,
+            'excluded_low_quality_runs': excluded_low_quality,
             'observation_fraction': avg_obs_fraction,
         },
     )
