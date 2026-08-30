@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.auth import require_user, require_vessel_device
+from app.auth import require_responder_roles, require_user, require_vessel_device
 from app.db import get_pool
 
 # Responder status vocabulary. One byte, so it survives a 64-byte LoRa frame in
@@ -254,7 +254,7 @@ class AcknowledgeIn(BaseModel):
 async def acknowledge(
     event_id: int,
     payload: AcknowledgeIn | None = None,
-    user: dict = Depends(require_user),
+    user: dict = require_responder_roles,
 ) -> dict[str, object]:
     body = payload or AcknowledgeIn()
     pool = get_pool()
@@ -299,7 +299,7 @@ async def acknowledge(
 @protected_router.post('/{event_id}/resolve')
 async def resolve_sos(
     event_id: int,
-    user: dict = Depends(require_user),
+    user: dict = require_responder_roles,
 ) -> dict[str, object]:
     pool = get_pool()
     async with pool.acquire() as conn:

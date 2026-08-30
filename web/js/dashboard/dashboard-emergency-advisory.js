@@ -342,11 +342,11 @@
 
        if (!confirm('Are you sure you want to set status to "' + status + '"?')) return;
 
+       // Actor is derived server-side from the bearer token (docs/41 Phase 1) -
+       // the backend no longer reads set_by_user_id/set_by_name from the body.
        var body = {
          status: status,
-         reason: reason,
-         set_by_user_id: CURRENT_USER.id,
-         set_by_name: CURRENT_USER.name
+         reason: reason
        };
 
        authFetch('/api/sea-condition', {

@@ -21,6 +21,12 @@ VESSEL_DEVICE_TOKEN_TTL_HOURS = int(
 
 VALID_ROLES = {'mdrrmo', 'lgu', 'admin'}
 
+# Action matrix (docs/05_PUBLIC_API.md "Roles"): responder incident work and
+# advisory/sea-condition publication are open to every operator role; vessel
+# device management is reserved for lgu/admin per docs/00_START_HERE.md.
+RESPONDER_ROLES = ('mdrrmo', 'lgu', 'admin')
+DEVICE_ADMIN_ROLES = ('lgu', 'admin')
+
 _bearer = HTTPBearer(auto_error=False)
 
 
@@ -116,6 +122,29 @@ async def require_operator_user(user: dict[str, Any] = Depends(require_user)) ->
     if role not in VALID_ROLES:
         raise HTTPException(status_code=403, detail='operator token required')
     return user
+
+
+def require_roles(*roles: str):
+    """Dependency factory: reject a valid, authenticated user whose role is
+    not in `roles`. Built on top of `require_user` so token validation stays
+    in one place; the action matrix in docs/05_PUBLIC_API.md is the source of
+    truth for which roles belong on which route.
+    """
+
+    async def _dep(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+        if user.get('role') not in roles:
+            raise HTTPException(status_code=403, detail='role not permitted for this action')
+        return user
+
+    return _dep
+
+
+# Module-level singletons, not a `Depends(require_roles(...))` call at each
+# route's parameter default - ruff (B008) flags a function call in an
+# argument default, and FastAPI dependency instances are safe to share
+# across routes since they carry no per-request state of their own.
+require_responder_roles = Depends(require_roles(*RESPONDER_ROLES))
+require_device_admin_roles = Depends(require_roles(*DEVICE_ADMIN_ROLES))
 
 
 async def require_vessel_device(

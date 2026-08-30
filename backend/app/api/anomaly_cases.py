@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.auth import require_user
+from app.auth import require_responder_roles
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/ai/anomaly/cases', tags=['anomaly-cases'])
@@ -57,7 +57,7 @@ class EscalateIn(BaseModel):
 
 
 @router.post('/{case_id}/acknowledge')
-async def acknowledge_case(case_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def acknowledge_case(case_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     """Idempotent: re-acknowledging keeps the first actor/time (COALESCE),
     same pattern as app/api/sos.py's acknowledge.
     """
@@ -86,7 +86,7 @@ async def acknowledge_case(case_id: int, user: dict = Depends(require_user)) -> 
 
 @router.post('/{case_id}/dismiss')
 async def dismiss_case(
-    case_id: int, payload: DismissIn, user: dict = Depends(require_user)
+    case_id: int, payload: DismissIn, user: dict = require_responder_roles
 ) -> dict[str, object]:
     """Marks the case a false/expected positive. Idempotent - a retry keeps
     the original reason rather than overwriting it.
@@ -119,7 +119,7 @@ async def dismiss_case(
 
 @router.post('/{case_id}/escalate')
 async def escalate_case(
-    case_id: int, payload: EscalateIn, user: dict = Depends(require_user)
+    case_id: int, payload: EscalateIn, user: dict = require_responder_roles
 ) -> dict[str, object]:
     """Hands the case to real-world handling (a human decision, per docs/23
     §3.3 - this never dispatches anything itself). Idempotent.
@@ -151,7 +151,7 @@ async def escalate_case(
 
 
 @router.post('/{case_id}/resolve')
-async def resolve_case(case_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def resolve_case(case_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     """Closes the case. Idempotent, and - because evaluation only ever
     upserts the snapshot columns, never resolved_at - a later score refresh
     can never reopen it.

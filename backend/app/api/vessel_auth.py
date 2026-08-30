@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.auth import (
     create_vessel_device_token,
     hash_password,
-    require_operator_user,
+    require_device_admin_roles,
     require_vessel_device,
     verify_password,
 )
@@ -45,7 +45,7 @@ class RevokeIn(BaseModel):
 @router.post('/pairing-codes')
 async def issue_pairing_code(
     payload: PairingCodeIn,
-    user: dict[str, object] = Depends(require_operator_user),
+    user: dict[str, object] = require_device_admin_roles,
 ) -> dict[str, object]:
     code = _pairing_code()
     expires_at = datetime.now(UTC) + timedelta(minutes=_PAIRING_TTL_MINUTES)
@@ -193,7 +193,7 @@ async def refresh_device_token(
 async def revoke_device(
     device_id: int,
     payload: RevokeIn | None = None,
-    user: dict[str, object] = Depends(require_operator_user),
+    user: dict[str, object] = require_device_admin_roles,
 ) -> dict[str, object]:
     body = payload or RevokeIn()
     pool = get_pool()

@@ -225,7 +225,9 @@ def test_pairing_code_issue_requires_operator_token():
 def test_issue_and_enroll_vessel_device(monkeypatch):
     pool = _FakePool()
     _patch_pools(monkeypatch, pool)
-    operator = create_token(1, 'ops@example.com', 'mdrrmo')
+    # Device pairing is lgu/admin-only (docs/41 Phase 1 action matrix) - mdrrmo
+    # cannot issue pairing codes.
+    operator = create_token(1, 'ops@example.com', 'admin')
 
     with TestClient(app, raise_server_exceptions=False) as client:
         issue = client.post(
@@ -314,6 +316,56 @@ def test_confirm_weight_cannot_touch_other_vessel(monkeypatch):
         )
 
     assert response.status_code == 404
+
+
+def test_pairing_code_issue_rejects_mdrrmo_role(monkeypatch):
+    """docs/41 Phase 1: device management is lgu/admin-only. mdrrmo could
+    previously issue pairing codes via require_operator_user; this is the one
+    deliberate narrowing in the Phase 1 action matrix.
+    """
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'mdrrmo')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/vessel-auth/pairing-codes',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'vessel_id': 'V001', 'boat': 'NW-001'},
+        )
+
+    assert response.status_code == 403
+
+
+def test_revoke_device_rejects_mdrrmo_role(monkeypatch):
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'mdrrmo')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/vessel-auth/devices/1/revoke',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'reason': 'lost device'},
+        )
+
+    assert response.status_code == 403
+
+
+def test_revoke_device_allows_lgu_role(monkeypatch):
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'lgu')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/vessel-auth/devices/1/revoke',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'reason': 'lost device'},
+        )
+
+    assert response.status_code == 200
+    assert pool.devices[1]['revoked_at'] is not None
 
 
 def test_refresh_rejects_revoked_device(monkeypatch):

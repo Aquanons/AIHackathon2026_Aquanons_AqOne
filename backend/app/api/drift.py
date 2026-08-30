@@ -6,14 +6,14 @@ from typing import Literal
 
 import asyncpg
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from app.ai import environment
 from app.ai.current_field import count_nearby_fresh_buoys, create_current_field_factory
 from app.ai.drift import MODEL_VERSION, ObjectClass, _to_xy, predict_drift
 from app.ai.search import contours_from_grid, recommend_next_area, update_posterior
-from app.auth import require_user
+from app.auth import require_responder_roles
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/ai/drift', tags=['drift'])
@@ -325,7 +325,7 @@ async def _anomaly_case_inputs(conn: asyncpg.Connection, source_id: int) -> tupl
 
 
 @router.post('/cases')
-async def open_case(body: OpenCaseRequest, user: dict = Depends(require_user)) -> dict[str, object]:
+async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles) -> dict[str, object]:
     pool = get_pool()
     async with pool.acquire() as conn:
         if body.source_type == 'sos':
@@ -376,7 +376,7 @@ async def open_case(body: OpenCaseRequest, user: dict = Depends(require_user)) -
 
 
 @router.post('/cases/{incident_id}/rerun')
-async def rerun_case(incident_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def rerun_case(incident_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     """An explicit, responder-only new drift run (docs/40 Phase 2 item 4).
 
     Appends a new numbered run rather than overwriting the current one, so a
@@ -425,7 +425,7 @@ async def rerun_case(incident_id: int, user: dict = Depends(require_user)) -> di
 
 
 @router.post('/cases/{incident_id}/resolve')
-async def resolve_case(incident_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def resolve_case(incident_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -454,7 +454,7 @@ class CancelCaseRequest(BaseModel):
 
 @router.post('/cases/{incident_id}/cancel')
 async def cancel_case(
-    incident_id: int, payload: CancelCaseRequest, user: dict = Depends(require_user),
+    incident_id: int, payload: CancelCaseRequest, user: dict = require_responder_roles,
 ) -> dict[str, object]:
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -650,7 +650,7 @@ async def record_legacy_search_sector(
 
 @router.post('/incident/{incident_id}/searched')
 async def record_searched_sector(
-    incident_id: int, body: SectorReportRequest, user: dict = Depends(require_user),
+    incident_id: int, body: SectorReportRequest, user: dict = require_responder_roles,
 ) -> dict[str, object]:
     """The protected search-sector report contract (docs/40 Phase 3).
 

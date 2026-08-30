@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from app.auth import require_responder_roles
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/sea-condition', tags=['sea-condition'])
@@ -17,8 +18,6 @@ VALID_STATUSES = {
 class SeaConditionIn(BaseModel):
     status: str
     reason: str = ''
-    set_by_user_id: str | None = None
-    set_by_name: str = Field(default='')
 
 
 def _serialise(row) -> dict[str, object]:
@@ -81,13 +80,20 @@ async def read_current() -> dict[str, object]:
 
 
 @router.post('', status_code=201)
-async def set_current(payload: SeaConditionIn) -> dict[str, object]:
+async def set_current(
+    payload: SeaConditionIn,
+    user: dict = require_responder_roles,
+) -> dict[str, object]:
     if payload.status not in VALID_STATUSES:
         raise HTTPException(
             status_code=422,
             detail=f'status must be one of: {sorted(VALID_STATUSES)}',
         )
 
+    # Actor is derived from the authenticated token, never the request body -
+    # docs/41 Phase 1 fix: this route previously trusted client-supplied
+    # set_by_user_id/set_by_name, letting any caller attribute a declaration
+    # to someone else.
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -98,8 +104,8 @@ async def set_current(payload: SeaConditionIn) -> dict[str, object]:
             ''',
             payload.status,
             payload.reason,
-            payload.set_by_user_id,
-            payload.set_by_name,
+            user.get('id'),
+            user.get('email') or 'unknown',
         )
     return {'current': _serialise(row)}
 
