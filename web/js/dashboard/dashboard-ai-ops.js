@@ -71,34 +71,37 @@
     key.style.display = 'none';
   }
 
-  // Banner count and header badge follow the live squall feed. The cutoff is
-  // the model's own decision threshold, carried in the payload - not a value
-  // invented on the frontend.
-  function updateSquallBanner(detections, threshold) {
-    var rows = Array.isArray(detections) ? detections : [];
-    var cutoff = typeof threshold === 'number' ? threshold : 0;
-    var returnNow = rows.filter(function (row) {
-      return Number(row.probability || 0) >= cutoff;
-    });
+  // Banner count and header badge follow the backend's own `level`/
+  // `return_now` (docs/05_PUBLIC_API.md "Squall nowcast") rather than
+  // re-deriving an alarm condition from raw probabilities client-side -
+  // the same rule the mobile client follows (SquallWatch never re-derives
+  // return_now either), so the dashboard and the handset can never disagree
+  // about whether a squall is happening.
+  function updateSquallBanner(payload) {
+    var level = payload && payload.level;
+    var isReturnNow = level === 'return_now';
 
     var countEl = document.getElementById('banner-squall-count');
-    if (countEl) countEl.textContent = String(returnNow.length);
+    if (countEl) countEl.textContent = isReturnNow ? '1' : '0';
 
     var squallStatusEl = document.getElementById('stats-squall-status');
     if (squallStatusEl) {
-      squallStatusEl.textContent = returnNow.length ? 'RETURN NOW' : (rows.length ? 'WATCH' : 'MONITORING');
-      squallStatusEl.className = 'metric-status metric-status-watch' + (returnNow.length ? ' metric-status-danger' : '');
+      squallStatusEl.textContent = isReturnNow ? 'RETURN NOW' : (level === 'watch' ? 'WATCH' : (level === 'unknown' ? 'UNKNOWN' : 'MONITORING'));
+      squallStatusEl.className = 'metric-status metric-status-watch' + (isReturnNow ? ' metric-status-danger' : '');
     }
 
     var statusEl = document.getElementById('squall-status');
     if (!statusEl) return;
-    statusEl.classList.remove('squall-watch', 'squall-return');
-    if (returnNow.length) {
+    statusEl.classList.remove('squall-watch', 'squall-return', 'squall-unknown');
+    if (isReturnNow) {
       statusEl.textContent = 'RETURN NOW';
       statusEl.classList.add('squall-return');
-    } else if (rows.length) {
+    } else if (level === 'watch') {
       statusEl.textContent = 'WATCH';
       statusEl.classList.add('squall-watch');
+    } else if (level === 'unknown') {
+      statusEl.textContent = 'UNKNOWN';
+      statusEl.classList.add('squall-unknown');
     } else {
       statusEl.textContent = 'MONITORING';
     }
@@ -716,12 +719,25 @@
 
   function renderSquallWatch(payload, traceSeries) {
     var summary = document.getElementById('ai-squall-summary');
+    var statusHost = document.getElementById('ai-squall-status');
     if (!summary) return;
     clearAiSquallLayers();
 
-    var detections = payload && payload.detections ? payload.detections : [];
-    var threshold = payload && typeof payload.threshold === 'number' ? payload.threshold : undefined;
-    updateSquallBanner(detections, threshold);
+    var p = payload || {};
+    var detections = Array.isArray(p.detections) ? p.detections : [];
+    if (statusHost) statusHost.innerHTML = ns.squallStatusHtml(p);
+    updateSquallBanner(p);
+
+    // `unknown` is the neutral insufficient-data state (docs/39 Phase 2/3) -
+    // deliberately distinct from "no active detections": an alarm that
+    // cannot be evaluated must never look the same as "all clear".
+    if (p.level === 'unknown') {
+      summary.innerHTML = '<div class="ai-empty-state">Squall status cannot be confirmed right now.</div>';
+      renderSquallChart([]);
+      updateAiMapKey();
+      return;
+    }
+
     if (!detections.length) {
       summary.innerHTML = '<div class="ai-empty-state">No active squall detections at the moment.</div>';
       renderSquallChart([]);
@@ -765,8 +781,8 @@
       '<div class="ai-squall-meta-row"><span>Probability</span><strong>' + (Number(detection.probability || 0) * 100).toFixed(0) + '%</strong></div>' +
       '<div class="ai-squall-meta-row"><span>Confidence</span><strong>' + (Number(detection.confidence || 0) * 100).toFixed(0) + '%</strong></div>' +
       '<div class="ai-squall-meta-row"><span>Bearing</span><strong>' + Number((detection.propagation && detection.propagation.bearing_deg) || 0).toFixed(0) + '°</strong></div>' +
-      '<div class="ai-squall-meta-row"><span>As of</span><strong>' + ns._escHtml(asOf) + '</strong></div>' +
-      '<div class="ai-squall-meta-row"><span>Arrival window</span><strong>' + (arrival.length ? ns._escHtml(String(arrival[0].arrival_minutes)) + ' min first arrival' : 'n/a') + '</strong></div>';
+      '<div class="ai-squall-meta-row"><span>As of</span><strong>' + ns.escapeHtml(asOf) + '</strong></div>' +
+      '<div class="ai-squall-meta-row"><span>Arrival window</span><strong>' + (arrival.length ? ns.escapeHtml(String(arrival[0].arrival_minutes)) + ' min first arrival' : 'n/a') + '</strong></div>';
 
     renderSquallChart(traceSeries);
     updateAiMapKey();
@@ -866,22 +882,30 @@
       if (squallResult.status === 'fulfilled') {
         return loadSquallTrace(squallResult.value || { detections: [] }).then(updateSquallLegendVisibility);
       }
-      renderSquallWatch({ detections: [] }, []);
+      // Never seen any data yet - an honest "can't confirm" beats leaving
+      // the "Loading..." placeholder up forever, but it must not claim
+      // "no active detections" either (docs/39 Phase 3 item 4).
+      renderSquallWatch({ level: 'unknown', detections: [], status_reason: 'unable to reach the squall service' }, []);
       updateSquallLegendVisibility();
       return incidentPromise;
     }).catch(function () {
       renderRiskFeed([]);
       renderDriftIncidentList([]);
       clearAiDriftLayers();
-      clearAiSquallLayers();
-      renderSquallWatch({ detections: [] }, []);
+      renderSquallWatch({ level: 'unknown', detections: [], status_reason: 'unable to reach the squall service' }, []);
       updateSquallLegendVisibility();
     });
 
     if (aiRefreshTimer) clearInterval(aiRefreshTimer);
     aiRefreshTimer = setInterval(function () {
       aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function () { renderRiskFeed([]); });
-      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).then(updateSquallLegendVisibility).catch(function () { clearAiSquallLayers(); renderSquallWatch({ detections: [] }, []); updateSquallLegendVisibility(); });
+      // A transient poll failure leaves the squall panel exactly as it was -
+      // it must not overwrite an already-displayed warning with silence or a
+      // false "no active detections" (docs/39 Phase 3 item 4, mirroring the
+      // same rule already applied to the mobile client in app_shell.dart).
+      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).then(updateSquallLegendVisibility).catch(function (err) {
+        console.warn('[AqOne] Squall poll failed, keeping last known status:', err.message);
+      });
       // Never yank the map out from under a responder mid-draw or
       // mid-confirmation (docs/40 Phase 4 item 2).
       if (sectorDraw.active || sectorDraw.bounds) return;

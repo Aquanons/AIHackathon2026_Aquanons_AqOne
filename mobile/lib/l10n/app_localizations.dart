@@ -838,22 +838,22 @@ abstract class AppLocalizations {
   /// **'{used}/{max}'**
   String chatCharacterLimitLabel(int used, int max);
 
-  /// SAFETY CRITICAL. Heading on the neutral squall banner shown when the backend's synthetic pressure data is older than its freshness window. Must read as neutral/informational, never alarming - it replaces the RETURN NOW/watch banner, which never appears for stale data, and it must not be softened into implying the sea is calm.
+  /// SAFETY CRITICAL. Heading on the neutral squall banner shown whenever the backend cannot confirm a squall status - stale data, too few reporting buoys, or another quality problem, not staleness alone. Must read as neutral/informational, never alarming - it replaces the RETURN NOW/watch banner, which never appears in this state, and it must not be softened into implying the sea is calm.
   ///
   /// In en, this message translates to:
-  /// **'Squall nowcast: data too old to trust'**
+  /// **'Squall nowcast: status unavailable'**
   String get squallStaleTitle;
 
-  /// SAFETY CRITICAL. Body text on the stale-squall notice when the backend supplied a last-reading time. {age} is a short duration like "3h" or "45 min", already formatted - do not add units around the placeholder.
+  /// SAFETY CRITICAL. Body text on the neutral squall notice when the backend supplied a last-reading time. {age} is a short duration like "3h" or "45 min", already formatted - do not add units around the placeholder.
   ///
   /// In en, this message translates to:
-  /// **'Last reading {age} ago. Not showing a squall status until fresh data arrives.'**
+  /// **'Last known reading {age} ago. Not showing a squall status right now.'**
   String squallStaleBodyWithAge(String age);
 
-  /// SAFETY CRITICAL. Body text on the stale-squall notice when no last-reading time is available at all.
+  /// SAFETY CRITICAL. Body text on the neutral squall notice when no last-reading time is available at all.
   ///
   /// In en, this message translates to:
-  /// **'Not showing a squall status until fresh data arrives.'**
+  /// **'Not showing a squall status right now.'**
   String get squallStaleBodyNoAge;
 }
 

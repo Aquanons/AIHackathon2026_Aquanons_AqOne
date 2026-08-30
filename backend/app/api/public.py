@@ -18,14 +18,13 @@ credentials the person at risk cannot hold.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 
-from app.ai.squall import build_buoys, current_detection, event_detection_summary, load_bundle
 from app.api.sea_condition import _buoy_telemetry, _serialise
-from app.api.squall import _load_rows
+from app.api.squall import _load_rows, _return_now_enabled, build_squall_status
 from app.db import get_pool
 from app.geo import SHORE_STATIONS
 
@@ -35,12 +34,6 @@ OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
 OPEN_METEO_MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine'
 FORECAST_UPSTREAM_TIMEOUT_SECONDS = 5.0
 MAX_FORECAST_DAYS = 7
-
-# A synthetic reading older than this cannot be trusted as "current weather" -
-# see docs/37 non-negotiable rule: stale data must never raise a fresh RETURN
-# NOW warning. Squalls are a tens-of-minutes phenomenon (PRD §5.1), so a few
-# hours old is already stale for this purpose.
-SQUALL_MAX_DATA_AGE = timedelta(hours=3)
 
 DEMO_BUOYS: tuple[dict[str, object], ...] = (
     {
@@ -258,103 +251,16 @@ async def public_forecast(
 async def public_squall() -> dict[str, object]:
     """Squall nowcast for the handset.
 
-    Adds `return_now` and `level` on top of the dashboard's payload so the app
-    does not have to re-derive the alarm condition from raw probabilities. The
-    threshold is the model's own decision boundary, carried in the response -
-    never a number invented on the client.
-
-    Degrades quietly. If the model file is missing or there are no readings, the
-    app is told `level: "unknown"` rather than being handed an exception. An
-    alarm that cannot be evaluated must not render as "all clear".
+    Reads live pressure telemetry only (docs/39 Phase 3) - production never
+    lets an old synthetic scenario reach a real handset. `build_squall_status`
+    runs the quality gate (docs/39 Phase 2) before any detection: a missing,
+    stale, or incomplete array reports `level: "unknown"` with a reason and
+    the last real observation time, never an invented "all clear". `level:
+    "return_now"` additionally requires SQUALL_RETURN_NOW_ENABLED - a live
+    detection cannot alarm a handset before that field-validation gate opens
+    (docs/39 Phase 4), regardless of how confident the model is.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
-        readings, _, buoy_rows = await _load_rows(conn)
-
-    empty = {
-        'calibration': 'synthetic',
-        'as_of': None,
-        'detections': [],
-        'threshold': None,
-        'return_now': False,
-        'level': 'unknown',
-        'source': 'AqOne squall nowcast — calibrated on synthetic data',
-        'stale': False,
-        'stale_reason': None,
-    }
-
-    if not readings:
-        return empty
-
-    latest_reading_at = max(row['observed_at'] for row in readings)
-    as_of = latest_reading_at.isoformat()
-    age = datetime.now(UTC) - latest_reading_at
-
-    # A stale synthetic reading must never raise a fresh RETURN NOW warning
-    # (docs/37 non-negotiable rule). This is checked before the model even
-    # runs, so a stale detection can never slip through the threshold logic
-    # below by accident.
-    if age > SQUALL_MAX_DATA_AGE:
-        return empty | {
-            'as_of': as_of,
-            'stale': True,
-            'stale_reason': (
-                f'latest synthetic reading is {age} old, past the '
-                f'{SQUALL_MAX_DATA_AGE} freshness window for this nowcast'
-            ),
-        }
-
-    try:
-        model = load_bundle()
-    except FileNotFoundError:
-        return empty
-
-    buoys = build_buoys(buoy_rows)
-    detections = current_detection(readings, buoys, model)
-    summary = event_detection_summary(model, detections)
-
-    threshold = summary.get('threshold')
-    rows = summary.get('detections') or []
-
-    # A detection at or above the model's own threshold is the RETURN NOW
-    # condition. Anything below it that still carries meaningful probability is
-    # a watch - visible, but it must not alarm.
-    triggered = [
-        row for row in rows
-        if isinstance(threshold, (int, float))
-        and float(row.get('probability') or 0.0) >= float(threshold)
-    ]
-
-    if triggered:
-        level = 'return_now'
-    elif rows:
-        level = 'watch'
-    else:
-        level = 'clear'
-
-    # Which buoys the squall is forecast to reach. A detection carries
-    # `arrival_by_buoy`, not a single buoy id - the whole point of the model is
-    # that a squall crosses the array rather than sitting on one sensor.
-    triggered_buoys: list[str] = []
-    lead_minutes: float | None = None
-    for row in triggered:
-        for arrival in row.get('arrival_by_buoy') or []:
-            buoy_id = arrival.get('buoy_id')
-            if buoy_id and buoy_id not in triggered_buoys:
-                triggered_buoys.append(buoy_id)
-            eta = arrival.get('arrival_minutes')
-            if isinstance(eta, (int, float)):
-                lead_minutes = eta if lead_minutes is None else min(lead_minutes, eta)
-
-    return summary | {
-        'as_of': as_of,
-        'return_now': bool(triggered),
-        'level': level,
-        'triggered_buoys': triggered_buoys,
-        # Soonest forecast arrival across affected buoys - what the handset
-        # shows as "squall in ~N minutes".
-        'lead_minutes': round(lead_minutes) if lead_minutes is not None else None,
-        'source': 'AqOne squall nowcast — calibrated on synthetic data',
-        'stale': False,
-        'stale_reason': None,
-    }
+        readings, _, buoy_rows = await _load_rows(conn, live=True)
+    return build_squall_status(readings, buoy_rows, source='live', allow_return_now=_return_now_enabled())

@@ -417,14 +417,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get squallStaleTitle => 'Squall nowcast: data too old to trust';
+  String get squallStaleTitle => 'Squall nowcast: status unavailable';
 
   @override
   String squallStaleBodyWithAge(String age) {
-    return 'Last reading $age ago. Not showing a squall status until fresh data arrives.';
+    return 'Last known reading $age ago. Not showing a squall status right now.';
   }
 
   @override
-  String get squallStaleBodyNoAge =>
-      'Not showing a squall status until fresh data arrives.';
+  String get squallStaleBodyNoAge => 'Not showing a squall status right now.';
 }

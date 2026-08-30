@@ -6,6 +6,7 @@ import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
+from app.api.squall import _load_rows, build_squall_status
 from app.db import get_pool
 from app.demo.scenarios import advance, fire_beat, get_state, reset, start_scenario
 from app.demo.weather import coordinates, forecast, marine
@@ -85,6 +86,24 @@ async def demo_drift_ground_truth(incident_id: int) -> dict[str, object]:
     if isinstance(true_track, str):
         true_track = json.loads(true_track)
     return {'incident_id': row['id'], 'source': 'synthetic', 'ground_truth_track': true_track}
+
+
+@router.get('/squall', dependencies=[Depends(require_demo_key)])
+async def demo_squall() -> dict[str, object]:
+    """Synthetic squall status for the presenter console (docs/39 Phase 3).
+
+    Production (`/api/ai/squall/current`, `/api/public/squall`) now reads
+    live rows only, so the synthetic scenario has nowhere left to display -
+    this is that dedicated, visibly-labelled (`source: "synthetic"`) demo
+    surface. Gated by DEMO_MODE (this router is only mounted when it's set,
+    app/main.py) and require_demo_key, same as every other route here.
+    Synthetic data may freely reach `return_now`: this route is demo-key-only
+    and the real handset never calls it.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        readings, _, buoy_rows = await _load_rows(conn, live=False)
+    return build_squall_status(readings, buoy_rows, source='synthetic', allow_return_now=True)
 
 
 def _weather_cells(latitude: str | None, longitude: str | None) -> list[tuple[float, float]]:

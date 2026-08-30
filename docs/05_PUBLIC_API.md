@@ -388,30 +388,63 @@ other advisory read.
 
 ### `GET /api/public/squall`
 
-Squall alarm state for the handset, unauthenticated. `level` is one of
-`clear` \| `watch` \| `return_now` \| `unknown`; `return_now` is the
-RETURN NOW alarm condition, decided by the model's own threshold rather than
-any client-side re-derivation.
+Squall alarm state for the handset, unauthenticated, live pressure
+telemetry only (`docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md` Phase
+3). The protected dashboard route (`GET /api/ai/squall/current`) shares
+this exact response shape, and a demo-only `GET /api/demo/squall`
+(gateway-key-free, `X-Demo-Key`-gated) carries the identical shape with
+`source: "synthetic"` for presenter use — the synthetic scenario never
+reaches either production route.
 
-A synthetic reading older than a max-data-age guard (3 hours) is treated as
-too stale to evaluate: `level` and `return_now` come back exactly as if the
-model had never run (`unknown` / `false`), alongside the last known `as_of`
-and a `stale`/`stale_reason` pair so the handset can say *why* nothing is
-being claimed, rather than going silent. This guard runs before the model is
-even loaded — a stale reading can never reach the threshold logic, so it can
-never raise a fresh RETURN NOW warning.
+`level` is one of:
+
+- `unknown` — telemetry is missing, stale, invalid, or an insufficiently
+  distributed array; never downgraded to `clear`.
+- `clear` — a fresh, quality-passing live array with no detection.
+- `watch` — an eligible model candidate. Visible everywhere, never sounds
+  a handset alarm (`return_now` is the only alarming state).
+- `return_now` — the RETURN NOW alarm condition. For `source: "live"` this
+  requires the `SQUALL_RETURN_NOW_ENABLED` deployment flag to be enabled
+  (default off, `backend/.env.example`), which itself requires a completed
+  field-validation log (template: `docs/08_DEMO_AND_STATUS.md` "Squall
+  field-validation log") reviewed and signed off by a named MDRRMO approver
+  (Phase 4's release gate); until both exist, a live detection that crosses
+  the model's threshold reports `watch` instead. `source: "synthetic"` has
+  no such restriction, since only the demo route ever reports it.
+
+Before any detection runs, the response is quality-gated
+(`assess_array_quality()`, Phase 2): a missing, stale (>10 minutes old),
+too-few-buoy (<3), or geometrically degenerate array reports `unknown`
+with `status_reason` explaining why and `observed_at` set to the last real
+reading this backend has ever seen — never a fabricated calm baseline.
 
 ```json
 {
+  "source": "live",
   "calibration": "synthetic",
-  "as_of": "2026-08-16T02:00:00Z",
-  "return_now": false,
+  "observed_at": null,
+  "generated_at": "2026-08-29T02:00:00Z",
+  "data_age_seconds": null,
+  "status_reason": "only 0 of 3 required buoys have fresh (<= 10min old), gap-free, in-range readings",
   "level": "unknown",
-  "stale": true,
-  "stale_reason": "latest synthetic reading is 6:00:00 old, past the 3:00:00 freshness window for this nowcast",
-  "source": "AqOne squall nowcast — calibrated on synthetic data"
+  "return_now": false,
+  "detections": [],
+  "threshold": null,
+  "triggered_buoys": [],
+  "lead_minutes": null
 }
 ```
+
+| Field | Notes |
+|---|---|
+| `source` | `"live"` or `"synthetic"` — which table this response was computed from. Never mixed. |
+| `calibration` | Always `"synthetic"` today: the *model* is trained on simulated pressure fields regardless of the input's `source`. Not a PAGASA warning — the handset must keep saying so. |
+| `observed_at` | The newest real pressure reading this backend has seen, across every buoy, whether or not the array currently qualifies. `null` only when there has never been any reading at all. |
+| `generated_at` | Server clock time this response was computed — always present, used to derive `data_age_seconds` rather than trusting a client clock. |
+| `data_age_seconds` | `generated_at - observed_at`, or `null` if `observed_at` is `null`. |
+| `status_reason` | Why `level` is `"unknown"` (or why the model didn't run). `null` whenever `level` is `clear`/`watch`/`return_now` — a successful evaluation needs no explanation. |
+| `level` / `return_now` | See above. `return_now` is redundant with `level == "return_now"`, kept for a client-side cross-check. |
+| `detections`, `threshold`, `triggered_buoys`, `lead_minutes` | Only populated once quality passes; empty/`null` otherwise. |
 
 `calibration: "synthetic"` is carried on every response while the model is
 trained on simulated pressure fields rather than observed squalls — this is

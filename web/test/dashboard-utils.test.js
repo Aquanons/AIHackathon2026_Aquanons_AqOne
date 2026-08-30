@@ -23,7 +23,8 @@ const {
   formatDataAge,
   tripCheckRowHtml,
   tripChecksListHtml,
-  eligibleForSearchReport
+  eligibleForSearchReport,
+  squallStatusHtml
 } = require('../js/dashboard-utils.js');
 
 test('escapeHtml', async (t) => {
@@ -433,5 +434,66 @@ test('eligibleForSearchReport', async (t) => {
     });
     assert.equal(result.ok, false);
     assert.match(result.reason, /insufficient/);
+  });
+});
+
+// docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 3 item 5: freshness/
+// source/calibration line and a neutral insufficient-data state for the
+// dashboard squall panel, from the unified GET /api/ai/squall/current /
+// GET /api/public/squall response shape (docs/05_PUBLIC_API.md).
+test('squallStatusHtml', async (t) => {
+  await t.test('a live, quality-passing response is labelled LIVE with an age string, no reason', () => {
+    const html = squallStatusHtml({
+      source: 'live', calibration: 'synthetic', level: 'clear', data_age_seconds: 180
+    });
+    assert.ok(html.includes('LIVE'));
+    assert.ok(!html.includes('DEMO'));
+    assert.ok(html.includes('3m old'));
+    assert.ok(html.includes('calibrated on simulated data'));
+    assert.ok(!html.includes('ai-squall-status-reason'));
+  });
+
+  await t.test('a synthetic response is labelled DEMO, never LIVE', () => {
+    const html = squallStatusHtml({ source: 'synthetic', level: 'return_now', data_age_seconds: 30 });
+    assert.ok(html.includes('DEMO'));
+    assert.ok(!html.includes('>LIVE<'));
+  });
+
+  await t.test('an unknown level shows the backend status_reason as a neutral notice', () => {
+    const html = squallStatusHtml({
+      source: 'live',
+      level: 'unknown',
+      data_age_seconds: null,
+      status_reason: 'only 1 of 3 required buoys have fresh, gap-free, in-range readings'
+    });
+    assert.ok(html.includes('ai-squall-status-reason'));
+    assert.ok(html.includes('only 1 of 3 required buoys'));
+    assert.ok(html.includes('unknown age'));
+  });
+
+  await t.test('an unknown level with no reason still shows a neutral fallback, not a blank line', () => {
+    const html = squallStatusHtml({ source: 'live', level: 'unknown', data_age_seconds: null, status_reason: null });
+    assert.ok(html.includes('cannot be confirmed right now'));
+  });
+
+  await t.test('a client-side fetch-failure fallback with no source is not badged DEMO or LIVE', () => {
+    // The exact shape initAIOperations() renders when the backend was never
+    // reached at all (dashboard-ai-ops.js) - found via a live browser check
+    // showing this incorrectly read as "DEMO", misrepresenting a plain
+    // connectivity failure as deliberately-synthetic data.
+    const html = squallStatusHtml({
+      level: 'unknown', detections: [], status_reason: 'unable to reach the squall service'
+    });
+    assert.ok(!html.includes('DEMO'));
+    assert.ok(!html.includes('>LIVE<'));
+    assert.ok(html.includes('unable to reach the squall service'));
+  });
+
+  await t.test('status_reason text is escaped, never passed through raw', () => {
+    const html = squallStatusHtml({
+      source: 'live', level: 'unknown', status_reason: '<img src=x onerror=alert(1)>'
+    });
+    assert.ok(!html.includes('<img src=x'));
+    assert.ok(html.includes('&lt;img'));
   });
 });

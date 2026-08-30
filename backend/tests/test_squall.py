@@ -11,6 +11,7 @@ from app.ai.squall import (
     extract_pressure_features,
 )
 from app.api import public as public_api
+from app.api import squall as squall_api
 from app.main import app
 
 
@@ -220,10 +221,23 @@ def test_assess_array_quality_reports_newest_observation_even_when_insufficient(
 
 class _FakeSquallPool:
     """Enough of the pool surface for `_load_rows` (app/api/squall.py) to run
-    against seeded readings instead of a real database."""
+    against seeded readings/buoys instead of a real database.
 
-    def __init__(self, readings: list[dict[str, object]]) -> None:
+    `is_synthetic` mirrors the real column: a pool built with
+    `is_synthetic=True` only answers a query that asks for synthetic rows,
+    and vice versa - the same source-isolation the live/demo tables enforce.
+    """
+
+    def __init__(
+        self,
+        readings: list[dict[str, object]],
+        buoy_rows: list[dict[str, object]] | None = None,
+        *,
+        is_synthetic: bool = False,
+    ) -> None:
         self._readings = readings
+        self._buoy_rows = buoy_rows if buoy_rows is not None else _buoy_rows()
+        self._is_synthetic = is_synthetic
 
     def acquire(self):
         return self
@@ -235,36 +249,65 @@ class _FakeSquallPool:
         return None
 
     async def fetch(self, query: str, *args):
+        wants_synthetic = args[0] if args else None
+        if wants_synthetic is not None and wants_synthetic != self._is_synthetic:
+            return []
         if 'FROM barometric_readings' in query:
             return list(self._readings)
+        if 'FROM buoys' in query:
+            return list(self._buoy_rows)
         return []
 
 
-def test_fresh_qualifying_squall_can_signal_return_now(monkeypatch):
-    """Contrast case for the staleness guard below: fresh data must still be
-    able to alarm - the guard must not make GET /api/public/squall inert."""
-    now = datetime.now(UTC)
-    pool = _FakeSquallPool(
-        [{'buoy_id': 'B01', 'observed_at': now, 'pressure_hpa': 1005.0}]
-    )
-    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
-    monkeypatch.setattr(public_api, 'load_bundle', lambda: object())
-    monkeypatch.setattr(public_api, 'build_buoys', lambda rows: {})
+def _mock_threshold_crossing_detection(monkeypatch, *, probability: float = 0.9) -> None:
+    monkeypatch.setattr(squall_api, 'load_bundle', lambda: object())
     monkeypatch.setattr(
-        public_api,
+        squall_api,
         'current_detection',
         lambda readings, buoys, model: [
-            {
-                'probability': 0.9,
-                'arrival_by_buoy': [{'buoy_id': 'B01', 'arrival_minutes': 12}],
-            }
+            {'probability': probability, 'arrival_by_buoy': [{'buoy_id': 'B01', 'arrival_minutes': 12}]}
         ],
     )
     monkeypatch.setattr(
-        public_api,
+        squall_api,
         'event_detection_summary',
-        lambda model, detections: {'threshold': 0.5, 'detections': detections},
+        lambda model, detections: {
+            'threshold': 0.5,
+            'detections': detections,
+            'top_features': [],
+            'evaluation': {},
+        },
     )
+
+
+def test_fresh_qualifying_live_array_is_watch_when_return_now_disabled(monkeypatch):
+    """Contrast case for the insufficient-array test below: fresh, complete
+    data must still reach a candidate state - the gate must not make
+    GET /api/public/squall permanently inert. But a live detection must be
+    capped at watch, never return_now, until the flag is enabled
+    (docs/39 Phase 3/4 safety boundary)."""
+    monkeypatch.delenv('SQUALL_RETURN_NOW_ENABLED', raising=False)
+    now = datetime.now(UTC)
+    pool = _FakeSquallPool(_quality_readings(['B01', 'B02', 'B03', 'B04'], now))
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+    _mock_threshold_crossing_detection(monkeypatch)
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'watch'
+    assert body['return_now'] is False
+    assert body['source'] == 'live'
+    assert body['lead_minutes'] == 12
+
+
+def test_fresh_qualifying_live_array_reaches_return_now_when_flag_enabled(monkeypatch):
+    monkeypatch.setenv('SQUALL_RETURN_NOW_ENABLED', 'true')
+    now = datetime.now(UTC)
+    pool = _FakeSquallPool(_quality_readings(['B01', 'B02', 'B03', 'B04'], now))
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+    _mock_threshold_crossing_detection(monkeypatch)
 
     with TestClient(app) as client:
         response = client.get('/api/public/squall')
@@ -272,25 +315,42 @@ def test_fresh_qualifying_squall_can_signal_return_now(monkeypatch):
     body = response.json()
     assert body['level'] == 'return_now'
     assert body['return_now'] is True
-    assert body['stale'] is False
-    assert body['lead_minutes'] == 12
 
 
-def test_stale_synthetic_squall_is_unknown_and_never_return_now(monkeypatch):
-    """The non-negotiable rule from docs/37: a stale reading must never raise
-    a fresh RETURN NOW warning. The model is made to raise if it is ever
-    reached, so this fails loudly if the staleness guard stops short-
-    circuiting instead of quietly passing on an untested code path."""
-    stale_at = datetime.now(UTC) - timedelta(hours=6)
-    pool = _FakeSquallPool(
-        [{'buoy_id': 'B01', 'observed_at': stale_at, 'pressure_hpa': 1005.0}]
+def test_fresh_qualifying_live_array_below_threshold_is_clear(monkeypatch):
+    now = datetime.now(UTC)
+    pool = _FakeSquallPool(_quality_readings(['B01', 'B02', 'B03', 'B04'], now))
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+    monkeypatch.setattr(squall_api, 'load_bundle', lambda: object())
+    monkeypatch.setattr(squall_api, 'current_detection', lambda readings, buoys, model: [])
+    monkeypatch.setattr(
+        squall_api,
+        'event_detection_summary',
+        lambda model, detections: {'threshold': 0.5, 'detections': [], 'top_features': [], 'evaluation': {}},
     )
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'clear'
+    assert body['return_now'] is False
+    assert body['status_reason'] is None
+
+
+def test_insufficient_live_array_is_unknown_and_never_return_now(monkeypatch):
+    """A single buoy - or a stale one - never reaches watch/return_now, and
+    the model is never even loaded: the gate runs before any detection
+    (docs/39 Phase 2/3). The model is made to raise if it is ever reached,
+    so this fails loudly if the gate stops short-circuiting."""
+    stale_at = datetime.now(UTC) - timedelta(hours=6)
+    pool = _FakeSquallPool([{'buoy_id': 'B01', 'observed_at': stale_at, 'pressure_hpa': 1005.0}])
     monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
 
     def _must_not_be_called():
-        raise AssertionError('the model must not run on stale data')
+        raise AssertionError('the model must not run on an insufficient array')
 
-    monkeypatch.setattr(public_api, 'load_bundle', lambda: _must_not_be_called())
+    monkeypatch.setattr(squall_api, 'load_bundle', lambda: _must_not_be_called())
 
     with TestClient(app) as client:
         response = client.get('/api/public/squall')
@@ -298,6 +358,69 @@ def test_stale_synthetic_squall_is_unknown_and_never_return_now(monkeypatch):
     body = response.json()
     assert body['level'] == 'unknown'
     assert body['return_now'] is False
-    assert body['stale'] is True
-    assert body['stale_reason']
-    assert body['as_of'] is not None
+    assert body['status_reason']
+    assert body['source'] == 'live'
+
+
+def test_return_now_flag_cannot_bypass_the_quality_gate(monkeypatch):
+    """docs/39 Phase 4 test requirement: the release flag can enable
+    return_now only for fresh, quality-passing input - it is not a general
+    override. A single stale reading stays unknown even with the flag on,
+    and the model is never loaded."""
+    monkeypatch.setenv('SQUALL_RETURN_NOW_ENABLED', 'true')
+    stale_at = datetime.now(UTC) - timedelta(hours=6)
+    pool = _FakeSquallPool([{'buoy_id': 'B01', 'observed_at': stale_at, 'pressure_hpa': 1005.0}])
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+
+    def _must_not_be_called():
+        raise AssertionError('the model must not run on an insufficient array, flag or no flag')
+
+    monkeypatch.setattr(squall_api, 'load_bundle', lambda: _must_not_be_called())
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'unknown'
+    assert body['return_now'] is False
+
+
+def test_synthetic_only_data_is_invisible_to_the_public_live_route(monkeypatch):
+    """The exact bug docs/39's findings section opens with: production must
+    never see synthetic rows, no matter how fresh and complete they are."""
+    now = datetime.now(UTC)
+    pool = _FakeSquallPool(_quality_readings(['B01', 'B02', 'B03', 'B04'], now), is_synthetic=True)
+    monkeypatch.setattr(public_api, 'get_pool', lambda: pool)
+
+    with TestClient(app) as client:
+        response = client.get('/api/public/squall')
+
+    body = response.json()
+    assert body['level'] == 'unknown'
+    assert body['source'] == 'live'
+    assert body['observed_at'] is None
+
+
+def test_dashboard_squall_route_requires_a_bearer_token():
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get('/api/ai/squall/current')
+    assert response.status_code == 401
+
+
+def test_demo_squall_status_may_reach_return_now_unconditionally(monkeypatch):
+    """The demo route (app/api/demo.py) is structurally safe to leave
+    ungated: it is demo-key-only and the real handset never calls it, so
+    SQUALL_RETURN_NOW_ENABLED must not affect it (docs/39 Phase 3)."""
+    monkeypatch.delenv('SQUALL_RETURN_NOW_ENABLED', raising=False)
+    now = datetime.now(UTC)
+    _mock_threshold_crossing_detection(monkeypatch)
+
+    status = squall_api.build_squall_status(
+        _quality_readings(['B01', 'B02', 'B03', 'B04'], now),
+        _buoy_rows(),
+        source='synthetic',
+        allow_return_now=True,
+    )
+
+    assert status['level'] == 'return_now'
+    assert status['source'] == 'synthetic'

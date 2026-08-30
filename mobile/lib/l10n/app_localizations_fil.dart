@@ -426,14 +426,15 @@ class AppLocalizationsFil extends AppLocalizations {
   }
 
   @override
-  String get squallStaleTitle => 'Pagtataya ng unos: lumang datos';
+  String get squallStaleTitle =>
+      'Pagtataya ng unos: hindi kumpirmado ang katayuan';
 
   @override
   String squallStaleBodyWithAge(String age) {
-    return 'Huling babasahin: $age na ang nakalipas. Wala munang ipapakitang katayuan hangga\'t walang sariwang datos.';
+    return 'Huling nalamang babasahin: $age na ang nakalipas. Wala munang ipapakitang katayuan ng unos ngayon.';
   }
 
   @override
   String get squallStaleBodyNoAge =>
-      'Wala munang ipapakitang katayuan ng unos hangga\'t walang sariwang datos.';
+      'Wala munang ipapakitang katayuan ng unos ngayon.';
 }
