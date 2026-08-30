@@ -13,6 +13,7 @@ from app.ai import environment
 from app.ai.current_field import count_nearby_fresh_buoys, create_current_field_factory
 from app.ai.drift import MODEL_VERSION, ObjectClass, _to_xy, predict_drift
 from app.ai.search import contours_from_grid, recommend_next_area, update_posterior
+from app.audit import record_audit_event
 from app.auth import require_responder_roles
 from app.db import get_pool
 
@@ -327,7 +328,7 @@ async def _anomaly_case_inputs(conn: asyncpg.Connection, source_id: int) -> tupl
 @router.post('/cases')
 async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles) -> dict[str, object]:
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         if body.source_type == 'sos':
             vessel_id, lat, lon, at = await _sos_case_inputs(conn, body.source_id)
             reason, sos_id, anomaly_id = SOS_OPEN_REASON, body.source_id, None
@@ -353,6 +354,19 @@ async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles)
             raise HTTPException(
                 status_code=409, detail='a case already exists for this source',
             ) from exc
+
+        # A protected source only (docs/40) - a case opened through this
+        # route is never synthetic, so is_demo is always False here.
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='drift.open',
+            resource_type='drift_incident',
+            resource_id=row['id'],
+            outcome='created',
+            is_demo=False,
+            metadata={'source_type': body.source_type, 'object_class': body.object_class.value},
+        )
 
     incident_id = row['id']
     actor = user.get('email') or 'unknown'
@@ -388,7 +402,8 @@ async def rerun_case(incident_id: int, user: dict = require_responder_roles) -> 
         incident = await conn.fetchrow(
             '''
             SELECT id, last_contact_at, last_contact_lat, last_contact_lon,
-                   abnormal_reason, object_class, resolved_at, cancelled_at
+                   abnormal_reason, object_class, resolved_at, cancelled_at,
+                   is_synthetic
             FROM incidents WHERE id = $1
             ''',
             incident_id,
@@ -416,6 +431,22 @@ async def rerun_case(incident_id: int, user: dict = require_responder_roles) -> 
         forecast_hours=float(latest['forecast_hours']),
         actor=user.get('email') or 'unknown',
     )
+    # _compute_and_persist_run manages its own connection (it also runs a
+    # buoy-proximity query the caller doesn't otherwise need), so this audit
+    # write is not in the same transaction as the drift_runs INSERT it
+    # describes - it only fires after that insert is confirmed to have
+    # succeeded, so it can never audit a run that was not actually persisted.
+    async with pool.acquire() as conn, conn.transaction():
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='drift.rerun',
+            resource_type='drift_incident',
+            resource_id=incident_id,
+            outcome='created',
+            is_demo=incident['is_synthetic'],
+            metadata={'run_number': next_run_number},
+        )
     return {
         'id': incident_id,
         'run_number': next_run_number,
@@ -427,19 +458,33 @@ async def rerun_case(incident_id: int, user: dict = require_responder_roles) -> 
 @router.post('/cases/{incident_id}/resolve')
 async def resolve_case(incident_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT resolved_at FROM incidents WHERE id = $1 FOR UPDATE', incident_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such case')
+        was_already_resolved = prior['resolved_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE incidents
                SET resolved_at = COALESCE(resolved_at, NOW()),
                    resolved_by = COALESCE(resolved_by, $2)
              WHERE id = $1
-            RETURNING id, resolved_at, resolved_by
+            RETURNING id, resolved_at, resolved_by, is_synthetic
             ''',
             incident_id, user.get('email') or 'unknown',
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such case')
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='drift.resolve',
+            resource_type='drift_incident',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_resolved else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],
@@ -457,7 +502,14 @@ async def cancel_case(
     incident_id: int, payload: CancelCaseRequest, user: dict = require_responder_roles,
 ) -> dict[str, object]:
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT cancelled_at FROM incidents WHERE id = $1 FOR UPDATE', incident_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such case')
+        was_already_cancelled = prior['cancelled_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE incidents
@@ -465,12 +517,20 @@ async def cancel_case(
                    cancelled_by = COALESCE(cancelled_by, $2),
                    cancelled_reason = COALESCE(cancelled_reason, $3)
              WHERE id = $1
-            RETURNING id, cancelled_at, cancelled_by, cancelled_reason
+            RETURNING id, cancelled_at, cancelled_by, cancelled_reason, is_synthetic
             ''',
             incident_id, user.get('email') or 'unknown', payload.reason,
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such case')
+        # cancelled_reason is free text and never logged (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='drift.cancel',
+            resource_type='drift_incident',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_cancelled else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],
@@ -663,7 +723,7 @@ async def record_searched_sector(
     pool = get_pool()
     async with pool.acquire() as conn, conn.transaction():
         incident = await conn.fetchrow(
-            'SELECT id, resolved_at, cancelled_at FROM incidents WHERE id = $1 FOR UPDATE',
+            'SELECT id, resolved_at, cancelled_at, is_synthetic FROM incidents WHERE id = $1 FOR UPDATE',
             incident_id,
         )
         if incident is None:
@@ -703,6 +763,17 @@ async def record_searched_sector(
         if existing is not None:
             # A retry of the same report: return the current state rather
             # than applying the negative evidence a second time.
+            await record_audit_event(
+                conn,
+                actor=user,
+                action='drift.search_sector_report',
+                resource_type='drift_incident',
+                resource_id=incident_id,
+                outcome='duplicate',
+                correlation_key=body.idempotency_key,
+                is_demo=incident['is_synthetic'],
+                metadata={'method': body.method, 'run_number': body.run_number},
+            )
             return {
                 'posterior_grid': posterior_grid,
                 'contours': contours_from_grid(posterior_grid),
@@ -741,6 +812,19 @@ async def record_searched_sector(
             ''',
             incident_id, x_min, x_max, y_min, y_max, detection_probability,
             run['id'], user.get('email') or 'unknown', body.method, body.notes, body.idempotency_key,
+        )
+
+        # Never the searched rectangle or free-text notes (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='drift.search_sector_report',
+            resource_type='drift_incident',
+            resource_id=incident_id,
+            outcome='updated',
+            correlation_key=body.idempotency_key,
+            is_demo=incident['is_synthetic'],
+            metadata={'method': body.method, 'run_number': body.run_number},
         )
 
     return {

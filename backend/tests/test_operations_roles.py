@@ -1,22 +1,18 @@
 """docs/41 Phase 1: `require_roles` action-matrix coverage.
 
 Denied-role requests never reach a route handler - `require_roles` rejects
-inside dependency resolution, before any database call - so most tests here
-run without a database, same pattern as test_auth.py's PROTECTED_PATHS. The
-sea-condition actor-derivation test is the one exception: it needs to observe
-what actually got persisted, so it fakes the pool the same way
-test_responder_loop.py / test_vessel_auth.py do.
+inside dependency resolution, before any database call - so every test here
+runs without a database, same pattern as test_auth.py's PROTECTED_PATHS.
+The sea-condition actor-derivation and audit-event tests live in
+test_sea_condition.py, which fakes the pool since it needs to observe what
+actually got persisted.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db as app_db
-from app.api import sea_condition as sea_condition_api
 from app.auth import create_token
 from app.main import app
 
@@ -77,60 +73,3 @@ def test_every_operator_role_passes_the_responder_guard(client, method, path, bo
 def test_missing_token_is_401_not_403(client):
     response = client.post('/api/sea-condition', json={'status': 'Safe to Go Out'})
     assert response.status_code == 401
-
-
-class _SeaConditionFakePool:
-    def __init__(self) -> None:
-        self.inserted: dict[str, object] | None = None
-
-    def acquire(self):
-        return self
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return None
-
-    async def fetchrow(self, query: str, *args):
-        if 'INSERT INTO sea_conditions' in query:
-            status, reason, set_by_user_id, set_by_name = args
-            self.inserted = {
-                'id': 1,
-                'status': status,
-                'reason': reason,
-                'set_by_user_id': set_by_user_id,
-                'set_by_name': set_by_name,
-                'created_at': datetime.now(UTC),
-            }
-            return self.inserted
-        return None
-
-
-def test_sea_condition_actor_is_derived_from_token_not_body(monkeypatch):
-    """docs/41 Phase 1 fix: the request body previously supplied
-    set_by_user_id/set_by_name directly to the INSERT, so any authenticated
-    caller could attribute a declaration to someone else. Both must now
-    reflect the authenticated token regardless of what the body claims.
-    """
-    pool = _SeaConditionFakePool()
-    monkeypatch.setattr(app_db, 'get_pool', lambda: pool)
-    monkeypatch.setattr(sea_condition_api, 'get_pool', lambda: pool)
-    monkeypatch.delenv('DATABASE_URL', raising=False)
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            '/api/sea-condition',
-            headers=_headers('mdrrmo'),
-            json={
-                'status': 'Safe to Go Out',
-                'reason': 'calm seas',
-                'set_by_user_id': '999',
-                'set_by_name': 'Forged Name',
-            },
-        )
-
-    assert response.status_code == 201
-    assert pool.inserted is not None
-    assert pool.inserted['set_by_user_id'] == '1'
-    assert pool.inserted['set_by_name'] == 'ops@example.com'

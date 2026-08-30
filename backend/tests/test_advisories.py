@@ -30,9 +30,13 @@ PUBLIC_ADVISORIES = '/api/public/advisories'
 class _FakeAdvisoryPool:
     def __init__(self) -> None:
         self.rows: list[dict[str, object]] = []
+        self.audit_events: list[dict[str, object]] = []
         self._next_id = 1
 
     def acquire(self):
+        return self
+
+    def transaction(self):
         return self
 
     async def __aenter__(self):
@@ -40,6 +44,26 @@ class _FakeAdvisoryPool:
 
     async def __aexit__(self, exc_type, exc, tb):
         return None
+
+    async def execute(self, query: str, *args):
+        assert 'INSERT INTO operations_audit_events' in query
+        (
+            actor_user_id, actor_email, actor_role, action, resource_type,
+            resource_id, outcome, correlation_key, is_demo, metadata,
+        ) = args
+        self.audit_events.append({
+            'actor_user_id': actor_user_id,
+            'actor_email': actor_email,
+            'actor_role': actor_role,
+            'action': action,
+            'resource_type': resource_type,
+            'resource_id': resource_id,
+            'outcome': outcome,
+            'correlation_key': correlation_key,
+            'is_demo': is_demo,
+            'metadata': metadata,
+        })
+        return 'INSERT 0 1'
 
     def seed(self, **overrides: object) -> dict[str, object]:
         now = datetime.now(UTC)
@@ -57,6 +81,7 @@ class _FakeAdvisoryPool:
             'source': 'LGU',
             'score': None,
             'created_by': 'ops@example.com',
+            'demo_tag': None,
             'created_at': now,
             'updated_at': now,
         }
@@ -214,6 +239,17 @@ def test_create_advisory_persists_via_operator_token(monkeypatch):
     advisory = response.json()['advisory']
     assert advisory['title'] == 'Habagat surge expected'
     assert advisory['image_url'] == 'https://example.org/surge.jpg'
+
+    # docs/41 Phase 2: one committed domain row, one matching redacted audit
+    # event in the same call - and never the free-text title/description.
+    assert len(pool.audit_events) == 1
+    event = pool.audit_events[0]
+    assert event['action'] == 'advisory.create'
+    assert event['resource_type'] == 'advisory'
+    assert event['resource_id'] == str(advisory['id'])
+    assert event['outcome'] == 'created'
+    assert 'Habagat surge expected' not in event['metadata']
+    assert 'Small craft warning' not in event['metadata']
 
 
 def test_expiration_before_publish_date_is_rejected(monkeypatch):

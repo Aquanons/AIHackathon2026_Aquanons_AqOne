@@ -77,6 +77,7 @@ class _FakeStore:
         self.contact_rows = contact_rows
         self.cases: dict[tuple[str, str], dict[str, object]] = {}
         self._next_case_id = 1
+        self.audit_events: list[dict[str, object]] = []
 
     # --- raw-connection interface, used directly by evaluate_and_persist ---
     async def fetch(self, query: str, *args):
@@ -88,6 +89,24 @@ class _FakeStore:
         return []
 
     async def execute(self, query: str, *args):
+        if 'INSERT INTO operations_audit_events' in query:
+            (
+                actor_user_id, actor_email, actor_role, action, resource_type,
+                resource_id, outcome, correlation_key, is_demo, metadata,
+            ) = args
+            self.audit_events.append({
+                'actor_user_id': actor_user_id,
+                'actor_email': actor_email,
+                'actor_role': actor_role,
+                'action': action,
+                'resource_type': resource_type,
+                'resource_id': resource_id,
+                'outcome': outcome,
+                'correlation_key': correlation_key,
+                'is_demo': is_demo,
+                'metadata': metadata,
+            })
+            return 'INSERT 0 1'
         if 'INSERT INTO anomaly_cases' in query:
             vessel_id, trip_id, case_type, score, status, reasons, source, score_at, last_contact_at, is_synth = args
             key = (vessel_id, trip_id)
@@ -128,6 +147,9 @@ class _FakeStore:
     def acquire(self):
         return self
 
+    def transaction(self):
+        return self
+
     async def __aenter__(self):
         return self
 
@@ -141,6 +163,14 @@ class _FakeStore:
         return None
 
     async def fetchrow(self, query: str, *args):
+        if query.startswith('SELECT') and 'FOR UPDATE' in query:
+            case = self._by_id(args[0])
+            if case is None:
+                return None
+            for column in ('acknowledged_at', 'dismissed_at', 'escalated_at', 'resolved_at'):
+                if column in query:
+                    return {column: case[column]}
+            return None
         if 'UPDATE anomaly_cases' not in query:
             return None
         case_id = args[0]
@@ -263,6 +293,14 @@ def test_escalate_requires_a_reason(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()['escalated_reason'] == 'no radio contact, dispatching nearest vessel'
+
+    # docs/41 Phase 2: one redacted audit event, and the free-text reason
+    # never appears in it.
+    assert len(store.audit_events) == 1
+    event = store.audit_events[0]
+    assert event['action'] == 'anomaly.escalate'
+    assert event['outcome'] == 'updated'
+    assert 'no radio contact' not in event['metadata']
 
 
 def test_resolve_is_idempotent_and_leaves_the_case_out_of_open_listing(monkeypatch):

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.audit import record_audit_event
 from app.auth import (
     create_vessel_device_token,
     hash_password,
@@ -79,6 +80,15 @@ async def issue_pairing_code(
             int(str(user.get('id') or '0') or '0'),
             str(user.get('email') or ''),
             expires_at,
+        )
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='vessel_device.pairing_code_issue',
+            resource_type='vessel',
+            resource_id=vessel_id,
+            outcome='created',
+            is_demo=False,
         )
 
     return {
@@ -197,7 +207,14 @@ async def revoke_device(
 ) -> dict[str, object]:
     body = payload or RevokeIn()
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT revoked_at FROM vessel_devices WHERE id = $1 FOR UPDATE', device_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such vessel device')
+        was_already_revoked = prior['revoked_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE vessel_devices
@@ -211,8 +228,16 @@ async def revoke_device(
             int(str(user.get('id') or '0') or '0'),
             body.reason.strip(),
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such vessel device')
+        # reason is short free text and never logged (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='vessel_device.revoke',
+            resource_type='vessel_device',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_revoked else 'updated',
+            is_demo=False,
+        )
     return {
         'device': {
             'id': row['id'],

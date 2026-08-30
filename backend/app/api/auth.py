@@ -6,6 +6,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
+from app.audit import record_audit_event
 from app.auth import (
     VALID_ROLES,
     create_token,
@@ -43,20 +44,39 @@ def _public_user(row) -> dict[str, object]:
 
 @router.post('/login')
 async def login(payload: LoginIn) -> dict[str, object]:
+    normalized = normalize_email(payload.email)
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             'SELECT * FROM users WHERE email_normalized = $1',
-            normalize_email(payload.email),
+            normalized,
         )
 
-    # Same message and timing path whether the address is unknown or the
-    # password is wrong, so the endpoint does not confirm which emails exist.
-    if row is None or not verify_password(payload.password, row['password_hash']):
-        raise HTTPException(status_code=401, detail='Invalid email or password.')
+        # Same message and timing path whether the address is unknown or the
+        # password is wrong, so the endpoint does not confirm which emails
+        # exist - the audit insert runs identically on both branches below,
+        # so it does not reopen that gap either.
+        if row is None or not verify_password(payload.password, row['password_hash']):
+            await record_audit_event(
+                conn,
+                actor=None,
+                action='auth.login_failure',
+                resource_type='user',
+                resource_id=normalized,
+                outcome='failure',
+            )
+            raise HTTPException(status_code=401, detail='Invalid email or password.')
 
-    async with pool.acquire() as conn:
-        await conn.execute('UPDATE users SET last_login_at = NOW() WHERE id = $1', row['id'])
+        async with conn.transaction():
+            await conn.execute('UPDATE users SET last_login_at = NOW() WHERE id = $1', row['id'])
+            await record_audit_event(
+                conn,
+                actor={'id': row['id'], 'email': row['email'], 'role': row['role']},
+                action='auth.login_success',
+                resource_type='user',
+                resource_id=row['id'],
+                outcome='success',
+            )
 
     return {
         'token': create_token(row['id'], row['email'], row['role']),
@@ -92,7 +112,7 @@ async def admin_signup(payload: AdminSignupIn) -> dict[str, object]:
 
     normalized = normalize_email(payload.email)
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         existing = await conn.fetchval(
             'SELECT 1 FROM users WHERE email_normalized = $1', normalized
         )
@@ -110,6 +130,18 @@ async def admin_signup(payload: AdminSignupIn) -> dict[str, object]:
             hash_password(payload.password),
             payload.full_name.strip(),
             payload.role,
+        )
+        # No logged-in operator exists in this bootstrap flow - only the
+        # setup key - so actor is None. Never logs setup_key/password
+        # (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=None,
+            action='auth.admin_signup',
+            resource_type='user',
+            resource_id=row['id'],
+            outcome='created',
+            metadata={'role': payload.role},
         )
 
     return {'user': _public_user(row), 'message': 'Account created.'}

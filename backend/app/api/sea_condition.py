@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.audit import record_audit_event
 from app.auth import require_responder_roles
 from app.db import get_pool
 
@@ -95,7 +96,7 @@ async def set_current(
     # set_by_user_id/set_by_name, letting any caller attribute a declaration
     # to someone else.
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             '''
             INSERT INTO sea_conditions (status, reason, set_by_user_id, set_by_name)
@@ -106,6 +107,17 @@ async def set_current(
             payload.reason,
             user.get('id'),
             user.get('email') or 'unknown',
+        )
+        # reason is free text and never logged (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='sea_condition.declare',
+            resource_type='sea_condition',
+            resource_id=row['id'],
+            outcome='created',
+            is_demo=False,
+            metadata={'status': payload.status},
         )
     return {'current': _serialise(row)}
 

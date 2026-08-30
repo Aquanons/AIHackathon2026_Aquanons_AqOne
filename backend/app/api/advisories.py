@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.audit import record_audit_event
 from app.auth import require_responder_roles
 from app.db import get_pool
 
@@ -179,7 +180,7 @@ async def create_advisory(
 ) -> dict[str, dict[str, Any]]:
     values = _normalise_payload(payload)
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             '''
             INSERT INTO advisories (
@@ -201,6 +202,17 @@ async def create_advisory(
             values['status'],
             user.get('email') or user.get('id') or 'LGU',
         )
+        # title/description are free text and never logged (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='advisory.create',
+            resource_type='advisory',
+            resource_id=row['id'],
+            outcome='created',
+            is_demo=row['demo_tag'] is not None,
+            metadata={'status': values['status'], 'priority': values['priority']},
+        )
     return {'advisory': _serialise(row)}
 
 
@@ -208,11 +220,11 @@ async def create_advisory(
 async def update_advisory(
     advisory_id: int,
     payload: AdvisoryIn,
-    _: Any = require_responder_roles,
+    user: Any = require_responder_roles,
 ) -> dict[str, dict[str, Any]]:
     values = _normalise_payload(payload)
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             '''
             UPDATE advisories
@@ -240,28 +252,51 @@ async def update_advisory(
             values['cover_image'],
             values['status'],
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='advisory not found')
+        if row is None:
+            raise HTTPException(status_code=404, detail='advisory not found')
+        # Unconditionally overwritten every call - a real edit each time,
+        # not a retry to deduplicate (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='advisory.update',
+            resource_type='advisory',
+            resource_id=row['id'],
+            outcome='updated',
+            is_demo=row['demo_tag'] is not None,
+            metadata={'status': values['status'], 'priority': values['priority']},
+        )
     return {'advisory': _serialise(row)}
 
 
 @router.delete('/{advisory_id}', status_code=204)
 async def delete_advisory(
     advisory_id: int,
-    _: Any = require_responder_roles,
+    user: Any = require_responder_roles,
 ) -> None:
     pool = get_pool()
-    async with pool.acquire() as conn:
-        result = await conn.execute('DELETE FROM advisories WHERE id = $1', advisory_id)
-    if result == 'DELETE 0':
-        raise HTTPException(status_code=404, detail='advisory not found')
+    async with pool.acquire() as conn, conn.transaction():
+        row = await conn.fetchrow(
+            'DELETE FROM advisories WHERE id = $1 RETURNING id, demo_tag', advisory_id,
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail='advisory not found')
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='advisory.delete',
+            resource_type='advisory',
+            resource_id=row['id'],
+            outcome='deleted',
+            is_demo=row['demo_tag'] is not None,
+        )
     return None
 
 
 @router.post('/alert')
 async def trigger_danger_alert(
     payload: DangerAlertPayload,
-    _: Any = require_responder_roles,
+    user: Any = require_responder_roles,
 ) -> dict[str, Any]:
     """Publish (or update) a danger-zone advisory. Dispatcher-authenticated.
 
@@ -300,7 +335,7 @@ async def trigger_danger_alert(
     }
 
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             '''
             INSERT INTO advisories (
@@ -317,7 +352,7 @@ async def trigger_danger_alert(
               source = EXCLUDED.source,
               score = EXCLUDED.score,
               updated_at = NOW()
-            RETURNING *
+            RETURNING *, (xmax = 0) AS was_inserted
             ''',
             advisory_item['source_key'],
             advisory_item['title'],
@@ -331,6 +366,16 @@ async def trigger_danger_alert(
             advisory_item['status'],
             advisory_item['source'],
             advisory_item['score'],
+        )
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='advisory.alert',
+            resource_type='advisory',
+            resource_id=row['id'],
+            outcome='created' if row['was_inserted'] else 'updated',
+            is_demo=row['demo_tag'] is not None,
+            metadata={'level': payload.level, 'score': payload.score},
         )
 
     logger.warning(
