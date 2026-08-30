@@ -284,6 +284,8 @@ class _FakePool:
                 'incident_id': incident_id,
                 'x_min_m': x_min, 'x_max_m': x_max, 'y_min_m': y_min, 'y_max_m': y_max,
                 'detection_probability': pod,
+                'run_id': None, 'reported_by': None, 'method': None,
+                'notes': None, 'idempotency_key': None,
                 'searched_at': datetime.now(UTC),
             })
         return 'OK'

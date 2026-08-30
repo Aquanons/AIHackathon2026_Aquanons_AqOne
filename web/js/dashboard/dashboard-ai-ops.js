@@ -4,18 +4,38 @@
   var authFetch = ns.authFetch;
   var incidents = ns.incidents;
   var map = ns.map;
+  var showToast = ns.showToast || function () {};
 
   // ===== AI OPERATIONS =====
   var aiContoursLayer = L.layerGroup().addTo(map);
   var aiSquallLayer = L.layerGroup().addTo(map);
   var aiRefreshTimer = null;
 
+  // Responder-approved detection-method presets (docs/40 Phase 3 item 2,
+  // docs/05_PUBLIC_API.md). Mirrors app/api/drift.py DETECTION_METHOD_LABELS
+  // - the UI only ever submits one of these named presets, never a raw
+  // probability.
+  var DETECTION_METHODS = [
+    { value: 'poor', label: 'Poor visibility / air search only (0.3)' },
+    { value: 'moderate', label: 'Daylight surface vessel search (0.6)' },
+    { value: 'good', label: 'Good conditions, multi-asset close pattern (0.9)' }
+  ];
+
+  // The current drift payload (whatever loadDriftIncidentDetail last
+  // rendered) and the in-progress "mark a searched sector" interaction -
+  // two native map clicks pick opposite corners, no drawing-library
+  // dependency (docs/40 Phase 4 item 2).
+  var currentDriftPayload = null;
+  var aiDrawLayer = L.layerGroup().addTo(map);
+  var sectorDraw = { active: false, corner1: null, bounds: null };
+
   var aiColors = {
     contour95: '#ef4444',
     contour75: '#f59e0b',
     contour50: '#facc15',
     track: '#2563eb',
-    squall: '#22c55e'
+    squall: '#22c55e',
+    nextArea: '#38bdf8'
   };
 
   function aiFetchJson(path) {
@@ -84,22 +104,166 @@
     }
   }
 
-  function renderDriftContours(payload) {
-    clearAiDriftLayers();
-    var prediction = payload && payload.prediction;
-    var incident = payload && payload.incident;
-    var track = (payload && payload.ground_truth_track) || [];
-    var metaEl = document.getElementById('ai-drift-meta');
+  function ageLimitText(seconds) {
+    if (typeof seconds !== 'number') return null;
+    return Math.round(seconds / 60) + 'min';
+  }
 
-    // The response carries two contour sets. `prediction.contours` is the raw
-    // Monte Carlo output - the prior, which never changes. `payload.contours`
-    // is computed from the posterior grid and therefore reflects any sectors
-    // already searched and eliminated.
-    //
-    // We previously drew the prior, which meant a dispatcher could report "we
-    // searched here, nothing found", the posterior would correctly update in
-    // the database, and the map would carry on showing the original search
-    // area. The whole point of Bayesian re-tasking was invisible.
+  function drawSearchedSectors(sectors, origin) {
+    if (!origin || !sectors || !sectors.length) return;
+    var mPerDegLat = 110574.0;
+    var mPerDegLon = 111320.0 * Math.cos(origin.lat * Math.PI / 180);
+    sectors.forEach(function (sector) {
+      var south = origin.lat + sector.y_min_m / mPerDegLat;
+      var north = origin.lat + sector.y_max_m / mPerDegLat;
+      var west = origin.lon + sector.x_min_m / mPerDegLon;
+      var east = origin.lon + sector.x_max_m / mPerDegLon;
+      var box = L.rectangle([[south, west], [north, east]], {
+        pane: 'aiContoursPane',
+        color: '#94a3b8',
+        weight: 1.5,
+        opacity: 0.9,
+        fillColor: '#64748b',
+        fillOpacity: 0.22,
+        dashArray: '4 4'
+      }).addTo(aiContoursLayer);
+      var pod = typeof sector.detection_probability === 'number'
+        ? Math.round(sector.detection_probability * 100) + '% detection probability'
+        : 'searched';
+      // Audit trail (docs/40 Phase 4 item 3): method/reporter/time are only
+      // present on a Phase 3 protected report - a legacy/demo sector has none.
+      var when = sector.searched_at ? new Date(sector.searched_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
+      var tooltip = 'Searched — ' + pod +
+        (sector.method_label ? '<br>' + ns._escHtml(sector.method_label) : '') +
+        (sector.reported_by ? '<br>Reported by ' + ns._escHtml(sector.reported_by) : '') +
+        (when ? '<br>' + when : '') +
+        (sector.notes ? '<br>"' + ns._escHtml(sector.notes) + '"' : '');
+      box.bindTooltip(tooltip, { sticky: true, direction: 'center', className: 'drift-incident-label' });
+    });
+  }
+
+  function drawNextArea(nextArea) {
+    if (!nextArea || !nextArea.bounds) return;
+    var b = nextArea.bounds;
+    L.rectangle([[b.south, b.west], [b.north, b.east]], {
+      pane: 'aiContoursPane',
+      color: aiColors.nextArea,
+      weight: 2.5,
+      opacity: 0.95,
+      fill: false,
+      dashArray: '3 6'
+    }).addTo(aiContoursLayer).bindTooltip(
+      nextArea.label + ' — ' + Math.round((nextArea.remaining_mass || 0) * 100) + '% of remaining probability',
+      { sticky: true, direction: 'center', className: 'drift-incident-label' }
+    );
+  }
+
+  function renderDriftContours(payload) {
+    cancelSectorDraw();
+    clearAiDriftLayers();
+    currentDriftPayload = payload;
+    var incident = payload && payload.incident;
+    var metaEl = document.getElementById('ai-drift-meta');
+    var isRealCase = payload && typeof payload.environmental_status === 'string';
+
+    if (isRealCase) {
+      renderRealCaseDrift(payload, incident, metaEl);
+    } else {
+      renderLegacyDrift(payload, incident, metaEl);
+    }
+
+    renderSearchControls(payload);
+    updateAiMapKey();
+  }
+
+  // A real, responder-opened case (docs/40 Phases 1-3): reads the stored
+  // run exactly as GET returned it - never recomputes, never fabricates a
+  // contour when the environmental inputs were insufficient.
+  function renderRealCaseDrift(payload, incident, metaEl) {
+    var isOk = payload.environmental_status === 'ok';
+    var contourBounds = L.latLngBounds([]);
+
+    if (isOk && payload.contours && payload.contours.length) {
+      payload.contours.forEach(function (feature) {
+        var mass = feature.properties && feature.properties.mass;
+        var contourLabel = mass >= 0.9 ? '95% search area' : (mass >= 0.7 ? '75% search area' : '50% search area');
+        var color = mass >= 0.9 ? aiColors.contour95 : (mass >= 0.7 ? aiColors.contour75 : aiColors.contour50);
+        var layer = L.geoJSON(feature, {
+          pane: 'aiContoursPane',
+          style: function () {
+            return {
+              color: color, weight: mass >= 0.9 ? 3 : 2.25, opacity: 0.95, fillColor: color,
+              fillOpacity: mass >= 0.9 ? 0.12 : (mass >= 0.7 ? 0.10 : 0.08), dashArray: mass >= 0.9 ? '2 4' : ''
+            };
+          },
+          onEachFeature: function (feat, lyr) {
+            lyr.bindTooltip(
+              contourLabel + (incident ? ' · case #' + incident.id + ' · run ' + payload.run_number : ''),
+              { sticky: true, direction: 'center', className: 'drift-incident-label' }
+            );
+          }
+        });
+        layer.addTo(aiContoursLayer);
+        contourBounds.extend(layer.getBounds());
+      });
+      var origin = payload.posterior_grid && payload.posterior_grid.origin;
+      drawSearchedSectors(payload.search_sectors, origin);
+      drawNextArea(payload.next_area);
+    }
+
+    if (contourBounds.isValid()) {
+      map.fitBounds(contourBounds.pad(0.12), { animate: true, duration: 0.9, maxZoom: 14 });
+    } else if (incident) {
+      map.setView([incident.last_contact_lat, incident.last_contact_lon], 13, { animate: true });
+    }
+
+    if (!metaEl || !incident) return;
+
+    var incidentTime = incident.last_contact_at ? new Date(incident.last_contact_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+    var computedAt = payload.computed_at ? new Date(payload.computed_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+    var bits = [];
+
+    if (isOk && payload.prediction && payload.prediction.object_class) {
+      bits.push('Drift class: <strong>' + ns._escHtml(String(payload.prediction.object_class).replace(/_/g, ' ')) + '</strong>');
+    }
+    if (typeof payload.observation_fraction === 'number') {
+      var pct = Math.round(payload.observation_fraction * 100);
+      bits.push(pct > 0
+        ? 'Currents: <strong>' + pct + '% from buoy observations</strong>'
+        : 'Currents: <strong>simulated</strong> (no buoy observations yet)');
+    }
+    if (isOk && payload.prediction && payload.prediction.wind_source) {
+      bits.push('Wind: ' + ns._escHtml(payload.prediction.wind_source) +
+        (payload.prediction.degraded ? ' <span class="drift-degraded">(degraded — live wind unavailable)</span>' : ''));
+    }
+    bits.push('Nearby buoys: <strong>' + (payload.nearby_buoy_count || 0) + '</strong>' +
+      ' (max age ' + (ageLimitText(payload.current_max_age_seconds) || 'n/a') +
+      ', wind max age ' + (ageLimitText(payload.max_wind_age_seconds) || 'n/a') + ')');
+    if (isOk && payload.search_sectors && payload.search_sectors.length) {
+      bits.push('<strong>' + payload.search_sectors.length + '</strong> sector' + (payload.search_sectors.length === 1 ? '' : 's') +
+        ' searched — contours show the updated posterior');
+    }
+
+    var statusLine = isOk
+      ? 'Snapshot computed ' + computedAt + ' · run ' + payload.run_number
+      : '<span class="ai-insufficient-badge">INSUFFICIENT ENVIRONMENTAL DATA</span><br>' +
+        'Reason: ' + ns._escHtml(payload.insufficiency_reason || 'unknown') + ' · run ' + payload.run_number;
+
+    metaEl.innerHTML =
+      '<strong>Case #' + incident.id + '</strong> · Vessel ' + ns._escHtml(incident.vessel_id) +
+      ' · <span class="ai-case-state">' + ns._escHtml(incident.case_state) + '</span><br>' +
+      'Last contact: ' + incidentTime + ' · source: ' + ns._escHtml(incident.source_type) + '<br>' +
+      statusLine + '<br>' +
+      (bits.length ? bits.join(' · ') : '');
+  }
+
+  // The simulator/demo scenario engine path (docs/40 Phase 1 item 4): no
+  // stored run exists, so this keeps the pre-Phase-2 recompute-on-read
+  // rendering unchanged.
+  function renderLegacyDrift(payload, incident, metaEl) {
+    var prediction = payload && payload.prediction;
+    var track = (payload && payload.ground_truth_track) || [];
+
     var contours = (payload && payload.contours && payload.contours.length)
       ? payload.contours
       : (prediction && prediction.contours);
@@ -166,43 +330,9 @@
       contourBounds.extend(trackLine.getBounds());
     }
 
-    // Sectors already searched, drawn as hatched grey boxes. Seeing where has
-    // been eliminated is half the value of a probability map - otherwise the
-    // dispatcher cannot tell which part of the remaining area is new.
-    //
-    // Sector bounds arrive in metres relative to the posterior grid's origin,
-    // so they are converted back on the same local tangent plane the backend
-    // used (see KM_PER_DEG_LAT in backend/app/ai/drift.py).
+    // Sector bounds arrive in metres relative to the posterior grid's origin.
     var grid = payload && payload.posterior_grid;
-    var origin = grid && grid.origin;
-    var sectors = (payload && payload.search_sectors) || [];
-    if (origin && sectors.length) {
-      var mPerDegLat = 110574.0;
-      var mPerDegLon = 111320.0 * Math.cos(origin.lat * Math.PI / 180);
-      sectors.forEach(function (sector) {
-        var south = origin.lat + sector.y_min_m / mPerDegLat;
-        var north = origin.lat + sector.y_max_m / mPerDegLat;
-        var west = origin.lon + sector.x_min_m / mPerDegLon;
-        var east = origin.lon + sector.x_max_m / mPerDegLon;
-        var box = L.rectangle([[south, west], [north, east]], {
-          pane: 'aiContoursPane',
-          color: '#94a3b8',
-          weight: 1.5,
-          opacity: 0.9,
-          fillColor: '#64748b',
-          fillOpacity: 0.22,
-          dashArray: '4 4'
-        }).addTo(aiContoursLayer);
-        var pod = typeof sector.detection_probability === 'number'
-          ? Math.round(sector.detection_probability * 100) + '% detection probability'
-          : 'searched';
-        box.bindTooltip('Searched — ' + pod, {
-          sticky: true,
-          direction: 'center',
-          className: 'drift-incident-label'
-        });
-      });
-    }
+    drawSearchedSectors(payload && payload.search_sectors, grid && grid.origin);
 
     if (contourBounds.isValid()) {
       map.fitBounds(contourBounds.pad(0.12), { animate: true, duration: 0.9, maxZoom: 14 });
@@ -210,21 +340,11 @@
 
     if (metaEl && incident) {
       var incidentTime = incident.last_contact_at ? new Date(incident.last_contact_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
-
-      // These four came down the wire on every request and were thrown away.
-      // They are what turns a coloured blob into a forecast a dispatcher can
-      // reason about - and, in the case of the current source, they are how we
-      // stay honest on stage about which parts are real.
       var bits = [];
 
       if (prediction && prediction.object_class) {
         bits.push('Drift class: <strong>' + ns._escHtml(String(prediction.object_class).replace(/_/g, ' ')) + '</strong>');
       }
-
-      // Share of particles whose current came from real buoy observations
-      // rather than the synthetic fallback field. 0% is not a failure - it is
-      // the truthful state until buoys are in the water - so it is labelled
-      // rather than hidden.
       if (typeof payload.observation_fraction === 'number') {
         var pct = Math.round(payload.observation_fraction * 100);
         bits.push(
@@ -233,12 +353,10 @@
             : 'Currents: <strong>simulated</strong> (no buoy observations yet)'
         );
       }
-
       if (prediction && prediction.wind_source) {
         bits.push('Wind: ' + ns._escHtml(prediction.wind_source) +
           (prediction.degraded ? ' <span class="drift-degraded">(degraded — live wind unavailable)</span>' : ''));
       }
-
       var searched = (payload && payload.search_sectors) || [];
       if (searched.length) {
         bits.push('<strong>' + searched.length + '</strong> sector' + (searched.length === 1 ? '' : 's') +
@@ -257,9 +375,191 @@
         // real case has one.
         (incident.is_synthetic ? 'Track labeled as ground truth for synthetic evaluation.' : '');
     }
-
-    updateAiMapKey();
   }
+
+  // ===== SEARCH-SECTOR REPORTING (docs/40 Phase 4) =====
+  //
+  // The smallest possible map interaction: two native Leaflet clicks pick
+  // opposite corners of a rectangle, a responder picks an approved
+  // detection-method preset, reviews a plain-text confirmation, and submits.
+  // No drawing-library dependency, no second map.
+
+  // Pure decision logic lives in dashboard-utils.js so it can be unit
+  // tested directly (web/test/dashboard-utils.test.js) without a DOM.
+  var eligibleForSearchReport = (ns.dashboardUtils && ns.dashboardUtils.eligibleForSearchReport) ||
+    function () { return { ok: false, reason: 'unavailable' }; };
+
+  function renderSearchControls(payload) {
+    var container = document.getElementById('ai-drift-search');
+    if (!container) return;
+
+    if (sectorDraw.active || sectorDraw.bounds) {
+      return; // an interaction is in progress - leave its own UI alone.
+    }
+
+    var eligibility = eligibleForSearchReport(payload);
+    if (!eligibility.ok) {
+      container.innerHTML = '<div class="ai-search-disabled-note">Search reporting unavailable — ' + ns._escHtml(eligibility.reason) + '</div>';
+      return;
+    }
+
+    container.innerHTML =
+      '<button type="button" class="ai-drift-search-btn" data-action="start-search">Mark a searched area</button>';
+  }
+
+  function cancelSectorDraw() {
+    // A pending map.once() handler only unregisters itself by firing - if
+    // the responder cancels between the two corner clicks (or before the
+    // first), it would otherwise sit bound forever waiting for a click that
+    // is no longer meaningful. Removing both by reference is a safe no-op
+    // when they were never registered or already fired.
+    map.off('click', onFirstCorner);
+    map.off('click', onSecondCorner);
+    aiDrawLayer.clearLayers();
+    sectorDraw = { active: false, corner1: null, bounds: null };
+    var driftSelect = document.getElementById('ai-drift-select');
+    if (driftSelect) driftSelect.disabled = false;
+    renderSearchControls(currentDriftPayload);
+  }
+
+  function startSectorDraw() {
+    if (!currentDriftPayload || !currentDriftPayload.incident) return;
+    var eligibility = eligibleForSearchReport(currentDriftPayload);
+    if (!eligibility.ok) return;
+
+    aiDrawLayer.clearLayers();
+    sectorDraw = { active: true, corner1: null, bounds: null };
+    var driftSelect = document.getElementById('ai-drift-select');
+    if (driftSelect) driftSelect.disabled = true;
+
+    var container = document.getElementById('ai-drift-search');
+    if (container) {
+      container.innerHTML =
+        '<div class="ai-search-disabled-note">Click the first corner of the searched area on the map…</div>' +
+        '<button type="button" class="ai-drift-search-btn ai-drift-search-btn-cancel" data-action="cancel-search">Cancel</button>';
+    }
+
+    map.once('click', onFirstCorner);
+  }
+
+  function onFirstCorner(e) {
+    if (!sectorDraw.active) return;
+    sectorDraw.corner1 = e.latlng;
+    var container = document.getElementById('ai-drift-search');
+    if (container) {
+      var note = container.querySelector('.ai-search-disabled-note');
+      if (note) note.textContent = 'Click the second, opposite corner…';
+    }
+    map.once('click', onSecondCorner);
+  }
+
+  function onSecondCorner(e) {
+    if (!sectorDraw.active || !sectorDraw.corner1) return;
+    var c1 = sectorDraw.corner1;
+    var c2 = e.latlng;
+    var bounds = {
+      south: Math.min(c1.lat, c2.lat),
+      north: Math.max(c1.lat, c2.lat),
+      west: Math.min(c1.lng, c2.lng),
+      east: Math.max(c1.lng, c2.lng)
+    };
+    sectorDraw.active = false;
+    sectorDraw.bounds = bounds;
+
+    aiDrawLayer.clearLayers();
+    L.rectangle([[bounds.south, bounds.west], [bounds.north, bounds.east]], {
+      pane: 'aiContoursPane',
+      color: '#38bdf8',
+      weight: 2,
+      dashArray: '5 5',
+      fillOpacity: 0.15
+    }).addTo(aiDrawLayer);
+
+    renderConfirmPanel(bounds);
+  }
+
+  function renderConfirmPanel(bounds) {
+    var container = document.getElementById('ai-drift-search');
+    if (!container) return;
+
+    var methodOptions = DETECTION_METHODS.map(function (m) {
+      return '<option value="' + m.value + '">' + ns._escHtml(m.label) + '</option>';
+    }).join('');
+
+    container.innerHTML =
+      '<div class="ai-drift-confirm">' +
+        '<div class="ai-drift-confirm-bounds">Searched area: ' +
+          bounds.south.toFixed(4) + ', ' + bounds.west.toFixed(4) + ' → ' +
+          bounds.north.toFixed(4) + ', ' + bounds.east.toFixed(4) +
+        '</div>' +
+        '<label class="ai-drift-confirm-label">Search method / visibility' +
+          '<select id="ai-search-method">' + methodOptions + '</select>' +
+        '</label>' +
+        '<label class="ai-drift-confirm-label">Notes (optional)' +
+          '<textarea id="ai-search-notes" maxlength="280" rows="2" placeholder="e.g. surface pattern, calm seas"></textarea>' +
+        '</label>' +
+        '<div class="ai-drift-confirm-actions">' +
+          '<button type="button" class="ai-drift-search-btn" data-action="submit-search">Submit report</button>' +
+          '<button type="button" class="ai-drift-search-btn ai-drift-search-btn-cancel" data-action="cancel-search">Cancel</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function makeIdempotencyKey() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return 'sector-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+
+  function submitSectorReport() {
+    if (!sectorDraw.bounds || !currentDriftPayload || !currentDriftPayload.incident) return;
+    var incidentId = currentDriftPayload.incident.id;
+    var runNumber = currentDriftPayload.run_number;
+    var methodSelect = document.getElementById('ai-search-method');
+    var notesEl = document.getElementById('ai-search-notes');
+    var submitBtn = document.querySelector('#ai-drift-search [data-action="submit-search"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
+
+    var body = {
+      run_number: runNumber,
+      south: sectorDraw.bounds.south,
+      west: sectorDraw.bounds.west,
+      north: sectorDraw.bounds.north,
+      east: sectorDraw.bounds.east,
+      method: methodSelect ? methodSelect.value : 'moderate',
+      idempotency_key: makeIdempotencyKey()
+    };
+    var notes = notesEl && notesEl.value.trim();
+    if (notes) body.notes = notes;
+
+    authFetch('/api/ai/drift/incident/' + encodeURIComponent(incidentId) + '/searched', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      if (!res.ok) return res.json().catch(function () { return {}; }).then(function (err) {
+        throw new Error(err.detail || ('HTTP ' + res.status));
+      });
+      return res.json();
+    }).then(function () {
+      showToast('Search recorded', 'The posterior and next-area recommendation have been updated.', false);
+      cancelSectorDraw();
+      loadDriftIncidentDetail(incidentId);
+    }).catch(function (err) {
+      showToast('Search report failed', err.message, true);
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit report'; }
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('[data-action]');
+    if (!button) return;
+    var container = button.closest('#ai-drift-search');
+    if (!container) return;
+    var action = button.getAttribute('data-action');
+    if (action === 'start-search') startSectorDraw();
+    else if (action === 'cancel-search') cancelSectorDraw();
+    else if (action === 'submit-search') submitSectorReport();
+  });
 
   function renderDriftIncidentList(items) {
     var select = document.getElementById('ai-drift-select');
@@ -582,6 +882,9 @@
     aiRefreshTimer = setInterval(function () {
       aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function () { renderRiskFeed([]); });
       aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).then(updateSquallLegendVisibility).catch(function () { clearAiSquallLayers(); renderSquallWatch({ detections: [] }, []); updateSquallLegendVisibility(); });
+      // Never yank the map out from under a responder mid-draw or
+      // mid-confirmation (docs/40 Phase 4 item 2).
+      if (sectorDraw.active || sectorDraw.bounds) return;
       var currentSelect = document.getElementById('ai-drift-select');
       if (currentSelect && currentSelect.value) loadDriftIncidentDetail(currentSelect.value);
     }, 60000);

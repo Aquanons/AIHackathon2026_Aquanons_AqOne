@@ -113,7 +113,8 @@ def _grid(value) -> dict | None:
 async def _fetch_sectors(pool, incident_id: int) -> list[dict[str, object]]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at '
+            'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability, searched_at, '
+            'method, reported_by, notes '
             'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at',
             incident_id,
         )
@@ -125,6 +126,12 @@ async def _fetch_sectors(pool, incident_id: int) -> list[dict[str, object]]:
             'y_max_m': float(row['y_max_m']),
             'detection_probability': float(row['detection_probability']),
             'searched_at': row['searched_at'].isoformat(),
+            # Only present on a Phase 3 protected report; a legacy/demo
+            # sector (app/demo/scenarios.py) leaves these NULL.
+            'method': row['method'],
+            'method_label': DETECTION_METHOD_LABELS.get(row['method']),
+            'reported_by': row['reported_by'],
+            'notes': row['notes'],
         }
         for row in rows
     ]

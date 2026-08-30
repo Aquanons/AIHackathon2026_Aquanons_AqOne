@@ -22,7 +22,8 @@ const {
   caseStatusLabel,
   formatDataAge,
   tripCheckRowHtml,
-  tripChecksListHtml
+  tripChecksListHtml,
+  eligibleForSearchReport
 } = require('../js/dashboard-utils.js');
 
 test('escapeHtml', async (t) => {
@@ -379,5 +380,58 @@ test('tripCheckRowHtml / tripChecksListHtml', async (t) => {
       data_age_seconds: 60, resolved_at: '2026-08-16T09:00:00Z'
     });
     assert.ok(!html.includes('data-case-action'));
+  });
+});
+
+// docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md Phase 4
+// item 2: "Disable the action when the case is not confirmed, inputs are
+// insufficient, or it is a demo replay." This is the exact decision
+// dashboard-ai-ops.js's "Mark a searched area" button is gated on.
+test('eligibleForSearchReport', async (t) => {
+  const okPayload = {
+    incident: { id: 1, is_synthetic: false, case_state: 'confirmed' },
+    environmental_status: 'ok'
+  };
+
+  await t.test('a real, confirmed case with sufficient inputs is eligible', () => {
+    assert.deepEqual(eligibleForSearchReport(okPayload), { ok: true });
+  });
+
+  await t.test('no case selected is not eligible', () => {
+    assert.equal(eligibleForSearchReport(null).ok, false);
+    assert.equal(eligibleForSearchReport({}).ok, false);
+  });
+
+  await t.test('a synthetic/demo replay is not eligible', () => {
+    const result = eligibleForSearchReport({
+      incident: { id: 9, is_synthetic: true, case_state: 'confirmed' },
+      environmental_status: 'ok'
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /synthetic replay/);
+  });
+
+  await t.test('a resolved or cancelled case is not eligible', () => {
+    const resolved = eligibleForSearchReport({
+      incident: { id: 1, is_synthetic: false, case_state: 'resolved' },
+      environmental_status: 'ok'
+    });
+    assert.equal(resolved.ok, false);
+    assert.match(resolved.reason, /resolved/);
+
+    const cancelled = eligibleForSearchReport({
+      incident: { id: 1, is_synthetic: false, case_state: 'cancelled' },
+      environmental_status: 'ok'
+    });
+    assert.equal(cancelled.ok, false);
+  });
+
+  await t.test('insufficient environmental data is not eligible', () => {
+    const result = eligibleForSearchReport({
+      incident: { id: 1, is_synthetic: false, case_state: 'confirmed' },
+      environmental_status: 'insufficient_environmental_data'
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /insufficient/);
   });
 });

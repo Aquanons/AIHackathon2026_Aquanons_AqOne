@@ -5369,6 +5369,100 @@ h3.buoy-drawer-title {
   letter-spacing: 0.6px;
 }
 
+/* A real case whose current run failed the Phase 2 environmental quality
+   gate - honest state, not an error, but must never be mistaken for a
+   contour built on the synthetic fallback. */
+.ai-insufficient-badge {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(245,158,11,0.18);
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.ai-case-state {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+/* Search-sector reporting (docs/40 Phase 4): the smallest possible map
+   interaction - a button, then a plain-text confirmation panel. No drawing
+   library, no second map. */
+.ai-drift-search { margin-top: 8px; }
+
+.ai-drift-search-btn {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(37,99,235,0.1);
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ai-drift-search-btn:hover { background: rgba(37,99,235,0.2); }
+.ai-drift-search-btn:disabled { opacity: 0.6; cursor: default; }
+
+.ai-drift-search-btn-cancel {
+  margin-left: 6px;
+  background: rgba(148,163,184,0.12);
+  color: var(--text);
+}
+
+.ai-drift-search-btn-cancel:hover { background: rgba(148,163,184,0.22); }
+
+.ai-search-disabled-note {
+  font-size: 11px;
+  opacity: 0.75;
+  padding: 4px 0;
+}
+
+.ai-drift-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.ai-drift-confirm-bounds {
+  font-size: 11px;
+  font-family: monospace;
+  opacity: 0.85;
+}
+
+.ai-drift-confirm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ai-drift-confirm-label select,
+.ai-drift-confirm-label textarea {
+  font-size: 12px;
+  padding: 5px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+.ai-drift-confirm-actions { margin-top: 2px; }
+
 [data-theme="dark"] .app-header .layer-switcher,
 [data-theme="dark"] .search-input,
 [data-theme="dark"] .lang-toggle-container,
