@@ -301,6 +301,35 @@
   }
 
   /**
+   * Whether a drift/search case (GET /api/ai/drift/incident/{id}'s payload)
+   * may currently accept a search-sector report
+   * (docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md
+   * Phase 4 item 2: "Disable the action when the case is not confirmed,
+   * inputs are insufficient, or it is a demo replay"). Pure decision logic,
+   * kept separate from dashboard-ai-ops.js's DOM/Leaflet rendering so it can
+   * be unit tested directly.
+   *
+   * Returns `{ ok: true }` or `{ ok: false, reason: string }` - never a bare
+   * boolean, so a caller always has something to show a responder.
+   */
+  function eligibleForSearchReport(payload) {
+    if (!payload || !payload.incident) {
+      return { ok: false, reason: 'No eligible case selected.' };
+    }
+    var incident = payload.incident;
+    if (incident.is_synthetic) {
+      return { ok: false, reason: 'This is a synthetic replay, not a live case.' };
+    }
+    if (incident.case_state !== 'confirmed') {
+      return { ok: false, reason: 'Case is ' + incident.case_state + ', not confirmed.' };
+    }
+    if (payload.environmental_status !== 'ok') {
+      return { ok: false, reason: 'Environmental inputs are insufficient for this run.' };
+    }
+    return { ok: true };
+  }
+
+  /**
    * Freshness/source/calibration line for the squall panel
    * (docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md Phase 3 item 5),
    * from the unified `GET /api/ai/squall/current` /
@@ -356,6 +385,7 @@
     formatDataAge: formatDataAge,
     tripCheckRowHtml: tripCheckRowHtml,
     tripChecksListHtml: tripChecksListHtml,
+    eligibleForSearchReport: eligibleForSearchReport,
     squallStatusHtml: squallStatusHtml
   };
 });

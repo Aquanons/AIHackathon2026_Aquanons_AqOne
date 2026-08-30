@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from app.ai.drift import _contour_polygon
+from app.ai.drift import _contour_polygon, _to_latlon
 
 
 def _grid_from_dict(grid_dict: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
@@ -96,6 +96,36 @@ def contours_from_grid(
         _contour_polygon(x_centers, y_centers, values, mass, origin_lat, origin_lon)
         for mass in mass_targets
     ]
+
+
+def recommend_next_area(grid_dict: dict[str, Any]) -> dict[str, Any]:
+    """The single highest remaining-mass cell of the posterior, as a
+    geographic rectangle/centroid plus its probability mass (docs/40 Phase 3
+    item 5). A recommendation for responder review - never an asset
+    assignment, route, or automatic re-tasking.
+    """
+    values, x_edges, y_edges, origin_lat, origin_lon = _grid_from_dict(grid_dict)
+    label = 'recommendation for responder review'
+    if values.size == 0 or float(values.sum()) <= 0.0:
+        return {'label': label, 'bounds': None, 'centroid': None, 'remaining_mass': 0.0}
+
+    row, col = (int(i) for i in np.unravel_index(np.argmax(values), values.shape))
+    x0, x1 = float(x_edges[col]), float(x_edges[col + 1])
+    y0, y1 = float(y_edges[row]), float(y_edges[row + 1])
+
+    xs = np.array([x0, x1, (x0 + x1) / 2.0])
+    ys = np.array([y0, y1, (y0 + y1) / 2.0])
+    lat, lon = _to_latlon(xs, ys, origin_lat, origin_lon)
+
+    return {
+        'label': label,
+        'bounds': {
+            'south': float(lat[0]), 'west': float(lon[0]),
+            'north': float(lat[1]), 'east': float(lon[1]),
+        },
+        'centroid': {'lat': float(lat[2]), 'lon': float(lon[2])},
+        'remaining_mass': float(values[row, col]),
+    }
 
 
 def contour_area_km2(contour: dict[str, Any]) -> float:

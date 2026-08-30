@@ -460,6 +460,109 @@ decision" section of `docs/39_SQUALL_NOWCASTING_IMPLEMENTATION_PLAN.md`.
 
 ---
 
+## 2026-08-30 — drift/search re-tasking Phases 1-5: release gate green, live/local acceptance not performed
+
+Per `docs/40_DRIFT_PREDICTION_SEARCH_RETASKING_IMPLEMENTATION_PLAN.md`,
+Windows 11 sandbox, Python 3.11.9, Node v24.14.0, on a dedicated branch
+(`codex/drift-prediction-search-retasking`, branched from `master` rather
+than continuing the prior entries' branch, which belongs to an unrelated,
+already-merged plan). Commits: `feat(drift): open responder-confirmed search
+cases` (Phase 1), `fix(drift): make prediction inputs and snapshots honest`
+(Phase 2), `feat(search): persist negative-search re-tasking` (Phase 3),
+`feat(dashboard): support search-sector re-tasking` (Phase 4).
+
+**Two policy decisions were escalated to the project owner (Lenard) rather
+than guessed**, per the plan's own instruction not to choose a safety
+threshold that changes a real search decision:
+
+- Phase 2 production environmental-input quality policy: ≥2 fresh (≤60min)
+  buoys near the last-known position, ≥50% observed-current coverage, wind
+  non-degraded (60min ceiling structurally enforced by the existing 20min
+  wind-cache TTL). Recorded in `docs/05_PUBLIC_API.md`.
+- Phase 3 detection-probability presets: poor 0.3 / moderate 0.6 / good 0.9,
+  named by search method/visibility, none reaching 1.0. Same doc.
+
+**Automated release gate — green, same pre-existing failures as every other
+entry in this file:**
+
+- `cd backend && python -m pytest -q` — 218 passed, 1 xfailed, 1
+  pre-existing failure (`test_demo.py::test_firing_same_beat_is_idempotent`,
+  confirmed by stashing this work and re-running against a clean `master` -
+  identical failure, unrelated to this handoff). `ruff check .` — same 8
+  pre-existing issues confined to `calibrate_demo_squall.py`, untouched.
+- `node --test web/test/dashboard-utils.test.js` — 57/57 passed (+5 for
+  `eligibleForSearchReport`, the pure eligibility check the dashboard's
+  "Mark a searched area" button is gated on).
+- `node --check` on both changed dashboard JS files - no syntax errors.
+
+**What was directly verified, read-only, against the live deployment**
+(`https://aihackathon2026aquanonsaqone-production.up.railway.app`, per the
+README):
+
+- `GET /healthz` → `200 {"status":"ok"}`.
+- `GET /api/ai/anomaly/active` and `GET /api/ai/drift/incidents` (no token)
+  → `401 {"detail":"authentication required"}` - pre-existing auth
+  boundaries intact.
+- `GET /api/demo/drift/incident/1` (this handoff's new demo-gated route) →
+  `404` - not deployed.
+- `POST /api/ai/drift/cases` (this handoff's new case-open route, empty
+  body, no token) → `405 Method Not Allowed` from the static-file catch-all
+  mount, not from the drift router - the path isn't registered on the
+  deployed app at all. Confirms, honestly, **none of this handoff's Phase
+  1-4 code is deployed**; it exists only on the local branch.
+
+No write request of any kind was made against the live deployment - plain
+unauthenticated `GET`s and one deliberately-empty `POST` that never reached
+a handler, per the same read-only discipline every earlier entry in this
+file used.
+
+**What was not done, and why, rather than skipped silently:**
+
+- **The manual acceptance script (open a synthetic case, inspect the prior
+  contour, submit a negative sector, reload, verify the posterior and
+  next-area recommendation change, then confirm a production-mode case with
+  no buoy data stops at the honest insufficiency state) could not be run.**
+  A local PostgreSQL 18 service is running on this machine (`pg_isready`
+  confirms it), but its password does not match the `.env.example`
+  convention and is not otherwise known to this session; Docker Desktop's
+  engine is also not running, closing that alternate path. Guessing at or
+  brute-forcing the password was not attempted. The project owner was
+  offered the choice to supply it, run the script themselves, or accept
+  this documented gap, and chose the latter (this entry).
+- **`python -m app.ai.drift_eval` was not run** - it requires `DATABASE_URL`
+  and exits immediately without one (same blocker as above). The evaluator
+  was still improved this phase: it now reports `excluded_low_quality_runs`
+  (tracks too short to score) instead of silently dropping them from an
+  inconsistent denominator, and `containment_rate`'s denominator was
+  corrected to match `search_area_reduction_factor`/`prediction_runtime_ms`
+  (all three now divide by the same evaluated count). No new numbers are
+  published because none were measured.
+- **The Phase 4 dashboard interaction (two-click rectangle, preset picker,
+  confirm panel, submit) was not exercised in a browser.** It has no DOM
+  dependency it could be unit-tested without a browser except the
+  eligibility gate above, which is tested; the rendering and Leaflet-event
+  wiring were reviewed by hand, not run.
+- `README.md`'s status table previously read "✅ Built, measured, live" for
+  drift prediction and Bayesian search re-tasking. That claim is corrected
+  in this commit: the two rows now say what is actually true - built and
+  tested, not yet deployed, and gated on zero-buoy reality even once it is.
+
+**What this means concretely.** All five phases of docs/40 are implemented
+and covered by fast, database-free unit/API tests (fake connection pools,
+not a real Postgres instance or a real dispatcher's screen), and the live
+deployment's existing surface was confirmed reachable, correctly protected,
+and does not yet run any of this code. Whoever next has the local Postgres
+password, Docker access, or Railway project access should: create a scratch
+database, run `migrate.py` (through `021_search_sector_reports.sql`), seed
+or acknowledge a real SOS, open a case via `POST /api/ai/drift/cases`, and
+run the manual acceptance script above for real before this ships. Until
+then, treat drift prediction and search re-tasking as demo/simulation- and
+unit-verified only - exactly the caveat `docs/40`'s own "Purpose and
+delivery rule" already anticipated: this plan makes the buoy/current
+hardware's absence visible rather than fabricating a live search field.
+
+---
+
 ## Judging weights — build toward these
 
 | Criterion | Weight | Where it's won |

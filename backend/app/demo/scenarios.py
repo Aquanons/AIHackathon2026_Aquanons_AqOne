@@ -397,7 +397,7 @@ async def _publish_advisory(pool, run_id: str) -> None:
 
 
 async def _record_search_sector(pool, run_id: str, incident_id: int) -> None:
-    from app.api.drift import SearchSectorRequest, record_searched_sector
+    from app.api.drift import record_legacy_search_sector
 
     async with pool.acquire() as conn:
         existing = await conn.fetchrow(
@@ -408,15 +408,13 @@ async def _record_search_sector(pool, run_id: str, incident_id: int) -> None:
     if existing is not None:
         return
 
-    await record_searched_sector(
+    await record_legacy_search_sector(
         incident_id,
-        SearchSectorRequest(
-            x_min_m=-2500.0,
-            x_max_m=2500.0,
-            y_min_m=-2500.0,
-            y_max_m=2500.0,
-            detection_probability=0.85,
-        ),
+        x_min_m=-2500.0,
+        x_max_m=2500.0,
+        y_min_m=-2500.0,
+        y_max_m=2500.0,
+        detection_probability=0.85,
     )
     async with pool.acquire() as conn:
         await conn.execute(
