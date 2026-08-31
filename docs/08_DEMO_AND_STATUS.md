@@ -9,6 +9,77 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-08-31 — operations console auditability Phase 5: local proof passed, policy and deployment blocked
+
+Recorded per
+`docs/41_OPERATIONS_CONSOLE_AUDITABILITY_IMPLEMENTATION_PLAN.md` Phase 5.
+Environment: Windows 11 sandbox, Python 3.11.9, Node v22.22.3, an isolated
+disposable PostgreSQL 18 cluster on localhost, and a local FastAPI/dashboard
+instance. No existing local or production database was used. All 26 migration
+files through `023_sos_resolution_detail.sql` applied to the disposable
+`aqone_verify` database.
+
+**Observed against the real local PostgreSQL database and HTTP routes:**
+
+- Admin, MDRRMO, and LGU test accounts were created through the controlled
+  setup route and logged in successfully. An unauthenticated active-SOS read
+  returned `401`; MDRRMO attempts to issue a vessel pairing code or export the
+  global audit log returned `403`.
+- A direct test SOS was acknowledged with a server-derived absolute ETA,
+  remained in the active feed while acknowledged, and left it only after
+  resolution. Its case timeline contained `sos.acknowledge`, one aggregated
+  `ops.case_view`, and `sos.resolve`. Three timeline reads inside the current
+  15-minute application window produced one view record.
+- Timeline output omitted actor IDs, resource IDs, the SOS note, responder
+  note, and resolution reason. The database trigger rejected direct `UPDATE`
+  and `DELETE` attempts against `operations_audit_events`.
+- A sea-condition declaration, advisory creation, vessel pairing-code issue,
+  and vessel-device revocation all produced the expected redacted audit
+  actions. Admin search returned every expected action. A bounded JSON export
+  returned 14 rows with the displayed filters, was not truncated, and carried
+  the expected attachment header; export contents and credentials were not
+  written to the repository or screenshots.
+- Browser acceptance found and fixed a shared-state bug in
+  `web/js/dashboard/dashboard-live-sos.js` that had left the console OFFLINE
+  with `liveAlerts is not defined` even while `/api/sos/active` was healthy.
+  After the minimal fix, a fresh-browser run showed LIVE freshness, rendered a
+  new real SOS ahead of DEMO rows, acknowledged it with ETA/note, displayed its
+  redacted case activity, resolved it, and returned the active count to zero.
+  The admin Audit panel rendered the same action records, filtered to
+  `sos.resolve`, and its JSON export control reached the backend export route.
+
+**Automated gate:**
+
+- `cd backend && python -m pytest -q --tb=short` — 291 passed, 5 skipped,
+  1 xfailed, and 1 pre-existing failure:
+  `tests/test_demo.py::test_firing_same_beat_is_idempotent` raises
+  `ValueError: clear-day has baseline beat 0 only` in the untouched demo
+  scenario code.
+- `cd backend && python -m ruff check .` — the same 8 pre-existing findings in
+  `app/demo/scenarios.py` and `calibrate_demo_squall.py`; none is in the
+  operations-audit implementation or the Phase 5 live-feed fix.
+- `cd web && node --check js/dashboard/dashboard-live-sos.js && node --test
+  test/dashboard-utils.test.js` — syntax check passed; 77/77 tests passed.
+
+**Open owner-policy blocker — no retention/deletion job was added:** there is
+still no owner-approved audit retention period, backup/export handling rule,
+named database administrator list, or approved case-view aggregation window.
+The application currently aggregates repeated case views for 15 minutes, but
+that value is implementation behavior, not an approved operating policy.
+Automatic deletion must remain absent until the owner records those decisions.
+
+**Deployment blocker:** a read-only request to the documented Railway
+`/healthz` endpoint returned Railway's `404 Application not found` response on
+31 August 2026. The local branch's role behavior and audit routes therefore
+were not verified or deployed on Railway.
+
+This is an application audit ledger, not an external immutable evidence store.
+The append-only trigger blocks ordinary application writes, but a database
+administrator can disable it; external archival, backup restore tests, legal
+evidence handling, and retention enforcement remain unimplemented. Phase 5 is
+not marked complete until the owner-policy decisions exist, Railway behavior is
+verified, and the repository-wide backend test/lint gate is green.
+
 ## 2026-08-29 — manual SOS / responder-loop verification
 
 Recorded per `docs/36_MANUAL_SOS_RESPONDER_LOOP_IMPLEMENTATION_PLAN.md` Phase
