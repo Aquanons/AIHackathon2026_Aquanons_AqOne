@@ -373,12 +373,13 @@
     checkOverflow();
   })();
 
-  const PANEL_TITLES = { layers: 'Operational Layers', measure: 'Measure Distance', buoys: 'Buoy Network Health', advisories: 'Maritime Advisories' };
+  const PANEL_TITLES = { layers: 'Operational Layers', measure: 'Measure Distance', buoys: 'Buoy Network Health', advisories: 'Maritime Advisories', audit: 'Global Audit Log' };
+  const RAIL_ACTIVE_PANELS = ['layers', 'buoys', 'advisories', 'audit'];
 
   function openPanel(panelId) {
     panelContents.forEach(el => el.classList.toggle('active', el.id === 'panel-' + panelId));
     railBtns.forEach(btn => {
-      if (btn.dataset.panel === 'layers' || btn.dataset.panel === 'buoys' || btn.dataset.panel === 'advisories') {
+      if (RAIL_ACTIVE_PANELS.indexOf(btn.dataset.panel) !== -1) {
         btn.classList.toggle('active', btn.dataset.panel === panelId);
       }
     });
@@ -387,12 +388,13 @@
     activePanel = panelId;
     if (panelId === 'advisories') ns.renderAdvisoryList();
     if (panelId === 'buoys') ns.updateBuoySync();
+    if (panelId === 'audit') ns.renderAuditPanel();
   }
 
   function closePanel() {
     toolPanelCard.classList.add('collapsed');
     railBtns.forEach(btn => {
-      if (btn.dataset.panel === 'layers' || btn.dataset.panel === 'buoys' || btn.dataset.panel === 'advisories') btn.classList.remove('active');
+      if (RAIL_ACTIVE_PANELS.indexOf(btn.dataset.panel) !== -1) btn.classList.remove('active');
     });
     if (panModeActive) panBtn.classList.add('active');
     panelContents.forEach(el => el.classList.remove('active'));

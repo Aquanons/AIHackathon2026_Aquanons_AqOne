@@ -257,7 +257,18 @@
       ' · <span class="ai-case-state">' + ns._escHtml(incident.case_state) + '</span><br>' +
       'Last contact: ' + incidentTime + ' · source: ' + ns._escHtml(incident.source_type) + '<br>' +
       statusLine + '<br>' +
-      (bits.length ? bits.join(' · ') : '');
+      (bits.length ? bits.join(' · ') : '') +
+      '<br><button type="button" class="action-btn ai-drift-activity-btn" id="ai-drift-activity-btn">View Activity</button>';
+
+    // Rebound after every innerHTML rewrite, same as the rest of this
+    // render function - a read, not a mutation, so it stays available
+    // regardless of case_state (docs/41 Phase 4).
+    var activityBtn = document.getElementById('ai-drift-activity-btn');
+    if (activityBtn && ns.openActivityDrawer) {
+      activityBtn.addEventListener('click', function () {
+        ns.openActivityDrawer('drift_incident', incident.id, 'Drift/Search Case Activity');
+      });
+    }
   }
 
   // The simulator/demo scenario engine path (docs/40 Phase 1 item 4): no

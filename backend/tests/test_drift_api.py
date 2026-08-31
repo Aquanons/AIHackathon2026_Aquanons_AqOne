@@ -96,6 +96,7 @@ class _FakePool:
         self.search_sectors: list[dict] = []
         self._next_incident_id = 1
         self._next_run_id = 1
+        self.audit_events: list[dict] = []
 
     def acquire(self):
         return self
@@ -220,6 +221,24 @@ class _FakePool:
         return []
 
     async def execute(self, query: str, *args):
+        if 'INSERT INTO operations_audit_events' in query:
+            (
+                actor_user_id, actor_email, actor_role, action, resource_type,
+                resource_id, outcome, correlation_key, is_demo, metadata,
+            ) = args
+            self.audit_events.append({
+                'actor_user_id': actor_user_id,
+                'actor_email': actor_email,
+                'actor_role': actor_role,
+                'action': action,
+                'resource_type': resource_type,
+                'resource_id': resource_id,
+                'outcome': outcome,
+                'correlation_key': correlation_key,
+                'is_demo': is_demo,
+                'metadata': metadata,
+            })
+            return 'OK'
         if 'INSERT INTO drift_runs' in query:
             (
                 incident_id, run_number, object_class, forecast_hours, model_version,
@@ -786,6 +805,12 @@ def test_duplicate_idempotency_key_does_not_double_apply(pool):
     assert second.json()['duplicate'] is True
     assert second.json()['posterior_grid'] == first.json()['posterior_grid']
     assert len(pool.search_sectors) == 1
+
+    # docs/41 Phase 2: the retry is auditable as a duplicate, not a second
+    # real state transition, and the searched rectangle/notes never appear.
+    report_events = [e for e in pool.audit_events if e['action'] == 'drift.search_sector_report']
+    assert [e['outcome'] for e in report_events] == ['updated', 'duplicate']
+    assert all(e['correlation_key'] == 'same-key' for e in report_events)
 
 
 def test_two_sequential_reports_against_the_same_run_both_apply(pool):

@@ -24,7 +24,10 @@ const {
   tripCheckRowHtml,
   tripChecksListHtml,
   eligibleForSearchReport,
-  squallStatusHtml
+  squallStatusHtml,
+  formatAuditAction,
+  auditEventRowHtml,
+  auditTimelineHtml
 } = require('../js/dashboard-utils.js');
 
 test('escapeHtml', async (t) => {
@@ -375,12 +378,18 @@ test('tripCheckRowHtml / tripChecksListHtml', async (t) => {
     assert.ok(html.includes('&lt;script&gt;'));
   });
 
-  await t.test('a resolved case (defensive - the API already excludes these) shows no action buttons', () => {
+  await t.test('a resolved case (defensive - the API already excludes these) shows no mutating action buttons, only View Activity', () => {
     const html = tripCheckRowHtml({
       id: 5, vessel_id: 'NW-006', case_type: 'verification', score: 0.4, reasons: [], source: 'live',
       data_age_seconds: 60, resolved_at: '2026-08-16T09:00:00Z'
     });
-    assert.ok(!html.includes('data-case-action'));
+    assert.ok(!html.includes('data-case-action="acknowledge"'));
+    assert.ok(!html.includes('data-case-action="dismiss"'));
+    assert.ok(!html.includes('data-case-action="escalate"'));
+    assert.ok(!html.includes('data-case-action="resolve"'));
+    // Viewing the (redacted) authorized timeline is a read, not a mutation,
+    // so it stays available even once resolved (docs/41 Phase 4).
+    assert.ok(html.includes('data-case-action="activity"'));
   });
 });
 
@@ -495,5 +504,90 @@ test('squallStatusHtml', async (t) => {
     });
     assert.ok(!html.includes('<img src=x'));
     assert.ok(html.includes('&lt;img'));
+  });
+});
+
+test('formatAuditAction', async (t) => {
+  await t.test('maps a known action code to a plain-language label', () => {
+    assert.equal(formatAuditAction('sos.acknowledge'), 'Acknowledged SOS');
+    assert.equal(formatAuditAction('advisory.delete'), 'Deleted advisory');
+  });
+
+  await t.test('falls back to the raw code for an unknown action, never a blank label', () => {
+    assert.equal(formatAuditAction('some.future.action'), 'some.future.action');
+  });
+
+  await t.test('a missing action still renders something rather than throwing', () => {
+    assert.equal(formatAuditAction(undefined), 'unknown action');
+  });
+});
+
+test('auditEventRowHtml', async (t) => {
+  await t.test('renders time, actor, plain-language action, and outcome', () => {
+    const html = auditEventRowHtml({
+      occurred_at: '2026-08-30T10:00:00Z',
+      actor_email: 'ranger@example.com',
+      action: 'sos.resolve',
+      outcome: 'updated',
+      is_demo: false,
+      metadata: {}
+    });
+    assert.ok(html.includes('2026-08-30T10:00:00Z'));
+    assert.ok(html.includes('ranger@example.com'));
+    assert.ok(html.includes('Resolved SOS'));
+    assert.ok(html.includes('updated'));
+  });
+
+  await t.test('a null actor_email renders as "System", not blank', () => {
+    const html = auditEventRowHtml({
+      occurred_at: '2026-08-30T10:00:00Z', actor_email: null,
+      action: 'auth.login_failure', outcome: 'failure', is_demo: false, metadata: {}
+    });
+    assert.ok(html.includes('System'));
+  });
+
+  await t.test('is_demo true renders the DEMO badge, false renders LIVE', () => {
+    const demoHtml = auditEventRowHtml({ action: 'sos.resolve', outcome: 'updated', is_demo: true, metadata: {} });
+    const liveHtml = auditEventRowHtml({ action: 'sos.resolve', outcome: 'updated', is_demo: false, metadata: {} });
+    assert.ok(demoHtml.includes('alert-demo-badge'));
+    assert.ok(demoHtml.includes('>DEMO<'));
+    assert.ok(liveHtml.includes('alert-live-badge'));
+    assert.ok(liveHtml.includes('>LIVE<'));
+  });
+
+  await t.test('metadata renders as escaped key: value text', () => {
+    const html = auditEventRowHtml({
+      action: 'sea_condition.declare', outcome: 'created', is_demo: false,
+      metadata: { status: 'Not Advised' }
+    });
+    assert.ok(html.includes('status: Not Advised'));
+  });
+
+  await t.test('a malicious actor_email or metadata value is escaped, never passed through raw', () => {
+    const html = auditEventRowHtml({
+      actor_email: '<img src=x onerror=alert(1)>',
+      action: 'sos.resolve', outcome: 'updated', is_demo: false,
+      metadata: { note: '<script>alert(2)</script>' }
+    });
+    assert.ok(!html.includes('<img src=x'));
+    assert.ok(!html.includes('<script>'));
+    assert.ok(html.includes('&lt;img'));
+    assert.ok(html.includes('&lt;script&gt;'));
+  });
+});
+
+test('auditTimelineHtml', async (t) => {
+  await t.test('an empty list renders an honest empty state, not a blank panel', () => {
+    const html = auditTimelineHtml([]);
+    assert.ok(html.includes('No recorded activity'));
+  });
+
+  await t.test('joins one row per event', () => {
+    const html = auditTimelineHtml([
+      { action: 'sos.acknowledge', outcome: 'applied', is_demo: false, metadata: {} },
+      { action: 'sos.resolve', outcome: 'updated', is_demo: false, metadata: {} }
+    ]);
+    assert.ok(html.includes('Acknowledged SOS'));
+    assert.ok(html.includes('Resolved SOS'));
   });
 });

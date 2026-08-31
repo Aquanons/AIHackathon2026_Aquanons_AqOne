@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.auth import require_user
+from app.audit import record_audit_event
+from app.auth import require_responder_roles
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/ai/anomaly/cases', tags=['anomaly-cases'])
@@ -57,25 +58,39 @@ class EscalateIn(BaseModel):
 
 
 @router.post('/{case_id}/acknowledge')
-async def acknowledge_case(case_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def acknowledge_case(case_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     """Idempotent: re-acknowledging keeps the first actor/time (COALESCE),
     same pattern as app/api/sos.py's acknowledge.
     """
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT acknowledged_at FROM anomaly_cases WHERE id = $1 FOR UPDATE', case_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such anomaly case')
+        was_already_acknowledged = prior['acknowledged_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE anomaly_cases
                SET acknowledged_at = COALESCE(acknowledged_at, NOW()),
                    acknowledged_by = COALESCE(acknowledged_by, $2)
              WHERE id = $1
-            RETURNING id, acknowledged_at, acknowledged_by
+            RETURNING id, acknowledged_at, acknowledged_by, is_synthetic
             ''',
             case_id,
             user.get('email') or 'unknown',
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such anomaly case')
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='anomaly.acknowledge',
+            resource_type='anomaly_case',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_acknowledged else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],
@@ -86,13 +101,20 @@ async def acknowledge_case(case_id: int, user: dict = Depends(require_user)) -> 
 
 @router.post('/{case_id}/dismiss')
 async def dismiss_case(
-    case_id: int, payload: DismissIn, user: dict = Depends(require_user)
+    case_id: int, payload: DismissIn, user: dict = require_responder_roles
 ) -> dict[str, object]:
     """Marks the case a false/expected positive. Idempotent - a retry keeps
     the original reason rather than overwriting it.
     """
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT dismissed_at FROM anomaly_cases WHERE id = $1 FOR UPDATE', case_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such anomaly case')
+        was_already_dismissed = prior['dismissed_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE anomaly_cases
@@ -100,14 +122,23 @@ async def dismiss_case(
                    dismissed_by = COALESCE(dismissed_by, $2),
                    dismissed_reason = COALESCE(dismissed_reason, $3)
              WHERE id = $1
-            RETURNING id, dismissed_at, dismissed_by, dismissed_reason
+            RETURNING id, dismissed_at, dismissed_by, dismissed_reason, is_synthetic
             ''',
             case_id,
             user.get('email') or 'unknown',
             payload.reason,
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such anomaly case')
+        # dismissed_reason is free text and never logged - the redacted
+        # summary carries only the state transition (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='anomaly.dismiss',
+            resource_type='anomaly_case',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_dismissed else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],
@@ -119,13 +150,20 @@ async def dismiss_case(
 
 @router.post('/{case_id}/escalate')
 async def escalate_case(
-    case_id: int, payload: EscalateIn, user: dict = Depends(require_user)
+    case_id: int, payload: EscalateIn, user: dict = require_responder_roles
 ) -> dict[str, object]:
     """Hands the case to real-world handling (a human decision, per docs/23
     §3.3 - this never dispatches anything itself). Idempotent.
     """
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT escalated_at FROM anomaly_cases WHERE id = $1 FOR UPDATE', case_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such anomaly case')
+        was_already_escalated = prior['escalated_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE anomaly_cases
@@ -133,14 +171,21 @@ async def escalate_case(
                    escalated_by = COALESCE(escalated_by, $2),
                    escalated_reason = COALESCE(escalated_reason, $3)
              WHERE id = $1
-            RETURNING id, escalated_at, escalated_by, escalated_reason
+            RETURNING id, escalated_at, escalated_by, escalated_reason, is_synthetic
             ''',
             case_id,
             user.get('email') or 'unknown',
             payload.reason,
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such anomaly case')
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='anomaly.escalate',
+            resource_type='anomaly_case',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_escalated else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],
@@ -151,26 +196,40 @@ async def escalate_case(
 
 
 @router.post('/{case_id}/resolve')
-async def resolve_case(case_id: int, user: dict = Depends(require_user)) -> dict[str, object]:
+async def resolve_case(case_id: int, user: dict = require_responder_roles) -> dict[str, object]:
     """Closes the case. Idempotent, and - because evaluation only ever
     upserts the snapshot columns, never resolved_at - a later score refresh
     can never reopen it.
     """
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT resolved_at FROM anomaly_cases WHERE id = $1 FOR UPDATE', case_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such anomaly case')
+        was_already_resolved = prior['resolved_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE anomaly_cases
                SET resolved_at = COALESCE(resolved_at, NOW()),
                    resolved_by = COALESCE(resolved_by, $2)
              WHERE id = $1
-            RETURNING id, resolved_at, resolved_by
+            RETURNING id, resolved_at, resolved_by, is_synthetic
             ''',
             case_id,
             user.get('email') or 'unknown',
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such anomaly case')
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='anomaly.resolve',
+            resource_type='anomaly_case',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_resolved else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],

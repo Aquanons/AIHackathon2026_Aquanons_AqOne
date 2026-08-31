@@ -65,6 +65,13 @@
       const caseId = button.getAttribute('data-case-id');
       if (!action || !caseId) return;
 
+      // A read, not a mutation - opens the case's authorized timeline
+      // (docs/41 Phase 4) rather than POSTing to a nonexistent action route.
+      if (action === 'activity') {
+        if (ns.openActivityDrawer) ns.openActivityDrawer('anomaly_case', caseId, 'Anomaly Case Activity');
+        return;
+      }
+
       let body = null;
       if (action === 'dismiss' || action === 'escalate') {
         const reason = window.prompt(ACTION_LABELS[action] + ' - reason:');

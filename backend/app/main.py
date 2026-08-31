@@ -21,6 +21,7 @@ from app.api.drift import router as drift_router
 from app.api.hotspots import router as hotspots_router
 from app.api.mesh import router as mesh_router
 from app.api.metrics import router as metrics_router
+from app.api.ops_audit import router as ops_audit_router
 from app.api.pressure_events import router as pressure_events_router
 from app.api.public import router as public_router
 from app.api.sea_condition import router as sea_condition_router
@@ -108,6 +109,11 @@ app.include_router(vessel_auth_router)
 # (app/api/advisories.py), including POST /alert, which previously had none.
 app.include_router(advisories_router)
 app.include_router(public_advisories_router)
+
+# Case timelines and the admin-only global audit search/export - each route
+# carries its own require_responder_roles/require_admin_role guard
+# (app/api/ops_audit.py), same self-guarded pattern as advisories_router.
+app.include_router(ops_audit_router)
 
 # Everything else requires a valid bearer token. Declaring it here rather than
 # on each route means a newly added endpoint is protected by default - the safe

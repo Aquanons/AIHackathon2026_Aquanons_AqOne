@@ -7,6 +7,7 @@
   var authFetch = ns.authFetch;
   var map = ns.map;
   var showToast = ns.showToast;
+  var liveAlerts = ns.liveAlerts;
 
   // ===== LIVE SOS FEED =====
   //
@@ -198,7 +199,8 @@
       })
       .then(function (data) {
         const events = (data && data.events) || [];
-        liveAlerts = events.map(liveAlertFromEvent);
+        liveAlerts.splice(0, liveAlerts.length);
+        Array.prototype.push.apply(liveAlerts, events.map(liveAlertFromEvent));
 
         // Announce genuinely new calls, but never on the first load - a
         // dispatcher opening the dashboard should not be hit with a klaxon for

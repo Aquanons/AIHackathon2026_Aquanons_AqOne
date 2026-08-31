@@ -34,6 +34,7 @@ class _FakePool:
             2: {'id': 2, 'vessel_id': 'V002', 'label': 'Handset B', 'revoked_at': None},
         }
         self.sos_events: dict[int, dict[str, object]] = {}
+        self.audit_events: list[dict[str, object]] = []
 
     def seed(self, **row: object) -> dict[str, object]:
         base: dict[str, object] = {
@@ -56,6 +57,9 @@ class _FakePool:
             'fisher_reply': None,
             'fisher_replied_at': None,
             'resolved_at': None,
+            'resolved_by': None,
+            'resolved_reason': None,
+            'is_synthetic': False,
         }
         base.update(row)
         self.sos_events[int(row['id'])] = base
@@ -74,6 +78,23 @@ class _FakePool:
         return None
 
     async def execute(self, query: str, *args):
+        if 'INSERT INTO operations_audit_events' in query:
+            (
+                actor_user_id, actor_email, actor_role, action, resource_type,
+                resource_id, outcome, correlation_key, is_demo, metadata,
+            ) = args
+            self.audit_events.append({
+                'actor_user_id': actor_user_id,
+                'actor_email': actor_email,
+                'actor_role': actor_role,
+                'action': action,
+                'resource_type': resource_type,
+                'resource_id': resource_id,
+                'outcome': outcome,
+                'correlation_key': correlation_key,
+                'is_demo': is_demo,
+                'metadata': metadata,
+            })
         return 'OK'
 
     async def fetch(self, query: str, *args):
@@ -84,6 +105,12 @@ class _FakePool:
     async def fetchrow(self, query: str, *args):
         if 'UPDATE vessel_devices' in query and 'SET last_seen_at = NOW()' in query:
             return self.devices.get(int(args[0]))
+
+        if 'SELECT resolved_at FROM sos_events' in query:
+            event = self.sos_events.get(int(args[0]))
+            if event is None:
+                return None
+            return {'resolved_at': event['resolved_at']}
 
         if 'UPDATE sos_events' in query and 'SET acknowledged_at' in query:
             event_id, acked_by, responder_status, responder_note, eta_minutes = args
@@ -97,6 +124,16 @@ class _FakePool:
                 event['responder_note'] = responder_note
             if eta_minutes is not None:
                 event['eta_at'] = datetime.now(UTC) + timedelta(minutes=eta_minutes)
+            return event
+
+        if 'UPDATE sos_events' in query and 'SET resolved_at' in query:
+            event_id, resolved_by, resolved_reason = args
+            event = self.sos_events.get(int(event_id))
+            if event is None:
+                return None
+            event['resolved_at'] = event['resolved_at'] or datetime.now(UTC)
+            event['resolved_by'] = event['resolved_by'] or resolved_by
+            event['resolved_reason'] = event['resolved_reason'] or resolved_reason
             return event
 
         if 'UPDATE sos_events' in query and 'SET fisher_reply' in query:
@@ -145,6 +182,55 @@ def test_acknowledge_stores_a_server_derived_absolute_eta_and_status(monkeypatch
     # An absolute timestamp derived from the server's clock, not the 20
     # verbatim - see docs/13_RESPONDER_LOOP.md on why a duration is wrong.
     assert now < eta < now + timedelta(minutes=21)
+
+    # docs/41 Phase 2: one redacted audit event, and never the free-text note.
+    assert len(pool.audit_events) == 1
+    event = pool.audit_events[0]
+    assert event['action'] == 'sos.acknowledge'
+    assert event['resource_type'] == 'sos_event'
+    assert event['metadata'] == '{"responder_status": 2}'
+    assert 'On the way' not in event['metadata']
+
+
+def test_resolve_records_one_audit_event_and_a_retry_is_no_change(monkeypatch):
+    pool = _FakePool()
+    pool.seed(id=7, acknowledged_at=datetime.now(UTC), acked_by='ranger-01')
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        first = client.post('/api/sos/7/resolve', headers=_operator_headers())
+        second = client.post('/api/sos/7/resolve', headers=_operator_headers())
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()['resolved_at'] == second.json()['resolved_at']
+    assert [e['outcome'] for e in pool.audit_events] == ['updated', 'no_change']
+    assert all(e['action'] == 'sos.resolve' for e in pool.audit_events)
+
+
+def test_resolve_records_a_distinct_resolver_and_reason(monkeypatch):
+    """docs/41 Phase 3: resolving previously reused `acked_by` for the
+    resolver too and recorded no reason at all - resolved_by/resolved_reason
+    must now be distinct from whoever acknowledged, and the reason (free
+    text) must never leak into the audit metadata.
+    """
+    pool = _FakePool()
+    pool.seed(id=8, acknowledged_at=datetime.now(UTC), acked_by='ranger-01')
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/sos/8/resolve',
+            headers=_operator_headers(),
+            json={'reason': 'vessel returned safely to port'},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['acked_by'] == 'ranger-01'
+    assert body['resolved_by'] == 'ranger@example.com'
+    assert body['resolved_reason'] == 'vessel returned safely to port'
+    assert 'vessel returned safely' not in pool.audit_events[-1]['metadata']
 
 
 def test_acknowledged_but_unresolved_sos_stays_in_the_active_feed(monkeypatch):

@@ -342,11 +342,11 @@
 
        if (!confirm('Are you sure you want to set status to "' + status + '"?')) return;
 
+       // Actor is derived server-side from the bearer token (docs/41 Phase 1) -
+       // the backend no longer reads set_by_user_id/set_by_name from the body.
        var body = {
          status: status,
-         reason: reason,
-         set_by_user_id: CURRENT_USER.id,
-         set_by_name: CURRENT_USER.name
+         reason: reason
        };
 
        authFetch('/api/sea-condition', {
@@ -355,7 +355,11 @@
          body: JSON.stringify(body)
        })
          .then(function (res) {
-           if (!res.ok) throw new Error('HTTP ' + res.status);
+           if (!res.ok) {
+             var httpErr = new Error('HTTP ' + res.status);
+             httpErr.status = res.status;
+             throw httpErr;
+           }
            return res.json();
          })
          .then(function (data) {
@@ -367,7 +371,12 @@
          })
          .catch(function (err) {
            console.error('[AqOne] Failed to set sea condition:', err.message);
-           showToast('Error', 'Failed to update sea condition.', true);
+           // docs/41 Phase 4 "render server 403 errors clearly".
+           if (err.status === 403) {
+             showToast('Not permitted', "You don't have permission to declare a sea condition.", true);
+           } else {
+             showToast('Error', 'Failed to update sea condition.', true);
+           }
          });
      });
    }

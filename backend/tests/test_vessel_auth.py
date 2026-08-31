@@ -74,6 +74,7 @@ class _FakePool:
         self._next_pairing_id = 1
         self._next_device_id = 3
         self._next_catch_id = 100
+        self.audit_events: list[dict[str, object]] = []
 
     def acquire(self):
         return self
@@ -111,6 +112,24 @@ class _FakePool:
             if device is not None:
                 device['last_token_issued_at'] = datetime.now(UTC)
             return 'UPDATE 1'
+        if 'INSERT INTO operations_audit_events' in query:
+            (
+                actor_user_id, actor_email, actor_role, action, resource_type,
+                resource_id, outcome, correlation_key, is_demo, metadata,
+            ) = args
+            self.audit_events.append({
+                'actor_user_id': actor_user_id,
+                'actor_email': actor_email,
+                'actor_role': actor_role,
+                'action': action,
+                'resource_type': resource_type,
+                'resource_id': resource_id,
+                'outcome': outcome,
+                'correlation_key': correlation_key,
+                'is_demo': is_demo,
+                'metadata': metadata,
+            })
+            return 'INSERT 0 1'
         return 'OK'
 
     async def fetch(self, query: str, *args):
@@ -129,6 +148,12 @@ class _FakePool:
         return []
 
     async def fetchrow(self, query: str, *args):
+        if 'SELECT revoked_at FROM vessel_devices' in query:
+            device = self.devices.get(int(args[0]))
+            if device is None:
+                return None
+            return {'revoked_at': device.get('revoked_at')}
+
         if 'UPDATE vessel_devices' in query and 'SET last_seen_at = NOW()' in query:
             device = self.devices.get(int(args[0]))
             if device is None:
@@ -225,7 +250,9 @@ def test_pairing_code_issue_requires_operator_token():
 def test_issue_and_enroll_vessel_device(monkeypatch):
     pool = _FakePool()
     _patch_pools(monkeypatch, pool)
-    operator = create_token(1, 'ops@example.com', 'mdrrmo')
+    # Device pairing is lgu/admin-only (docs/41 Phase 1 action matrix) - mdrrmo
+    # cannot issue pairing codes.
+    operator = create_token(1, 'ops@example.com', 'admin')
 
     with TestClient(app, raise_server_exceptions=False) as client:
         issue = client.post(
@@ -249,6 +276,15 @@ def test_issue_and_enroll_vessel_device(monkeypatch):
     claims = decode_token(enroll.json()['token'])
     assert claims['kind'] == 'vessel_device'
     assert claims['vessel_id'] == 'V001'
+
+    # docs/41 Phase 2: pairing-code issue gets one redacted audit event -
+    # enroll (fisher-side, unauthenticated) does not, since it is not one of
+    # the operator actions this phase wires.
+    assert len(pool.audit_events) == 1
+    event = pool.audit_events[0]
+    assert event['action'] == 'vessel_device.pairing_code_issue'
+    assert event['resource_id'] == 'V001'
+    assert event['outcome'] == 'created'
 
 
 def test_vessel_status_rejects_cross_vessel_token(monkeypatch):
@@ -314,6 +350,86 @@ def test_confirm_weight_cannot_touch_other_vessel(monkeypatch):
         )
 
     assert response.status_code == 404
+
+
+def test_pairing_code_issue_rejects_mdrrmo_role(monkeypatch):
+    """docs/41 Phase 1: device management is lgu/admin-only. mdrrmo could
+    previously issue pairing codes via require_operator_user; this is the one
+    deliberate narrowing in the Phase 1 action matrix.
+    """
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'mdrrmo')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/vessel-auth/pairing-codes',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'vessel_id': 'V001', 'boat': 'NW-001'},
+        )
+
+    assert response.status_code == 403
+
+
+def test_revoke_device_rejects_mdrrmo_role(monkeypatch):
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'mdrrmo')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/vessel-auth/devices/1/revoke',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'reason': 'lost device'},
+        )
+
+    assert response.status_code == 403
+
+
+def test_revoke_device_allows_lgu_role(monkeypatch):
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'lgu')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            '/api/vessel-auth/devices/1/revoke',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'reason': 'lost device'},
+        )
+
+    assert response.status_code == 200
+    assert pool.devices[1]['revoked_at'] is not None
+
+    assert len(pool.audit_events) == 1
+    event = pool.audit_events[0]
+    assert event['action'] == 'vessel_device.revoke'
+    assert event['outcome'] == 'updated'
+    assert 'lost device' not in event['metadata']
+
+
+def test_revoke_device_twice_is_no_change_the_second_time(monkeypatch):
+    """Idempotency (docs/41 Phase 2): a retry must not claim a second real
+    transition happened."""
+    pool = _FakePool()
+    _patch_pools(monkeypatch, pool)
+    operator = create_token(1, 'ops@example.com', 'admin')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        first = client.post(
+            '/api/vessel-auth/devices/1/revoke',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'reason': 'lost device'},
+        )
+        second = client.post(
+            '/api/vessel-auth/devices/1/revoke',
+            headers={'Authorization': f'Bearer {operator}'},
+            json={'reason': 'lost device'},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert [e['outcome'] for e in pool.audit_events] == ['updated', 'no_change']
 
 
 def test_refresh_rejects_revoked_device(monkeypatch):

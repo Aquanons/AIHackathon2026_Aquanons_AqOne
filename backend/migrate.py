@@ -1,8 +1,11 @@
 import asyncio
 import os
+import re
 from pathlib import Path
 
 import asyncpg
+
+_DOLLAR_TAG_RE = re.compile(r'\$[A-Za-z_]*\$')
 
 
 async def _ensure_schema_migrations(conn: asyncpg.Connection) -> None:
@@ -30,13 +33,16 @@ def _split_statements(sql: str) -> list[str]:
     a syntax error that aborted the migration, which in turn stopped the
     container before uvicorn started and showed up only as a failed healthcheck.
 
-    Tracks single-quoted strings and -- line comments, and splits only outside
-    both.
+    Tracks single-quoted strings, -- line comments, and $$.../$tag$...$tag$
+    dollar-quoted bodies (used by PL/pgSQL function definitions), and splits
+    only outside all three - a semicolon inside a trigger function's body
+    must not be mistaken for a statement terminator.
     """
     statements: list[str] = []
     current: list[str] = []
     in_string = False
     in_comment = False
+    dollar_tag: str | None = None
     index = 0
 
     while index < len(sql):
@@ -47,7 +53,20 @@ def _split_statements(sql: str) -> list[str]:
             current.append(char)
             if char == '\n':
                 in_comment = False
-        elif in_string:
+            index += 1
+            continue
+
+        if dollar_tag is not None:
+            if sql.startswith(dollar_tag, index):
+                current.append(dollar_tag)
+                index += len(dollar_tag)
+                dollar_tag = None
+            else:
+                current.append(char)
+                index += 1
+            continue
+
+        if in_string:
             current.append(char)
             if char == "'":
                 # '' is an escaped quote inside a string, not a terminator.
@@ -56,17 +75,36 @@ def _split_statements(sql: str) -> list[str]:
                     index += 1
                 else:
                     in_string = False
-        elif char == '-' and nxt == '-':
+            index += 1
+            continue
+
+        if char == '-' and nxt == '-':
             in_comment = True
             current.append(char)
-        elif char == "'":
+            index += 1
+            continue
+
+        if char == "'":
             in_string = True
             current.append(char)
-        elif char == ';':
+            index += 1
+            continue
+
+        if char == '$':
+            match = _DOLLAR_TAG_RE.match(sql, index)
+            if match:
+                dollar_tag = match.group(0)
+                current.append(dollar_tag)
+                index += len(dollar_tag)
+                continue
+
+        if char == ';':
             statements.append(''.join(current))
             current = []
-        else:
-            current.append(char)
+            index += 1
+            continue
+
+        current.append(char)
         index += 1
 
     tail = ''.join(current).strip()

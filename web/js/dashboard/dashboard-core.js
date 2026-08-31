@@ -43,6 +43,9 @@
   var responderStatusHtml = dashboardUtils.responderStatusHtml || function () { return ''; };
   var tripChecksListHtml = dashboardUtils.tripChecksListHtml || function () { return ''; };
   var squallStatusHtml = dashboardUtils.squallStatusHtml || function () { return ''; };
+  var auditTimelineHtml = dashboardUtils.auditTimelineHtml || function () { return ''; };
+  var auditEventRowHtml = dashboardUtils.auditEventRowHtml || function () { return ''; };
+  var formatAuditAction = dashboardUtils.formatAuditAction || function (action) { return String(action || 'unknown action'); };
 
 
   // ===== CONFIG =====
@@ -311,6 +314,9 @@
   ns.responderStatusHtml = responderStatusHtml;
   ns.tripChecksListHtml = tripChecksListHtml;
   ns.squallStatusHtml = squallStatusHtml;
+  ns.auditTimelineHtml = auditTimelineHtml;
+  ns.auditEventRowHtml = auditEventRowHtml;
+  ns.formatAuditAction = formatAuditAction;
   ns.OPS_CENTER = OPS_CENTER;
   ns.OPS_ZOOM = OPS_ZOOM;
   ns.TILES = TILES;

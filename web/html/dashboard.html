@@ -261,6 +261,15 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
             <span class="rail-label">Advisories</span>
           </button>
+          <!-- Administrator-only global audit search/export
+               (docs/41_OPERATIONS_CONSOLE_AUDITABILITY_IMPLEMENTATION_PLAN.md
+               Phase 4). Hidden by default; unhidden only for role === 'admin'
+               by dashboard-operations-audit.js - omitted entirely for every
+               other role rather than shown disabled. -->
+          <button class="rail-btn" id="rail-btn-audit" data-panel="audit" title="Global Audit Log" hidden>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+            <span class="rail-label">Audit</span>
+          </button>
           </div>
         </div>
       </div>
@@ -371,7 +380,7 @@
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                Export View Data
+                Export Map Snapshot
               </button>
               <button class="action-btn" id="btn-center-aklan">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4"/></svg>
@@ -445,6 +454,56 @@
               </button>
             </div>
             <div class="advisory-list" id="advisory-list"></div>
+          </div>
+
+          <!-- Administrator-only global audit search/export (docs/41 Phase
+               4). Bounded and paginated - never the full history loaded at
+               once (backend caps a page at 100 rows and an export at 5000). -->
+          <div class="rail-panel-content" id="panel-audit">
+            <div class="tool-panel-top-row">
+              <button class="rail-panel-close" id="audit-panel-close">&times;</button>
+            </div>
+            <div class="sidebar-section">
+              <h4 class="advisory-drawer-title">Global Audit Log</h4>
+              <p class="advisory-drawer-desc">Search redacted operator activity across every case. Administrator-only.</p>
+              <form class="audit-filter-form" id="audit-filter-form">
+                <label class="ack-label" for="audit-filter-actor-email">Actor email</label>
+                <input class="ack-input" type="text" id="audit-filter-actor-email" placeholder="e.g. ranger@example.com" />
+
+                <label class="ack-label" for="audit-filter-action">Action</label>
+                <input class="ack-input" type="text" id="audit-filter-action" placeholder="e.g. sos.resolve" />
+
+                <label class="ack-label" for="audit-filter-resource-type">Resource type</label>
+                <select class="filter-select" id="audit-filter-resource-type">
+                  <option value="">All</option>
+                  <option value="sos_event">SOS event</option>
+                  <option value="anomaly_case">Anomaly case</option>
+                  <option value="drift_incident">Drift/search case</option>
+                  <option value="advisory">Advisory</option>
+                  <option value="sea_condition">Sea condition</option>
+                  <option value="vessel">Vessel</option>
+                  <option value="vessel_device">Vessel device</option>
+                  <option value="user">User</option>
+                  <option value="operations_audit_events">Audit log itself</option>
+                </select>
+
+                <label class="ack-label" for="audit-filter-date-from">From</label>
+                <input class="ack-input" type="date" id="audit-filter-date-from" />
+
+                <label class="ack-label" for="audit-filter-date-to">To</label>
+                <input class="ack-input" type="date" id="audit-filter-date-to" />
+
+                <button type="submit" class="action-btn" id="audit-search-btn">Search</button>
+              </form>
+              <div class="audit-export-row">
+                <button type="button" class="action-btn" id="audit-export-csv-btn">Export CSV</button>
+                <button type="button" class="action-btn" id="audit-export-json-btn">Export JSON</button>
+              </div>
+              <div class="audit-applied-filters" id="audit-applied-filters"></div>
+            </div>
+            <div class="audit-results" id="audit-results"></div>
+            <div class="audit-error" id="audit-error" hidden></div>
+            <button type="button" class="action-btn audit-load-more-btn" id="audit-load-more-btn" hidden>Load more</button>
           </div>
 
         </div>
@@ -791,6 +850,7 @@
         <button class="sos-btn sos-btn-resolve" id="sos-btn-resolve">Resolve Incident</button>
         <button class="sos-btn sos-btn-broadcast" id="sos-btn-broadcast">Broadcast to Nearby Vessels</button>
         <button class="sos-btn sos-btn-checkin" id="sos-btn-checkin">Request Silent Check-in</button>
+        <button class="sos-btn sos-btn-activity" id="sos-btn-activity">View Activity</button>
         <div class="sos-broadcast-msg" id="sos-broadcast-msg"></div>
       </div>
     </div>
@@ -840,6 +900,25 @@
           <button type="button" class="sos-btn ack-btn-cancel" id="ack-btn-cancel">Cancel</button>
           <button type="button" class="sos-btn sos-btn-acknowledge" id="ack-btn-confirm">Send acknowledgement</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case Activity: the authorized timeline for one SOS/anomaly/drift case
+       (docs/41_OPERATIONS_CONSOLE_AUDITABILITY_IMPLEMENTATION_PLAN.md
+       Phase 4). Opened via ns.openActivityDrawer() from the SOS drawer's
+       "View Activity" button, a trip-check row, or the drift case card -
+       never a bulk cross-case listing (that's the admin-only #panel-audit
+       above). Reuses .sos-drawer's slide-in mechanics. -->
+  <div class="sos-drawer activity-drawer" id="activity-drawer">
+    <div class="sos-drawer-header" id="activity-drawer-header">
+      <span class="sos-drawer-title" id="activity-drawer-title">Case Activity</span>
+      <button class="sos-drawer-close" id="activity-drawer-close">&times;</button>
+    </div>
+    <div class="sos-drawer-body">
+      <div class="sos-section" id="activity-drawer-content"></div>
+      <div class="sos-section audit-timeline-unavailable" id="activity-drawer-unavailable" hidden>
+        Timeline unavailable right now. This does not change the case's own status.
       </div>
     </div>
   </div>
@@ -1043,6 +1122,7 @@
   <script src="../js/dashboard/dashboard-incidents.js"></script>
   <script src="../js/dashboard/dashboard-buoy-health.js"></script>
   <script src="../js/dashboard/dashboard-ai-ops.js"></script>
+  <script src="../js/dashboard/dashboard-operations-audit.js"></script>
   <script src="../js/dashboard/dashboard-profile-pill.js"></script>
   <script src="../js/dashboard/dashboard-shortcuts-weather.js"></script>
   <script src="../js/dashboard/dashboard-emergency-advisory.js"></script>

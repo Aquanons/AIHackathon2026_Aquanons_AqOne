@@ -6,7 +6,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.auth import require_user, require_vessel_device
+from app.audit import record_audit_event
+from app.auth import require_responder_roles, require_user, require_vessel_device
 from app.db import get_pool
 
 # Responder status vocabulary. One byte, so it survives a 64-byte LoRa frame in
@@ -254,11 +255,11 @@ class AcknowledgeIn(BaseModel):
 async def acknowledge(
     event_id: int,
     payload: AcknowledgeIn | None = None,
-    user: dict = Depends(require_user),
+    user: dict = require_responder_roles,
 ) -> dict[str, object]:
     body = payload or AcknowledgeIn()
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             '''
             UPDATE sos_events
@@ -274,7 +275,7 @@ async def acknowledge(
                             END
              WHERE id = $1
             RETURNING id, acknowledged_at, acked_by, eta_at,
-                      responder_status, responder_note
+                      responder_status, responder_note, is_synthetic
             ''',
             event_id,
             user.get('email') or 'unknown',
@@ -282,8 +283,22 @@ async def acknowledge(
             body.responder_note,
             body.eta_minutes,
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such SOS event')
+        if row is None:
+            raise HTTPException(status_code=404, detail='no such SOS event')
+        # Every call is a real event, not a retry to deduplicate: a
+        # dispatcher legitimately re-calls this with a new responder_status
+        # to report progress (RECEIVED -> DISPATCHED -> ...), so each one is
+        # its own audit-worthy transition (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='sos.acknowledge',
+            resource_type='sos_event',
+            resource_id=row['id'],
+            outcome='applied',
+            is_demo=row['is_synthetic'],
+            metadata={'responder_status': row['responder_status']},
+        )
     return {
         'ok': True,
         'id': row['id'],
@@ -296,30 +311,59 @@ async def acknowledge(
     }
 
 
+class ResolveIn(BaseModel):
+    """An optional resolver note - never required, since a fisher's own
+    SAFE_NOW reply also resolves the incident with no dispatcher involved.
+    """
+
+    reason: str | None = Field(default=None, max_length=280)
+
+
 @protected_router.post('/{event_id}/resolve')
 async def resolve_sos(
     event_id: int,
-    user: dict = Depends(require_user),
+    payload: ResolveIn | None = None,
+    user: dict = require_responder_roles,
 ) -> dict[str, object]:
+    body = payload or ResolveIn()
     pool = get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
+        prior = await conn.fetchrow(
+            'SELECT resolved_at FROM sos_events WHERE id = $1 FOR UPDATE', event_id,
+        )
+        if prior is None:
+            raise HTTPException(status_code=404, detail='no such SOS event')
+        was_already_resolved = prior['resolved_at'] is not None
+
         row = await conn.fetchrow(
             '''
             UPDATE sos_events
                SET resolved_at = COALESCE(resolved_at, NOW()),
-                   acked_by = COALESCE(acked_by, $2)
+                   resolved_by = COALESCE(resolved_by, $2),
+                   resolved_reason = COALESCE(resolved_reason, $3)
              WHERE id = $1
-            RETURNING id, resolved_at, acked_by
+            RETURNING id, resolved_at, resolved_by, resolved_reason, acked_by, is_synthetic
             ''',
             event_id,
             user.get('email') or 'unknown',
+            body.reason,
         )
-    if row is None:
-        raise HTTPException(status_code=404, detail='no such SOS event')
+        # resolved_reason is free text and never logged (docs/41 Phase 2).
+        await record_audit_event(
+            conn,
+            actor=user,
+            action='sos.resolve',
+            resource_type='sos_event',
+            resource_id=row['id'],
+            outcome='no_change' if was_already_resolved else 'updated',
+            is_demo=row['is_synthetic'],
+        )
     return {
         'ok': True,
         'id': row['id'],
         'resolved_at': _iso(row['resolved_at']),
+        'resolved_by': row['resolved_by'],
+        'resolved_reason': row['resolved_reason'],
         'acked_by': row['acked_by'],
     }
 

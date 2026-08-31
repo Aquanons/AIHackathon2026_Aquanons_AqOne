@@ -28,8 +28,8 @@ credential that is bound to one vessel.
 
 ### `POST /api/vessel-auth/pairing-codes`
 
-Operator-authenticated (`mdrrmo` / `lgu` / `admin`). Issues a short-lived
-pairing code for one vessel. Body:
+Operator-authenticated, device-admin roles only (`lgu` / `admin` — see
+[Roles](#roles)). Issues a short-lived pairing code for one vessel. Body:
 
 ```json
 {
@@ -95,7 +95,8 @@ same device/vessel pair and the new expiry time.
 
 ### `POST /api/vessel-auth/devices/{device_id}/revoke`
 
-Operator-authenticated. Revokes a lost or replaced handset. Body:
+Operator-authenticated, device-admin roles only (`lgu` / `admin` — see
+[Roles](#roles)). Revokes a lost or replaced handset. Body:
 
 ```json
 {
@@ -196,12 +197,18 @@ fields `GET /api/v1/sos` documents above.
 
 ### `POST /api/sos/{id}/acknowledge` and `POST /api/sos/{id}/resolve`
 
-Operator-authenticated. `acknowledge` accepts `eta_minutes` (converted
+Operator-authenticated, responder roles (`mdrrmo` / `lgu` / `admin` — see
+[Roles](#roles)). `acknowledge` accepts `eta_minutes` (converted
 server-side to an absolute `eta_at`, never trusting the browser's clock),
 `responder_status` (the code table in `docs/13_RESPONDER_LOOP.md`) and an
 optional `responder_note`. `resolve` marks the incident resolved, removing it
-from `GET /api/sos/active` on the next poll. Both are idempotent — re-calling
-either after it already applied returns the same result rather than erroring.
+from `GET /api/sos/active` on the next poll, and accepts an optional
+`reason` — persisted as distinct `resolved_by`/`resolved_reason` columns
+(docs/41 Phase 3; previously `resolve` reused `acked_by`, conflating the
+acknowledger with the resolver). Both are idempotent — re-calling either
+after it already applied returns the same result rather than erroring;
+`acknowledge` is additionally re-callable with a new `responder_status` to
+report progress, which is a real transition each time, not a duplicate.
 
 ### `GET /api/v1/sos/stream` — SSE live feed
 
@@ -377,12 +384,28 @@ Field notes:
 
 ### `GET /api/advisories`, `POST /api/advisories`, `PUT /api/advisories/{id}`, `DELETE /api/advisories/{id}`
 
-Operator-authenticated (`mdrrmo` / `lgu` / `admin`, via `require_user`). The
-list read here is **not** filtered by active/expired — an operator managing
+Operator-authenticated, responder roles (`mdrrmo` / `lgu` / `admin` — see
+[Roles](#roles)), via `require_roles`. The list read here is **not**
+filtered by active/expired — an operator managing
 notices needs to see and edit drafts and past advisories too; only the
 public route above filters. Create/update accept `cover_image` as the
 write-side field name; the response echoes it back as `image_url` like every
 other advisory read.
+
+## Sea condition — **implemented**
+
+### `GET /api/sea-condition`, `GET /api/sea-condition/history`
+
+Operator-authenticated (`require_user`); read-only. Returns the current
+declared status plus buoy telemetry, or a bounded history.
+
+### `POST /api/sea-condition`
+
+Operator-authenticated, responder roles (`mdrrmo` / `lgu` / `admin` — see
+[Roles](#roles)). Declares the current sea condition (`status`, `reason`).
+The stored `set_by_user_id`/`set_by_name` are always derived from the
+authenticated token server-side — the request body cannot set or override
+them; a body containing those fields is silently ignored.
 
 ## Squall nowcast — **implemented**
 
@@ -607,7 +630,9 @@ A case here is a review candidate produced by confidence-scored trip
 evaluation (`docs/04_INGEST_API.md` "Contact events" is its only trustworthy
 input) — **never an SOS, and never an automatic dispatch.** All routes are
 operator-authenticated (`require_user`); a public or handset caller cannot
-read or mutate this queue.
+read or mutate this queue. The four case-mutating routes below
+(`acknowledge`/`dismiss`/`escalate`/`resolve`) additionally require a
+responder role (`mdrrmo` / `lgu` / `admin` — see [Roles](#roles)).
 
 ### `GET /api/ai/anomaly/active`
 
@@ -713,7 +738,10 @@ responder has already confirmed:
 
 A new anomaly score, an arbitrary client-supplied position, or a public
 caller can never open a case. All routes below require a bearer token
-(`require_user`); there is no unauthenticated drift endpoint.
+(`require_user`); there is no unauthenticated drift endpoint. The
+case-mutating routes (open/rerun/resolve/cancel a case, report a searched
+sector) additionally require a responder role (`mdrrmo` / `lgu` / `admin` —
+see [Roles](#roles)).
 
 ### Production environmental-input quality policy (Phase 2)
 
@@ -900,12 +928,73 @@ Gated by `DEMO_MODE` (the route is only mounted when it is set) plus
 `X-Demo-Key`, and additionally `404`s on any incident that isn't synthetic —
 a demo key alone can never unlock a real case's data.
 
+## Operations audit — **implemented**
+
+docs/41 Phase 2 wired one append-only `operations_audit_events` ledger into
+every high-impact write above. Phase 3 exposes it through two read paths;
+neither ever returns a raw domain row, only the redacted columns
+(`id, occurred_at, actor_*, action, resource_type, resource_id, outcome,
+correlation_key, is_demo, metadata`).
+
+### `GET /api/ops/cases/{resource_type}/{resource_id}/timeline`
+
+Operator-authenticated, responder roles (`mdrrmo` / `lgu` / `admin` — see
+[Roles](#roles)). `resource_type` is one of `sos_event`, `anomaly_case`,
+`drift_incident`; anything else is `422`. Returns up to 200 events for
+that one case, newest first — never a bulk cross-case listing. Recording
+the view itself is deduplicated: at most one `ops.case_view` access event
+per actor/case per rolling 15 minutes, so re-polling or re-opening the
+same case tab doesn't turn into an event storm.
+
+### `GET /api/ops/audit` and `GET /api/ops/audit/export`
+
+Administrator-only (`admin` — **not** `lgu`; see [Roles](#roles)). Filters:
+`actor_email`, `action`, `resource_type`, `resource_id`,
+`date_from`/`date_to` (bounded to a 90-day span, defaults to the last 7
+days if both are omitted). `/audit` is opaque-cursor-paginated
+(`limit`, default 50, max 100; `cursor` is a base64 token for the last row
+of the previous page — a malformed cursor is `400`), newest-first and
+stable. `/audit/export` takes the same filters plus `format=csv|json`
+(default `csv`) and returns one `Content-Disposition: attachment`
+response capped at 5000 rows, stamped with `generated_at`, the applied
+filters, and whether the cap truncated the result. Each call to either
+route records its own `ops.audit_search`/`ops.audit_export` access event
+(not deduplicated — an admin's own deliberate query is not polling).
+
 ## Roles
 
-- `mdrrmo` and `admin` may list and ack. `admin` may also register devices and
-  revoke API keys (back-office, not in this doc).
-- `fisherman` reads safety feeds without auth, but per-vessel status / reply /
-  catch routes now require a paired vessel-device credential.
+Approved action matrix (docs/41_OPERATIONS_CONSOLE_AUDITABILITY_IMPLEMENTATION_PLAN.md
+Phases 1 and 3). Enforced server-side by `app.auth.require_roles(...)`, not
+by hiding dashboard controls — a role never gets an action merely because
+the dashboard shows it a panel.
+
+| Action category | Routes | `mdrrmo` | `lgu` | `admin` |
+|---|---|---|---|---|
+| Responder incident actions | `POST /api/sos/{id}/acknowledge`, `.../resolve`; `POST /api/ai/anomaly/cases/{id}/acknowledge`, `.../dismiss`, `.../escalate`, `.../resolve`; `POST /api/ai/drift/cases`, `.../cases/{id}/rerun`, `.../resolve`, `.../cancel`, `.../incident/{id}/searched` | Yes | Yes | Yes |
+| Advisory / sea-condition publication | `GET/POST/PUT/DELETE /api/advisories`, `POST /api/advisories/alert`, `POST /api/sea-condition` | Yes | Yes | Yes |
+| Vessel-device pairing & revocation | `POST /api/vessel-auth/pairing-codes`, `POST /api/vessel-auth/devices/{id}/revoke` | No | Yes | Yes |
+| Operator-account setup | `POST /api/admin-signup` | Gated by `ADMIN_SETUP_KEY` (not a role check) |||
+| Case timeline (one case) | `GET /api/ops/cases/{resource_type}/{resource_id}/timeline` | Yes | Yes | Yes |
+| Global audit search / export | `GET /api/ops/audit`, `GET /api/ops/audit/export` | No | **No** | Yes |
+
+`lgu` has the same permissions as `admin` for every action above **except**
+global audit search/export (owner decision, 2026-08-30 for the operational
+rows; reaffirmed narrower for audit visibility itself on the same date) —
+seeing every operator's action history across every case is a different
+kind of privilege than the operational writes above. `admin`'s only other
+distinct capability outside this table is back-office API-key revocation,
+not documented here. `mdrrmo` cannot pair or revoke vessel devices — a
+narrowing from previous behaviour, where any authenticated operator role
+could — but no dashboard UI exists yet for those two actions, so this is a
+backend-only guard for now.
+
+`fisherman` reads safety feeds without auth, but per-vessel status / reply /
+catch routes now require a paired vessel-device credential.
+
+`POST /api/catch-logs/{id}/confirm-weight` is a fisher/dispatcher-shared
+action that doesn't fit the categories above cleanly; it stays on plain
+`require_user` (any authenticated user, not role-restricted) pending
+classification in a later phase.
 
 ## Conventions
 
