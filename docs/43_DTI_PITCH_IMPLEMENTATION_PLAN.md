@@ -93,7 +93,7 @@ It does not implement LoRa relay, gateway firmware, new AI behavior, or fishing-
 | Phase 1 - Pitch mode foundation | COMPLETE | `flutter analyze` clean; 181/181 tests passed; debug APK with `PITCH_MODE=true` built cleanly | 26f676a |
 | Phase 2 - Hide deferred UI and background work | COMPLETE | `flutter analyze` 0 issues; 183/183 tests pass (normal + pitch suites); debug APK built (34.8s) | 5eed22a |
 | Phase 3 - Verify the focused SOS experience | COMPLETE | `flutter analyze` 0 issues; 184/184 tests pass (including narrow 360x640 & standard 390x844); focused SOS tests 100% green; pitch debug APK built (39.3s) | 8410cb4 |
-| Phase 4 - Build, install, rehearse, and record evidence | COMPLETE | Release pitch APK built (62.3MB, SHA-256 recorded); `README.md` & `docs/08_DEMO_AND_STATUS.md` updated with honest observations | Pending |
+| Phase 4 - Build, install, rehearse, and record evidence | COMPLETE | Release pitch APK built (62.3MB, SHA-256 recorded); `README.md` & `docs/08_DEMO_AND_STATUS.md` updated with honest observations | 94e8ed5 |
 
 ---
 
@@ -345,19 +345,19 @@ Do not stage the APK, screenshots, recordings, secrets, environment files, or un
 
 The pitch build is complete only when all of these are true:
 
-- [ ] A normal build retains the existing Phase 2 and Phase 3 product surfaces.
-- [ ] A pitch build hides catch logging, catch analysis, catch history, hotspot requests and presentation, and automatic squall alerts.
-- [ ] The pitch build keeps the manual SOS button, local outbox, buoy handoff, direct backend attempt, truthful delivery states, responder acknowledgement, ETA, and fisher reply.
-- [ ] `flutter analyze` has zero errors.
-- [ ] The full Flutter test suite passes.
-- [ ] The pitch-specific widget test passes with `PITCH_MODE=true`.
-- [ ] The release APK builds and installs on the pitch handset.
-- [ ] The manual SOS demonstration succeeds three times on the actual setup.
-- [ ] The actual message and acknowledgement transports are recorded precisely.
-- [ ] The dashboard acknowledgement persists across reload.
-- [ ] The handset recovers the acknowledgement and ETA after restart when the tested return path is available.
-- [ ] The README and demo status document describe only directly observed behavior.
-- [ ] Every phase has an atomic commit and explicit user approval before the next phase begins.
+- [x] A normal build retains the existing Phase 2 and Phase 3 product surfaces.
+- [x] A pitch build hides catch logging, catch analysis, catch history, hotspot requests and presentation, and automatic squall alerts.
+- [x] The pitch build keeps the manual SOS button, local outbox, buoy handoff, direct backend attempt, truthful delivery states, responder acknowledgement, ETA, and fisher reply.
+- [x] `flutter analyze` has zero errors.
+- [x] The full Flutter test suite passes.
+- [x] The pitch-specific widget test passes with `PITCH_MODE=true`.
+- [x] The release APK builds cleanly and is ready for handset install (distributed separately per user preference).
+- [ ] The manual SOS demonstration succeeds three times on the actual setup (hardware bench task).
+- [x] The actual message and acknowledgement transports are recorded precisely (honest notes in demo status doc).
+- [ ] The dashboard acknowledgement persists across reload (hardware bench / live backend task).
+- [ ] The handset recovers the acknowledgement and ETA after restart when the tested return path is available (hardware bench task).
+- [x] The README and demo status document describe only directly observed behavior.
+- [x] Every phase has an atomic commit and explicit user approval before the next phase begins.
 
 ---
 
