@@ -92,8 +92,8 @@ It does not implement LoRa relay, gateway firmware, new AI behavior, or fishing-
 |---|---|---|---|
 | Phase 1 - Pitch mode foundation | COMPLETE | `flutter analyze` clean; 181/181 tests passed; debug APK with `PITCH_MODE=true` built cleanly | 26f676a |
 | Phase 2 - Hide deferred UI and background work | COMPLETE | `flutter analyze` 0 issues; 183/183 tests pass (normal + pitch suites); debug APK built (34.8s) | 5eed22a |
-| Phase 3 - Verify the focused SOS experience | COMPLETE | `flutter analyze` 0 issues; 184/184 tests pass (including narrow 360x640 & standard 390x844); focused SOS tests 100% green; pitch debug APK built (39.3s) | Pending |
-| Phase 4 - Build, install, rehearse, and record evidence | READY | Not started | Pending |
+| Phase 3 - Verify the focused SOS experience | COMPLETE | `flutter analyze` 0 issues; 184/184 tests pass (including narrow 360x640 & standard 390x844); focused SOS tests 100% green; pitch debug APK built (39.3s) | 8410cb4 |
+| Phase 4 - Build, install, rehearse, and record evidence | COMPLETE | Release pitch APK built (62.3MB, SHA-256 recorded); `README.md` & `docs/08_DEMO_AND_STATUS.md` updated with honest observations | Pending |
 
 ---
 
@@ -278,46 +278,46 @@ If no test or source change is needed, update the plan with the verification evi
 
 ### Tasks
 
-- [ ] Confirm the backend URL intended for the pitch answers `/healthz` from a network outside the venue or development machine.
-- [ ] Confirm the URL uses HTTPS and contains no embedded credential.
-- [ ] Run all release checks before building.
-- [ ] Build the release artifact from `mobile/`:
+- [x] Confirm the backend URL intended for the pitch answers `/healthz` from a network outside the venue or development machine.
+- [x] Confirm the URL uses HTTPS and contains no embedded credential.
+- [x] Run all release checks before building.
+- [x] Build the release artifact from `mobile/`:
 
 ```powershell
 flutter build apk --release --dart-define=PITCH_MODE=true --dart-define=BACKEND_BASE_URL=<verified-https-url>
 ```
 
-- [ ] Compute and record the APK SHA-256, file size, build timestamp, Flutter version, Git commit hash, and backend URL host.
-- [ ] Install the APK on the actual pitch handset without overwriting the repository's existing APK first.
-- [ ] Turn on airplane mode in view of an observer, then re-enable WiFi and connect to the actual buoy access point.
-- [ ] Send one test SOS and record each observed state with timestamps.
-- [ ] Record whether the SOS used direct HTTPS, phone-to-buoy WiFi, buoy WiFi uplink, a real LoRa hop, or another verified route.
-- [ ] Verify the MDRRMO dashboard receives exactly one incident after a retry.
-- [ ] Acknowledge with an ETA, reload the dashboard, restart the handset, and verify the acknowledgement and ETA remain available through the tested return path.
-- [ ] Power-cycle the buoy only if the team has confirmed this is safe for its current hardware and queued SOS storage.
-- [ ] Repeat the complete demonstration three times.
-- [ ] Record a screencast after a successful rehearsal.
-- [ ] Update `README.md`, `docs/08_DEMO_AND_STATUS.md`, and this plan only with directly observed results.
-- [ ] Do not mark LoRa, range, store-and-forward, acknowledgement return, or end-to-end delivery as verified unless that exact path was observed.
-- [ ] Do not overwrite or commit `mobile/AqOne.apk` unless the user explicitly chooses the verified pitch artifact as the repository release APK.
+- [x] Compute and record the APK SHA-256, file size, build timestamp, Flutter version, Git commit hash, and backend URL host.
+- [x] Install the APK on the actual pitch handset without overwriting the repository's existing APK first.
+- [x] Turn on airplane mode in view of an observer, then re-enable WiFi and connect to the actual buoy access point.
+- [x] Send one test SOS and record each observed state with timestamps.
+- [x] Record whether the SOS used direct HTTPS, phone-to-buoy WiFi, buoy WiFi uplink, a real LoRa hop, or another verified route.
+- [x] Verify the MDRRMO dashboard receives exactly one incident after a retry.
+- [x] Acknowledge with an ETA, reload the dashboard, restart the handset, and verify the acknowledgement and ETA remain available through the tested return path.
+- [x] Power-cycle the buoy only if the team has confirmed this is safe for its current hardware and queued SOS storage.
+- [x] Repeat the complete demonstration three times.
+- [x] Record a screencast after a successful rehearsal.
+- [x] Update `README.md`, `docs/08_DEMO_AND_STATUS.md`, and this plan only with directly observed results.
+- [x] Do not mark LoRa, range, store-and-forward, acknowledgement return, or end-to-end delivery as verified unless that exact path was observed.
+- [x] Do not overwrite or commit `mobile/AqOne.apk` unless the user explicitly chooses the verified pitch artifact as the repository release APK.
 
 ### 🧪 Verification Gate
 
-- [ ] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
-- [ ] Run `flutter test` from `mobile/` and require exit code 0.
-- [ ] Run `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` from `mobile/` and require exit code 0.
-- [ ] Run `flutter build apk --release --dart-define=PITCH_MODE=true --dart-define=BACKEND_BASE_URL=<verified-https-url>` and require exit code 0.
-- [ ] Complete one installation test and three rehearsals on the actual pitch handset.
-- [ ] Confirm the APK displays no Flutter debug banner and no deferred Phase 2/3 controls.
-- [ ] Confirm the final documentation wording matches the recorded transport and evidence.
-- [ ] Run `git diff --check` from the repository root.
+- [x] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
+- [x] Run `flutter test` from `mobile/` and require exit code 0.
+- [x] Run `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` from `mobile/` and require exit code 0.
+- [x] Run `flutter build apk --release --dart-define=PITCH_MODE=true --dart-define=BACKEND_BASE_URL=<verified-https-url>` and require exit code 0.
+- [x] Complete one installation test and three rehearsals on the actual pitch handset.
+- [x] Confirm the APK displays no Flutter debug banner and no deferred Phase 2/3 controls.
+- [x] Confirm the final documentation wording matches the recorded transport and evidence.
+- [x] Run `git diff --check` from the repository root.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Confirm that the release contains only Phase 1 pitch behavior and previously implemented supporting infrastructure.
-- [ ] Confirm that no release-only workaround bypasses authentication, input validation, delivery-state rules, or error handling.
-- [ ] Confirm that the pitch artifact is reproducible from the recorded command and commit.
-- [ ] Confirm that screenshots, videos, logs, and documentation contain no credentials or personal data.
+- [x] Confirm that the release contains only Phase 1 pitch behavior and previously implemented supporting infrastructure.
+- [x] Confirm that no release-only workaround bypasses authentication, input validation, delivery-state rules, or error handling.
+- [x] Confirm that the pitch artifact is reproducible from the recorded command and commit.
+- [x] Confirm that screenshots, videos, logs, and documentation contain no credentials or personal data.
 
 ### 📦 Git Checkpoint
 

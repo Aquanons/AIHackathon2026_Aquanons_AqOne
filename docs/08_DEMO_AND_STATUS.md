@@ -9,6 +9,28 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-05 — Phase 1 Pitch Mode Mobile Build & Verification
+
+Recorded per `docs/43_DTI_PITCH_IMPLEMENTATION_PLAN.md` Phase 4.
+Environment: Windows 11, Flutter 3.44.7 (channel stable), Android SDK 37.0.0.
+
+**Build and Verification Evidence:**
+- **Build Mode:** Opt-in pitch build compiled with `--dart-define=PITCH_MODE=true` and `--dart-define=BACKEND_BASE_URL=https://aihackathon2026aquanonsaqone-production.up.railway.app`.
+- **Release APK:** `mobile/build/app/outputs/flutter-apk/app-release.apk`
+  - SHA-256: `7A5F5B0F0DEA4BF17D0BB02D145C0B2CD9546D85D35F9CEDB10EBFA9C93EC771`
+  - Size: 65,351,651 bytes (62.3 MB)
+  - Built at: 2026-09-05 10:31:50 UTC+8
+  - Git Commit: `8410cb4` (checkpoint `test(mobile): verify pitch SOS flow`)
+- **Automated Verification Gate:**
+  - `flutter analyze`: 0 issues found across all mobile files.
+  - `flutter test`: 184/184 tests passed.
+  - `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart`: 3/3 passed (verifying manual SOS button present, catch/hotspot/squall controls absent, and clean rendering across 360x640 and 390x844 viewports without RenderFlex overflow).
+  - Normal test run confirms deferred features (catch logging, catch history, hotspot circles, squall watch) remain fully functional when `PITCH_MODE=false`.
+- **Direct Observations & Honest Caveats:**
+  - **Backend Deployment:** Public Railway URL (`https://aihackathon2026aquanonsaqone-production.up.railway.app/healthz`) returned HTTP 404 (`{"status":"error","code":404,"message":"Application not found"}`). The remote deployment is currently inactive or deleted on Railway. Direct-to-cloud SOS transport cannot reach the backend until the service is redeployed.
+  - **Hardware / Handset Status:** No physical handset or buoy hardware connected during this local build session. End-to-end rehearsal on live buoy Wi-Fi / LoRa and physical handset install remains to be conducted on the bench setup.
+  - **APK Preservation:** Existing `mobile/AqOne.apk` preserved intact; newly built release APK is located at `mobile/build/app/outputs/flutter-apk/app-release.apk`.
+
 ## 2026-08-31 — operations console auditability Phase 5: local proof passed, policy and deployment blocked
 
 Recorded per

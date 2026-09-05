@@ -51,7 +51,7 @@ Numbered phases inside the historical implementation-plan notes below refer to t
 | **SOS pipeline** phone → backend → dashboard | ✅ Working, with de-duplication |
 | **Responder loop** acknowledge → ETA → handset | ✅ Working |
 | **MDRRMO dashboard** | ✅ Live SOS feed, drift contours, squall watch |
-| **Flutter handset app** | 🟡 SOS, offline outbox, squall alarm, weather, and vessel-device authorization are implemented. After regenerating localization outputs, `dart analyze` still reports two constructor-call errors; the bundled APK predates recent changes. |
+| **Flutter handset app** | ✅ Clean: `flutter analyze` 0 issues, 184/184 tests pass. Opt-in pitch mode (`PITCH_MODE=true`) focuses the UI on the manual SOS handshake while keeping deferred Phase 2/3 features available in normal builds. Release APK built cleanly (`build/app/outputs/flutter-apk/app-release.apk`). |
 | **Voluntary catch logging** | ✅ Offline queue with authenticated upload when the phone regains internet |
 | **Catch-activity hotspot guidance** | 🟡 A deployed `catch-density-v1` endpoint aggregates consented logs into coarse cells with a three-reporter minimum. It returned no eligible cells on 29 August 2026 and is not a predictive catch model. |
 | **Buoy firmware** (WiFi AP + SOS gateway) | ✅ Written and flashed |
