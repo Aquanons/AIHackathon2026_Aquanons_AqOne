@@ -10,7 +10,7 @@ Contracts this app implements:
 | Phone → buoy HTTP | `docs/03_PHONE_BUOY_WIFI.md` |
 | Delivery states | `docs/06_DELIVERY_STATES.md` |
 | Backend reconciliation | `docs/05_PUBLIC_API.md` |
-| Visual system | `docs/design.md` |
+| Visual system | `docs/47_VISUAL_DESIGN_GUIDE.md` |
 | What is not built | `docs/07_SCOPE_OUT.md` |
 
 `docs/guides/05_FLUTTER.md` describes a superseded design in which the phone

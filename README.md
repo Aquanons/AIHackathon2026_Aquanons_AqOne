@@ -607,6 +607,7 @@ interviews with local fishers, not desk research alone.
 
 | Document | Contents |
 |---|---|
+| [`docs/README.md`](docs/README.md) | Document map, active-plan register, and naming convention |
 | `docs/Aqone_PRD (2).md` | Detailed PRD; its earlier scope predates the September 5, 2026 delivery priorities recorded above. Unbuilt sections tagged `[Roadmap — not implemented]` |
 | [`00_START_HERE.md`](docs/00_START_HERE.md) | Project brief |
 | [`16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md) | Datasets, AI tools, hardware, bias analysis |
