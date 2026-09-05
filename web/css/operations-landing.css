@@ -1,0 +1,202 @@
+:root {
+  color: #082b45;
+  background: #9dc4dd;
+  font-family: Figtree, Inter, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body.operations-landing {
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #b9e8ff 0%, #9dc4dd 60%, #71a9cc 100%);
+}
+
+body.operations-login { overflow-y: auto; }
+
+@keyframes aq-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes aq-gust {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  12% { opacity: 0.5; }
+  80% { opacity: 0.4; }
+  100% { transform: translate3d(calc(100vw + 160px), 0, 0); opacity: 0; }
+}
+
+.operations-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px 24px 144px;
+}
+
+.operations-card {
+  width: min(100%, 780px);
+  padding: 35px 58px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(8, 43, 69, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.operations-logo {
+  width: 500px;
+  height: auto;
+}
+
+.operations-landing-content {
+  display: grid;
+  width: min(100%, 540px);
+  justify-items: center;
+  gap: 28px;
+  text-align: center;
+}
+
+.operations-landing-content .operations-logo {
+  width: min(100%, 500px);
+}
+
+.operations-card .operations-logo {
+  width: min(100%, 170px);
+  margin: 0 auto 12px;
+}
+
+.operations-eyebrow {
+  margin: 0 0 10px;
+  color: #0f69c9;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.operations-title {
+  margin: 0;
+  color: #0958a6;
+  font-size: clamp(28px, 6vw, 38px);
+  line-height: 1.1;
+}
+
+.operations-copy {
+  max-width: 410px;
+  margin: 16px auto 28px;
+  color: #31546c;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.operations-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 12px;
+  background: #0f69c9;
+  box-shadow: 0 8px 18px rgba(15, 105, 201, 0.25);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.operations-action:hover { background: #0958a6; }
+.operations-action:focus-visible { outline: 3px solid #082b45; outline-offset: 4px; }
+
+.operations-note {
+  margin: 20px 0 0;
+  color: #4a6b82;
+  font-size: 13px;
+}
+
+.aq-gust {
+  position: fixed;
+  left: -150px;
+  z-index: 0;
+  width: 130px;
+  height: 34px;
+  opacity: 0;
+  animation: aq-gust linear infinite;
+}
+
+.operations-waves {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  height: 136px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aq-wave {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  animation: aq-drift linear infinite;
+}
+
+.operations-form {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.operations-form input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid #b9cbd8;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #082b45;
+  font: inherit;
+}
+
+.operations-form input:focus {
+  border-color: #0f69c9;
+  outline: 3px solid rgba(56, 189, 248, 0.4);
+}
+
+.operations-login-action { width: 100%; margin-top: 6px; }
+
+.operations-demo {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  border: 0;
+  background: transparent;
+  color: #0958a6;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.operations-demo:hover { text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aq-gust,
+  .aq-wave { animation: none; }
+  .aq-gust { opacity: 0.3; }
+}
+
+@media (max-width: 520px) {
+  .operations-shell { padding: 24px 18px 124px; }
+  .operations-card { padding: 24px; border-radius: 20px; }
+  .operations-landing-content .operations-logo { width: min(100%, 280px); }
+  .operations-waves { height: 110px; }
+}

@@ -1,63 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AqOne - Log In</title>
-    <link rel="stylesheet" href="../css/style.css" />
-  </head>
-  <body>
-    <video class="bg-video" autoplay muted loop playsinline poster="../assets/pic/bg.png">
-      <source src="../assets/vid/bgvid.mp4" type="video/mp4" />
-      Your browser does not support the video tag.
-    </video>
-
-    <div class="page-shell">
-      <main class="page-content">
-        <div class="content-card">
-          <div class="footer-row">
-            <a class="login-link" href="../index.html" aria-label="Back">←</a>
-          </div>
-
-          <h2>Log In</h2>
-
-          
-          <form class="form-fields" id="loginForm" onsubmit="return false;">
-            <input
-              type="email"
-              id="email"
-              placeholder="Email address"
-              autocomplete="email"
-              required
-            />
-            <input
-              type="password"
-              id="password"
-              placeholder="Password"
-              autocomplete="current-password"
-              required
-            />
-          </form>
-
-          <div class="button-row">
-            <button class="button-clear" type="reset" form="loginForm">Clear</button>
-            <button class="button-next" type="submit" form="loginForm">Log In</button>
-          </div>
-
-          <button class="button-clear" type="button" id="demo-bypass-btn">Continue without logging in (offline demo)</button>
-
-          
-
-          <footer class="page-footer">
-            <p>By logging in, you agree to our</p>
-            <a class="footer-link" href="terms.html">Privacy Policy</a>
-            <p>and</p>
-            <a class="footer-link" href="terms.html">Terms & Conditions.</a>
-          </footer>
-        </div>
-      </main>
-    </div>
-
-    <script src="../js/script.js"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AqOne - MDRRMO Sign In</title>
+  <link rel="stylesheet" href="../css/operations-landing.css" />
+</head>
+<body class="operations-landing operations-login">
+  <svg class="aq-gust" viewBox="0 0 130 34" fill="none" stroke="#0f69c9" stroke-width="2" stroke-linecap="round" style="top: 28%; animation-duration: 11s;"><path d="M2 17H88c14 0 18-13 7-16-8-2-10 6-2 9" /></svg>
+  <svg class="aq-gust" viewBox="0 0 130 34" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" style="top: 48%; width: 92px; animation-duration: 17s; animation-delay: 4s;"><path d="M2 17H74c12 0 15-11 6-14-7-2-9 5-2 8" /></svg>
+  <svg class="aq-gust" viewBox="0 0 130 34" fill="none" stroke="#0f69c9" stroke-width="2" stroke-linecap="round" style="top: 66%; width: 112px; animation-duration: 14s; animation-delay: 8s;"><path d="M2 17H88c14 0 18-13 7-16-8-2-10 6-2 9" /></svg>
+  <main class="operations-shell">
+    <section class="operations-card" aria-labelledby="login-title">
+      <img class="operations-logo" src="../assets/icons/aqoneLogo-full.png" alt="AqOne" />
+      <h1 class="operations-title" id="login-title">Operations Console Sign-In</h1>
+      <form class="operations-form" id="loginForm" onsubmit="return false;">
+        <input type="email" id="email" placeholder="Email address" autocomplete="email" required />
+        <input type="password" id="password" placeholder="Password" autocomplete="current-password" required />
+        <button class="operations-action operations-login-action" type="submit">Log In</button>
+      </form>
+      <button class="operations-demo" type="button" id="demo-bypass-btn">Continue without logging in for an offline demo</button>
+      <p class="operations-note">For authorised MDRRMO responders.</p>
+    </section>
+  </main>
+  <div class="operations-waves" aria-hidden="true">
+    <svg class="aq-wave" viewBox="0 0 1200 100" preserveAspectRatio="none" style="animation-duration: 26s; opacity: 0.35;"><path d="M0 46q75-18 150 0t150 0t150 0t150 0t150 0t150 0t150 0t150 0L1200 100H0Z" fill="#0f69c9" /></svg>
+    <svg class="aq-wave" viewBox="0 0 1200 100" preserveAspectRatio="none" style="animation-duration: 17s; opacity: 0.28;"><path d="M0 62q75-22 150 0t150 0t150 0t150 0t150 0t150 0t150 0t150 0L1200 100H0Z" fill="#38bdf8" /></svg>
+  </div>
+  <script src="../js/script.js"></script>
+</body>
 </html>

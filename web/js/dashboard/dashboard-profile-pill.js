@@ -123,12 +123,12 @@
   (function () {
     var DASHBOARD_TRANSLATIONS = {
       en: {
-        subTitle: "Maritime Intelligence — Aklan LGU",
+        subTitle: "SOS Operations Console",
         layerStreets: "Streets",
         layerSatellite: "Satellite",
         layerHybrid: "Hybrid",
         searchPlaceholder: "Search vessels, zones, coordinates...",
-        userName: "Kalibo, Aklan<br>LGU Administrator",
+        userName: "New Washington, Aklan<br>MDRRMO Duty Officer",
         railLayers: "Layers",
         railPan: "Pan",
         railPin: "Pin",
@@ -170,12 +170,12 @@
         emSubtitle: "Quick access for MDRRMO responders",
       },
       akl: {
-        subTitle: "Intelihensiya sa Baybayon — LGU Aklan",
+        subTitle: "SOS Operations Console",
         layerStreets: "Mga Dalan",
         layerSatellite: "Satélite",
         layerHybrid: "Pagsagol",
         searchPlaceholder: "Mag-sapsap it sakayan, rehiyon, coordinates...",
-        userName: "Kalibo, Aklan<br>Tagadumala sa LGU",
+        userName: "New Washington, Aklan<br>Tagadumala it MDRRMO",
         railLayers: "Mga Han-ay",
         railPan: "I-duhol",
         railPin: "Tandaan",

@@ -58,3 +58,4 @@ def test_root_serves_dashboard_when_web_dir_present(monkeypatch):
     assert response.status_code in (200, 404)
     if response.status_code == 200:
         assert 'text/html' in response.headers['content-type']
+        assert 'html/login.html' in response.text
