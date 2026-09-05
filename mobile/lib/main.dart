@@ -251,8 +251,10 @@ class _AqOneAppState extends State<AqOneApp> {
       }
       if (remembered) {
         _service.start();
-        _catches.start();
-        _spots.start();
+        if (!AqOneConfig.pitchMode) {
+          _catches.start();
+          _spots.start();
+        }
       }
       setState(() {
         _identity = identity;
@@ -342,8 +344,10 @@ class _AqOneAppState extends State<AqOneApp> {
     // Background sync only starts once the user is actually in the app, so a
     // half-finished registration never puts traffic on the wire.
     _service.start();
-    _catches.start();
-    _spots.start();
+    if (!AqOneConfig.pitchMode) {
+      _catches.start();
+      _spots.start();
+    }
     setState(() {
       _identity = identity;
       _entered = true;

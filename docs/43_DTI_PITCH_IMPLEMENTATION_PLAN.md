@@ -90,9 +90,9 @@ It does not implement LoRa relay, gateway firmware, new AI behavior, or fishing-
 
 | Phase | Status | Evidence | Commit |
 |---|---|---|---|
-| Phase 1 - Pitch mode foundation | COMPLETE | `flutter analyze` clean; 181/181 tests passed; debug APK with `PITCH_MODE=true` built cleanly | Pending |
-| Phase 2 - Hide deferred UI and background work | BLOCKED by Phase 1 | Not started | Pending |
-| Phase 3 - Verify the focused SOS experience | BLOCKED by Phase 2 | Not started | Pending |
+| Phase 1 - Pitch mode foundation | COMPLETE | `flutter analyze` clean; 181/181 tests passed; debug APK with `PITCH_MODE=true` built cleanly | 26f676a |
+| Phase 2 - Hide deferred UI and background work | COMPLETE | `flutter analyze` 0 issues; 183/183 tests pass (normal + pitch suites); debug APK built (34.8s) | Pending |
+| Phase 3 - Verify the focused SOS experience | READY | Not started | Pending |
 | Phase 4 - Build, install, rehearse, and record evidence | BLOCKED by Phase 3 | Not started | Pending |
 
 ---
@@ -155,38 +155,38 @@ git commit -m "feat(mobile): add pitch build mode"
 
 ### Tasks
 
-- [ ] Inspect current callers before editing `mobile/lib/main.dart`, `mobile/lib/ui/app_shell.dart`, `mobile/lib/ui/home_page.dart`, and `mobile/lib/ui/venture_page.dart`.
-- [ ] In pitch mode, do not start `CatchService` or `FishingSpotService` background synchronization.
-- [ ] Leave service construction and disposal intact unless current code proves a smaller safe change.
-- [ ] In pitch mode, do not start the app-wide squall poll timer, fetch squall state, start its alarm, or open its full-screen alert.
-- [ ] Keep responder acknowledgement watching active in every mode.
-- [ ] Hide the Home `Catch analysis` card in pitch mode.
-- [ ] Hide Venture `Today's catches`, `Repeat`, `Log Catch`, pending-upload text, and all routes to the catch sheet and catch history in pitch mode.
-- [ ] Skip hotspot fetches and the hotspot refresh timer in pitch mode.
-- [ ] Render no hotspot polygons, legend, cached hotspot surface, or demo hotspot surface in pitch mode.
-- [ ] Keep the SOS button and its countdown, post-dispatch details, stand-down action, delivery-state status, responder acknowledgement, ETA, and fisher reply available.
-- [ ] Keep basic provider-labelled weather and official MDRRMO advisories unless either can produce a synthetic or misleading safety claim in the actual pitch build.
-- [ ] If a retained feed can show synthetic or stale data as current, hide only that feed in pitch mode and record the reason in this plan.
-- [ ] Do not remove imports, classes, database tables, migrations, services, endpoints, tests, or localization keys solely because pitch mode hides their UI.
-- [ ] Add `mobile/test/pitch_mode_test.dart` using existing widget-test fakes and localization setup.
-- [ ] Make the pitch-specific test execute only when compiled with `--dart-define=PITCH_MODE=true`, while the normal suite must still run successfully without the flag.
-- [ ] Test that `SOS` is present and catch controls, catch analysis, hotspot presentation, and squall-alert presentation are absent in pitch mode.
-- [ ] Test at least one normal-mode screen to confirm a deferred control remains available when the flag is false.
+- [x] Inspect current callers before editing `mobile/lib/main.dart`, `mobile/lib/ui/app_shell.dart`, `mobile/lib/ui/home_page.dart`, and `mobile/lib/ui/venture_page.dart`.
+- [x] In pitch mode, do not start `CatchService` or `FishingSpotService` background synchronization.
+- [x] Leave service construction and disposal intact unless current code proves a smaller safe change.
+- [x] In pitch mode, do not start the app-wide squall poll timer, fetch squall state, start its alarm, or open its full-screen alert.
+- [x] Keep responder acknowledgement watching active in every mode.
+- [x] Hide the Home `Catch analysis` card in pitch mode.
+- [x] Hide Venture `Today's catches`, `Repeat`, `Log Catch`, pending-upload text, and all routes to the catch sheet and catch history in pitch mode.
+- [x] Skip hotspot fetches and the hotspot refresh timer in pitch mode.
+- [x] Render no hotspot polygons, legend, cached hotspot surface, or demo hotspot surface in pitch mode.
+- [x] Keep the SOS button and its countdown, post-dispatch details, stand-down action, delivery-state status, responder acknowledgement, ETA, and fisher reply available.
+- [x] Keep basic provider-labelled weather and official MDRRMO advisories unless either can produce a synthetic or misleading safety claim in the actual pitch build.
+- [x] If a retained feed can show synthetic or stale data as current, hide only that feed in pitch mode and record the reason in this plan.
+- [x] Do not remove imports, classes, database tables, migrations, services, endpoints, tests, or localization keys solely because pitch mode hides their UI.
+- [x] Add `mobile/test/pitch_mode_test.dart` using existing widget-test fakes and localization setup.
+- [x] Make the pitch-specific test execute only when compiled with `--dart-define=PITCH_MODE=true`, while the normal suite must still run successfully without the flag.
+- [x] Test that `SOS` is present and catch controls, catch analysis, hotspot presentation, and squall-alert presentation are absent in pitch mode.
+- [x] Test at least one normal-mode screen to confirm a deferred control remains available when the flag is false.
 
 ### 🧪 Verification Gate
 
-- [ ] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
-- [ ] Run `flutter test` from `mobile/` and require exit code 0.
-- [ ] Run `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` from `mobile/` and require exit code 0 with the pitch assertions executed rather than skipped.
-- [ ] Run `flutter build apk --debug --dart-define=PITCH_MODE=true` from `mobile/` and require exit code 0.
-- [ ] Run `git diff --check` from the repository root.
+- [x] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
+- [x] Run `flutter test` from `mobile/` and require exit code 0.
+- [x] Run `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` from `mobile/` and require exit code 0 with the pitch assertions executed rather than skipped.
+- [x] Run `flutter build apk --debug --dart-define=PITCH_MODE=true` from `mobile/` and require exit code 0.
+- [x] Run `git diff --check` from the repository root.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Confirm that conditional rendering and conditional timer/service startup are the only mechanism used.
-- [ ] Confirm that no feature implementation or stored data was deleted.
-- [ ] Confirm that pitch mode cannot disable `SosService`, SOS reconciliation, acknowledgement watching, ETA display, or fisher replies.
-- [ ] Confirm that every pitch-only branch is covered by one focused test file rather than duplicating the full test suite.
+- [x] Confirm that conditional rendering and conditional timer/service startup are the only mechanism used.
+- [x] Confirm that no feature implementation or stored data was deleted.
+- [x] Confirm that pitch mode cannot disable `SosService`, SOS reconciliation, acknowledgement watching, ETA display, or fisher replies.
+- [x] Confirm that every pitch-only branch is covered by one focused test file rather than duplicating the full test suite.
 
 ### 📦 Git Checkpoint
 

@@ -191,7 +191,9 @@ class _VenturePageState extends State<VenturePage> {
   void initState() {
     super.initState();
     _sosSub = widget.sos.changes.listen((_) => _refreshSosStatus());
-    _catchSub = widget.catches.changes.listen((_) => _refreshCatchCount());
+    if (!AqOneConfig.pitchMode) {
+      _catchSub = widget.catches.changes.listen((_) => _refreshCatchCount());
+    }
     _initTileProvider();
     _compassSub = _compass.readings.listen((CompassReading reading) {
       if (!mounted) {
@@ -206,13 +208,17 @@ class _VenturePageState extends State<VenturePage> {
       _locate(initial: true);
       _loadBuoys();
       _loadHazards();
-      _loadHotspots();
+      if (!AqOneConfig.pitchMode) {
+        _loadHotspots();
+      }
       _refreshSosStatus();
-      _refreshCatchCount();
-      _hotspotTimer = Timer.periodic(
-        AqOneConfig.hotspotRefreshInterval,
-        (_) => _loadHotspots(),
-      );
+      if (!AqOneConfig.pitchMode) {
+        _refreshCatchCount();
+        _hotspotTimer = Timer.periodic(
+          AqOneConfig.hotspotRefreshInterval,
+          (_) => _loadHotspots(),
+        );
+      }
       _refreshSnapshotAges();
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
@@ -241,6 +247,9 @@ class _VenturePageState extends State<VenturePage> {
   }
 
   Future<void> _refreshCatchCount() async {
+    if (AqOneConfig.pitchMode) {
+      return;
+    }
     final count = await widget.catches.pendingCount();
     final last = await widget.catches.mostRecent();
     if (!mounted) {
@@ -292,6 +301,9 @@ class _VenturePageState extends State<VenturePage> {
   /// answer to "where are the fish" is silence until something has actually
   /// been modelled.
   Future<void> _loadHotspots() async {
+    if (AqOneConfig.pitchMode) {
+      return;
+    }
     final version = _hotspotGuard.begin();
     final surface = await widget.feeds.hotspots();
     if (!mounted || !_hotspotGuard.isCurrent(version) || surface == null) {
@@ -619,7 +631,7 @@ class _VenturePageState extends State<VenturePage> {
               child: Column(
                 children: <Widget>[
                   _buildWeatherCapsule(isDark),
-                  if (widget.squall.shouldDisplay) ...<Widget>[
+                  if (!AqOneConfig.pitchMode && widget.squall.shouldDisplay) ...<Widget>[
                     const SizedBox(height: 8),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -661,7 +673,7 @@ class _VenturePageState extends State<VenturePage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  if (_hotspots != null) ...<Widget>[
+                  if (!AqOneConfig.pitchMode && _hotspots != null) ...<Widget>[
                     _buildHotspotLegend(isDark, _hotspots!),
                     const SizedBox(height: 10),
                   ],
@@ -904,7 +916,7 @@ class _VenturePageState extends State<VenturePage> {
       // Drawn first so buoy coverage and every safety overlay paint on top.
       // §6.2: safety warnings override and visually supersede hotspot
       // guidance, which is a paint-order property before it is a policy.
-      if (hotspots != null)
+      if (!AqOneConfig.pitchMode && hotspots != null)
         for (final cell in hotspots.cells)
           CircleMarker(
             point: LatLng(cell.centerLat, cell.centerLon),
@@ -1116,76 +1128,78 @@ class _VenturePageState extends State<VenturePage> {
                 Chathubb(identity: widget.identity)),
           ),
         ),
-        const SizedBox(height: 10),
-        _RoundButton(
-          icon: Icons.receipt_long_rounded,
-          tooltip: "Today's catches",
-          isActive: false,
-          isDark: isDark,
-          onTap: _openCatchHistory,
-        ),
-        const SizedBox(height: 10),
-        // The three pills are deliberately identical in size. At sea, with wet
-        // hands and a moving deck, a button is found by where it is and what
-        // colour it is, not by reading it - so shape carries no meaning here
-        // and colour carries all of it: teal repeat, blue log, red SOS.
-        if (_lastCatch != null) ...<Widget>[
-          _ActionPill(
-            icon: Icons.replay_rounded,
-            label: 'Repeat',
-            color: const Color(0xFF0EA5A4),
+        if (!AqOneConfig.pitchMode) ...<Widget>[
+          const SizedBox(height: 10),
+          _RoundButton(
+            icon: Icons.receipt_long_rounded,
+            tooltip: "Today's catches",
+            isActive: false,
             isDark: isDark,
-            tooltip: 'Repeat: ${_lastCatchLabel(_lastCatch!)}',
-            onTap: _repeatingCatch ? null : _repeatLastCatch,
+            onTap: _openCatchHistory,
           ),
-          // The species/weight the repeat button would log, kept off the
-          // button itself so the pill width never depends on a fish name.
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: SizedBox(
-              width: _kActionPillWidth,
-              child: Text(
-                _lastCatchLabel(_lastCatch!),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  color: isDark ? Colors.white70 : const Color(0xFF475569),
-                ),
-              ),
+          const SizedBox(height: 10),
+          // The three pills are deliberately identical in size. At sea, with wet
+          // hands and a moving deck, a button is found by where it is and what
+          // colour it is, not by reading it - so shape carries no meaning here
+          // and colour carries all of it: teal repeat, blue log, red SOS.
+          if (_lastCatch != null) ...<Widget>[
+            _ActionPill(
+              icon: Icons.replay_rounded,
+              label: 'Repeat',
+              color: const Color(0xFF0EA5A4),
+              isDark: isDark,
+              tooltip: 'Repeat: ${_lastCatchLabel(_lastCatch!)}',
+              onTap: _repeatingCatch ? null : _repeatLastCatch,
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        _ActionPill(
-          icon: Icons.edit_note_rounded,
-          label: 'Log Catch',
-          color: const Color(0xFF0284C7),
-          isDark: isDark,
-          onTap: _showCatchSheet,
-        ),
-        if (_pendingCatches > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: GestureDetector(
-              onTap: _openCatchHistory,
+            // The species/weight the repeat button would log, kept off the
+            // button itself so the pill width never depends on a fish name.
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
               child: SizedBox(
                 width: _kActionPillWidth,
                 child: Text(
-                  '$_pendingCatches waiting to upload',
+                  _lastCatchLabel(_lastCatch!),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 10.5,
-                    decoration: TextDecoration.underline,
                     color: isDark ? Colors.white70 : const Color(0xFF475569),
                   ),
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+          ],
+          _ActionPill(
+            icon: Icons.edit_note_rounded,
+            label: 'Log Catch',
+            color: const Color(0xFF0284C7),
+            isDark: isDark,
+            onTap: _showCatchSheet,
           ),
+          if (_pendingCatches > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: GestureDetector(
+                onTap: _openCatchHistory,
+                child: SizedBox(
+                  width: _kActionPillWidth,
+                  child: Text(
+                    '$_pendingCatches waiting to upload',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      decoration: TextDecoration.underline,
+                      color: isDark ? Colors.white70 : const Color(0xFF475569),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
         const SizedBox(height: 14),
         _ActionPill(
           icon: Icons.warning_rounded,
