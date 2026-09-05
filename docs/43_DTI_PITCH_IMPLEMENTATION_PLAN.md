@@ -6,11 +6,11 @@
 **Updated:** 2026-09-05
 **Related:** [`README.md`](../README.md), [`README.md`](README.md), [`08_DEMO_AND_STATUS.md`](08_DEMO_AND_STATUS.md)
 
-> **Handoff target:** Gemini 3.8  
-> **Status:** Phase 1 ready, not started  
-> **Target Branch:** `codex/phase1-pitch-build`  
-> **Pitch Date:** September 15, 2026  
-> **Test Command:** `flutter test` plus the pitch-mode test command in each phase  
+> **Handoff target:** Gemini 3.8
+> **Status:** Phase 1 ready, not started
+> **Target Branch:** `codex/phase1-pitch-build`
+> **Pitch Date:** September 15, 2026
+> **Test Command:** `flutter test` plus the pitch-mode test command in each phase
 > **Lint/Check Command:** `flutter analyze`
 
 ---
