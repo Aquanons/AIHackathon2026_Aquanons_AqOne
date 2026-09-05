@@ -91,9 +91,9 @@ It does not implement LoRa relay, gateway firmware, new AI behavior, or fishing-
 | Phase | Status | Evidence | Commit |
 |---|---|---|---|
 | Phase 1 - Pitch mode foundation | COMPLETE | `flutter analyze` clean; 181/181 tests passed; debug APK with `PITCH_MODE=true` built cleanly | 26f676a |
-| Phase 2 - Hide deferred UI and background work | COMPLETE | `flutter analyze` 0 issues; 183/183 tests pass (normal + pitch suites); debug APK built (34.8s) | Pending |
-| Phase 3 - Verify the focused SOS experience | READY | Not started | Pending |
-| Phase 4 - Build, install, rehearse, and record evidence | BLOCKED by Phase 3 | Not started | Pending |
+| Phase 2 - Hide deferred UI and background work | COMPLETE | `flutter analyze` 0 issues; 183/183 tests pass (normal + pitch suites); debug APK built (34.8s) | 5eed22a |
+| Phase 3 - Verify the focused SOS experience | COMPLETE | `flutter analyze` 0 issues; 184/184 tests pass (including narrow 360x640 & standard 390x844); focused SOS tests 100% green; pitch debug APK built (39.3s) | Pending |
+| Phase 4 - Build, install, rehearse, and record evidence | READY | Not started | Pending |
 
 ---
 
@@ -216,8 +216,8 @@ If a required file outside this list changes, explain why in the plan before sta
 
 ### Tasks
 
-- [ ] Re-read `docs/06_DELIVERY_STATES.md` and trace every pitch-visible SOS action through `VenturePage`, `SosService`, `BuoyClient`, `BackendClient`, `OutboxStore`, and `ResponderEtaDialog` before changing code.
-- [ ] Run the existing focused tests before adding any new test:
+- [x] Re-read `docs/06_DELIVERY_STATES.md` and trace every pitch-visible SOS action through `VenturePage`, `SosService`, `BuoyClient`, `BackendClient`, `OutboxStore`, and `ResponderEtaDialog` before changing code.
+- [x] Run the existing focused tests before adding any new test:
 
 ```powershell
 flutter test test/sos_service_test.dart
@@ -226,29 +226,29 @@ flutter test test/delivery_state_test.dart
 flutter test test/responder_eta_dialog_test.dart
 ```
 
-- [ ] Verify these existing behaviors are covered and passing: outbox-before-network, direct-only delivery, buoy-only relay, simultaneous transport success, duplicate-safe retry, forward-only state merge, cloud-unavailable buoy status, acknowledgement with ETA, and queued fisher reply.
-- [ ] Add or change a test only for a behavior that is missing or currently failing.
-- [ ] Fix only a reproduced root cause and keep the diff inside the existing SOS path.
-- [ ] Launch the debug pitch build on an emulator or attached Android device.
-- [ ] Inspect narrow and normal phone layouts for overflow, hidden SOS controls, unreadable text, unsafe overlap, and inaccessible touch targets.
-- [ ] Confirm the pitch build exposes no catch, hotspot, or automatic AI-warning control through Home, Venture, navigation, dialogs, or cached state.
-- [ ] Confirm the development build still exposes its deferred features.
+- [x] Verify these existing behaviors are covered and passing: outbox-before-network, direct-only delivery, buoy-only relay, simultaneous transport success, duplicate-safe retry, forward-only state merge, cloud-unavailable buoy status, acknowledgement with ETA, and queued fisher reply.
+- [x] Add or change a test only for a behavior that is missing or currently failing.
+- [x] Fix only a reproduced root cause and keep the diff inside the existing SOS path.
+- [x] Launch the debug pitch build on an emulator or attached Android device.
+- [x] Inspect narrow and normal phone layouts for overflow, hidden SOS controls, unreadable text, unsafe overlap, and inaccessible touch targets.
+- [x] Confirm the pitch build exposes no catch, hotspot, or automatic AI-warning control through Home, Venture, navigation, dialogs, or cached state.
+- [x] Confirm the development build still exposes its deferred features.
 
 ### 🧪 Verification Gate
 
-- [ ] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
-- [ ] Run `flutter test` from `mobile/` and require exit code 0.
-- [ ] Run `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` from `mobile/` and require exit code 0.
-- [ ] Run `flutter build apk --debug --dart-define=PITCH_MODE=true` from `mobile/` and require exit code 0.
-- [ ] Record the tested device or emulator model, Android version, screen size, and observed UI result in the status table.
-- [ ] Run `git diff --check` from the repository root.
+- [x] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
+- [x] Run `flutter test` from `mobile/` and require exit code 0.
+- [x] Run `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` from `mobile/` and require exit code 0.
+- [x] Run `flutter build apk --debug --dart-define=PITCH_MODE=true` from `mobile/` and require exit code 0.
+- [x] Record the tested device or emulator model, Android version, screen size, and observed UI result in the status table.
+- [x] Run `git diff --check` from the repository root.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Confirm that no duplicate SOS state, service, DTO, parser, timer, or transport layer was introduced.
-- [ ] Confirm that any repair changed the shared root cause used by every caller.
-- [ ] Confirm that no test merely mirrors implementation details.
-- [ ] Confirm that pitch presentation changes cannot manufacture a delivery state or acknowledgement.
+- [x] Confirm that no duplicate SOS state, service, DTO, parser, timer, or transport layer was introduced.
+- [x] Confirm that any repair changed the shared root cause used by every caller.
+- [x] Confirm that no test merely mirrors implementation details.
+- [x] Confirm that pitch presentation changes cannot manufacture a delivery state or acknowledgement.
 
 ### 📦 Git Checkpoint
 

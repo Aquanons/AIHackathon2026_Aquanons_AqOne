@@ -12,6 +12,7 @@ import 'package:aqone/models/buoy_contact.dart';
 import 'package:aqone/models/buoy_marker.dart';
 import 'package:aqone/models/catch_record.dart';
 import 'package:aqone/models/daily_outlook.dart';
+import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/hotspot_cell.dart';
 import 'package:aqone/models/sea_condition.dart';
 import 'package:aqone/models/sos_record.dart';
@@ -25,13 +26,14 @@ import 'package:aqone/services/sos_service.dart';
 import 'package:aqone/services/venture_feeds.dart';
 import 'package:aqone/ui/home_page.dart';
 import 'package:aqone/ui/venture_page.dart';
+import 'package:aqone/ui/widgets/responder_eta_dialog.dart';
 import 'package:aqone/ui/widgets/squall_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeSosService extends SosService {
-  _FakeSosService()
+  _FakeSosService({this.stubHistory = const <SosRecord>[]})
       : super(
           outbox: OutboxStore(AppDatabase()),
           identity: IdentityStore(AppDatabase()),
@@ -40,14 +42,23 @@ class _FakeSosService extends SosService {
           location: LocationService(),
         );
 
+  final List<SosRecord> stubHistory;
+  final List<int> sentReplies = <int>[];
+
   @override
   void start() {}
 
   @override
-  Future<List<SosRecord>> history() async => const <SosRecord>[];
+  Future<List<SosRecord>> history() async => stubHistory;
 
   @override
   Future<BuoyStatus?> pollBuoy() async => null;
+
+  @override
+  Future<bool> replyToSos(String localId, int reply) async {
+    sentReplies.add(reply);
+    return true;
+  }
 }
 
 class _FakeCatchService extends CatchService {
@@ -122,7 +133,7 @@ const VesselIdentity _testIdentity = VesselIdentity(
   phone: '09123456789',
 );
 
-Widget _host(Widget child) {
+Widget _host(Widget child, {Size size = const Size(390, 844)}) {
   return MaterialApp(
     locale: const Locale('en'),
     supportedLocales: kSupportedLocales,
@@ -135,11 +146,33 @@ Widget _host(Widget child) {
     ],
     home: Scaffold(
       body: SizedBox(
-        width: 800,
-        height: 600,
+        width: size.width,
+        height: size.height,
         child: child,
       ),
     ),
+  );
+}
+
+SosRecord _testSosRecord({
+  DeliveryState state = DeliveryState.relayed,
+  int? responderStatus,
+  String? responderNote,
+  int? etaMinutesFromNow,
+}) {
+  return SosRecord(
+    localId: 'local-test-sos-1',
+    vesselId: _testIdentity.vesselId,
+    boat: _testIdentity.boat,
+    clientTs: 1755248500,
+    state: state,
+    buoyId: state == DeliveryState.saved ? null : 'BUOY-AKLAN-01',
+    seq: state == DeliveryState.saved ? null : 42,
+    etaAt: etaMinutesFromNow == null
+        ? null
+        : DateTime.now().add(Duration(minutes: etaMinutesFromNow)).toIso8601String(),
+    responderStatus: responderStatus,
+    responderNote: responderNote,
   );
 }
 
@@ -235,6 +268,63 @@ void main() {
         expect(find.textContaining('catch reports'), findsNothing);
 
         // Clean up widget tree
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+
+    testWidgets(
+      'renders cleanly on narrow (360x640) and standard (390x844) phone screens with active SOS status and responder ETA',
+      (WidgetTester tester) async {
+        if (!AqOneConfig.pitchMode) {
+          return;
+        }
+
+        final activeSos = _testSosRecord(
+          state: DeliveryState.relayed,
+          responderStatus: 2,
+          etaMinutesFromNow: 25,
+        );
+        final sosService = _FakeSosService(stubHistory: <SosRecord>[activeSos]);
+
+        // Verify across both narrow (360x640) and standard (390x844) viewports
+        for (final size in const <Size>[Size(360, 640), Size(390, 844)]) {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          await tester.pumpWidget(
+            _host(
+              VenturePage(
+                identity: _testIdentity,
+                sos: sosService,
+                catches: _FakeCatchService(),
+                checklist: ChecklistStore(AppDatabase()),
+                feeds: _FakeVentureFeeds(),
+                location: _FakeLocationService(),
+              ),
+              size: size,
+            ),
+          );
+          await tester.pump();
+
+          // Honest relayed state is visible on the status banner
+          expect(find.textContaining('Handed to the buoy'), findsOneWidget);
+          expect(find.text('SOS'), findsOneWidget);
+
+          // Test ResponderEtaDialog on the phone viewport
+          await tester.pumpWidget(
+            _host(
+              ResponderEtaDialog(record: activeSos, sos: sosService),
+              size: size,
+            ),
+          );
+          await tester.pump();
+
+          expect(find.text('Rescue boat on the way'), findsOneWidget);
+          expect(find.text('ARRIVING IN'), findsOneWidget);
+        }
+
         await tester.pumpWidget(const SizedBox());
       },
     );
