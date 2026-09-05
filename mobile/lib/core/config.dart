@@ -42,6 +42,11 @@ class AqOneConfig {
     defaultValue: 'https://aihackathon2026aquanonsaqone-production.up.railway.app',
   );
 
+  static const bool pitchMode = bool.fromEnvironment(
+    'PITCH_MODE',
+    defaultValue: false,
+  );
+
   static const int protocolVersion = 1;
 
   static const Duration buoyTimeout = Duration(seconds: 6);

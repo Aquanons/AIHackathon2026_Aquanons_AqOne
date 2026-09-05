@@ -127,11 +127,13 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _sosChanges = widget.sos.changes.listen((_) => _checkForAcknowledgement());
     _checkForAcknowledgement();
-    _loadSquall();
-    _squallTimer = Timer.periodic(
-      AqOneConfig.squallPollInterval,
-      (_) => _loadSquall(),
-    );
+    if (!AqOneConfig.pitchMode) {
+      _loadSquall();
+      _squallTimer = Timer.periodic(
+        AqOneConfig.squallPollInterval,
+        (_) => _loadSquall(),
+      );
+    }
   }
 
   /// Polls the nowcast and drives both the alarm and the full-screen alert.
@@ -141,6 +143,9 @@ class _AppShellState extends State<AppShell> {
   /// ringing alarm is left alone on a failed poll for the same reason: losing
   /// signal is not evidence the squall has passed.
   Future<void> _loadSquall() async {
+    if (AqOneConfig.pitchMode) {
+      return;
+    }
     final SquallWatch squall = await widget.feeds.squall();
     if (!mounted) {
       return;
@@ -169,6 +174,9 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _showSquallAlert(SquallWatch squall) async {
+    if (AqOneConfig.pitchMode) {
+      return;
+    }
     _squallAlertOpen = true;
     await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(

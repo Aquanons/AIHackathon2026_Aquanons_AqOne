@@ -101,10 +101,14 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _changes = widget.service.changes.listen((_) => _loadRecords());
-    _catchChanges = widget.catches.changes.listen((_) => _loadCatchRecords());
+    if (!AqOneConfig.pitchMode) {
+      _catchChanges = widget.catches.changes.listen((_) => _loadCatchRecords());
+    }
     widget.service.start();
     _loadRecords();
-    _loadCatchRecords();
+    if (!AqOneConfig.pitchMode) {
+      _loadCatchRecords();
+    }
     _pollBuoy();
     _loadSea();
     _loadAdvisories();
@@ -353,7 +357,7 @@ class _HomePageState extends State<HomePage> {
               // declaration is a standing judgement about the day; a squall is
               // happening now and has minutes of lead time, so it must be the
               // first thing seen. Renders nothing when there is no squall.
-              if (widget.squall.shouldDisplay) ...<Widget>[
+              if (!AqOneConfig.pitchMode && widget.squall.shouldDisplay) ...<Widget>[
                 SquallBanner(
                   watch: widget.squall,
                   acknowledged: widget.squallAcknowledged,
@@ -361,7 +365,8 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: AqSpace.base),
               ],
-              if (widget.squall.level == SquallLevel.returnNow &&
+              if (!AqOneConfig.pitchMode &&
+                  widget.squall.level == SquallLevel.returnNow &&
                   !widget.squallAcknowledged) ...<Widget>[
                 SizedBox(
                   width: double.infinity,
@@ -394,8 +399,10 @@ class _HomePageState extends State<HomePage> {
                 locationLabel:
                     _weatherAtDevice ? 'your position' : 'Aklan (default)',
               ),
-              const SizedBox(height: AqSpace.base),
-              _CatchAnalysisCard(records: _catchRecords),
+              if (!AqOneConfig.pitchMode) ...<Widget>[
+                const SizedBox(height: AqSpace.base),
+                _CatchAnalysisCard(records: _catchRecords),
+              ],
               if (_advisories.isNotEmpty) ...<Widget>[
                 const SizedBox(height: AqSpace.base),
                 AdvisoryCard(
