@@ -45,6 +45,9 @@ flutter run --dart-define=BUOY_BASE_URL=http://192.168.1.50:8080
 
 # release build for the demo
 flutter build apk --release
+
+# pitch build (Phase 1 manual SOS focus)
+flutter build apk --release --dart-define=PITCH_MODE=true
 ```
 
 Overridable at build time:

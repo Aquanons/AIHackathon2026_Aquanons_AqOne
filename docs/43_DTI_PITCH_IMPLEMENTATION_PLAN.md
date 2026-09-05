@@ -90,7 +90,7 @@ It does not implement LoRa relay, gateway firmware, new AI behavior, or fishing-
 
 | Phase | Status | Evidence | Commit |
 |---|---|---|---|
-| Phase 1 - Pitch mode foundation | READY | Not started | Pending |
+| Phase 1 - Pitch mode foundation | COMPLETE | `flutter analyze` clean; 181/181 tests passed; debug APK with `PITCH_MODE=true` built cleanly | Pending |
 | Phase 2 - Hide deferred UI and background work | BLOCKED by Phase 1 | Not started | Pending |
 | Phase 3 - Verify the focused SOS experience | BLOCKED by Phase 2 | Not started | Pending |
 | Phase 4 - Build, install, rehearse, and record evidence | BLOCKED by Phase 3 | Not started | Pending |
@@ -103,32 +103,32 @@ It does not implement LoRa relay, gateway firmware, new AI behavior, or fishing-
 
 ### Tasks
 
-- [ ] Confirm the worktree is safe and create or switch to `codex/phase1-pitch-build` without discarding user work.
-- [ ] Record the current `flutter analyze` and `flutter test` results in the status table before editing.
-- [ ] Add `AqOneConfig.pitchMode` in `mobile/lib/core/config.dart` using `bool.fromEnvironment('PITCH_MODE', defaultValue: false)`.
-- [ ] Do not add another configuration class or dependency.
-- [ ] Confirm that no existing symbol already provides the same build-time mode.
-- [ ] Add a short pitch-build command to `mobile/README.md` without changing the rest of its structure:
+- [x] Confirm the worktree is safe and create or switch to `codex/phase1-pitch-build` without discarding user work.
+- [x] Record the current `flutter analyze` and `flutter test` results in the status table before editing.
+- [x] Add `AqOneConfig.pitchMode` in `mobile/lib/core/config.dart` using `bool.fromEnvironment('PITCH_MODE', defaultValue: false)`.
+- [x] Do not add another configuration class or dependency.
+- [x] Confirm that no existing symbol already provides the same build-time mode.
+- [x] Add a short pitch-build command to `mobile/README.md` without changing the rest of its structure:
 
 ```powershell
 flutter build apk --release --dart-define=PITCH_MODE=true
 ```
 
-- [ ] Do not change any screen or service behavior in this phase.
+- [x] Do not change any screen or service behavior in this phase.
 
 ### 🧪 Verification Gate
 
-- [ ] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
-- [ ] Run `flutter test` from `mobile/` and require exit code 0.
-- [ ] Run `flutter build apk --debug --dart-define=PITCH_MODE=true` from `mobile/` and require exit code 0.
-- [ ] Confirm by inspection that `PITCH_MODE` defaults to `false`.
-- [ ] Run `git diff --check` from the repository root.
+- [x] Run `flutter analyze` from `mobile/` and require zero analyzer errors.
+- [x] Run `flutter test` from `mobile/` and require exit code 0.
+- [x] Run `flutter build apk --debug --dart-define=PITCH_MODE=true` from `mobile/` and require exit code 0.
+- [x] Confirm by inspection that `PITCH_MODE` defaults to `false`.
+- [x] Run `git diff --check` from the repository root.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Confirm that the implementation is one configuration value and one documentation command.
-- [ ] Confirm that no package, flavor, entrypoint, wrapper, or speculative abstraction was added.
-- [ ] Confirm that normal builds still compile with deferred features enabled.
+- [x] Confirm that the implementation is one configuration value and one documentation command.
+- [x] Confirm that no package, flavor, entrypoint, wrapper, or speculative abstraction was added.
+- [x] Confirm that normal builds still compile with deferred features enabled.
 
 ### 📦 Git Checkpoint
 
