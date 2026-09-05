@@ -2,7 +2,7 @@
 
 # AqOne
 
-**An offline maritime safety network and AI-assisted search-and-rescue platform for municipal fishers operating beyond cellular coverage.**
+**An offline maritime safety network focused first on a manual SOS handshake between municipal fishers and MDRRMO, followed by AI safety support and fishing hotspots for BFAR regulation.**
 
 Built by **Team Aquanons** for AI Fest 2026.
 For New Washington, Aklan, Philippines.
@@ -21,19 +21,24 @@ capsizes or a squall builds, MDRRMO typically learns of it hours later, by word
 of mouth. That delay destroys the most useful information available: incident
 time, last known position, and initial drift direction.
 
-AqOne aims to:
+**Current focus: Phase 1, the manual SOS handshake, for the September 15, 2026 pitching competition.**
+The delivery priorities below were revised on September 5, 2026.
+Complete and verify each product phase before advancing to the next.
 
-- provide an SOS path that does not require cellular service;
-- preserve and relay distress messages until they reach shore;
-- detect emergencies even when the fisher cannot press a button;
-- warn fleets about localized, fast-forming squalls;
-- turn a last known position into an uncertainty-aware search area;
-- close the loop by returning a responder's ETA to the fisher; and
-- keep every claim auditable — exposing confidence, data age, and coverage gaps.
+| Product phase | Focus | Delivery objective |
+|---|---|---|
+| **Phase 1 - Manual SOS handshake (current)** | Fisher sends SOS → buoy/gateway → backend → MDRRMO acknowledges → handset receives acknowledgement and ETA over an available return path. | Prove the handshake on real devices, with an offline outbox, retry/de-duplication, honest delivery states and acknowledgement that persists after reload. Record which transport actually carried the message and its measured range. |
+| **Phase 2 - AI safety features** | Marine weather risk and squall detection, trip anomaly / overdue review, and drift-based search support. | Validate a scenario from hazardous conditions and missed expected contacts to responder review and a conditional search estimate. Manual SOS remains independent of every model. |
+| **Phase 3 - Fishing hotspots for BFAR regulation** | Develop the catch-activity foundation into fishing-hotspot information supporting BFAR fisheries regulation and planning. | Validate the hotspot information and its intended BFAR use with consented catch data and coarse aggregated outputs. This is future work, outside the Phase 1 competition commitment. |
+
+Across all phases, expose data age, uncertainty and coverage gaps, and keep emergency delivery available without a fisher account.
+Existing AI and catch components remain in the repository; their implementation does not make Phases 2 or 3 validated or complete.
 
 ### Status — what is built, what is not
 
-This table precedes every other claim in this document.
+This table records implementation and verification history, separately from the product delivery phases above.
+AI components belong to Phase 2; catch logging and hotspot components belong to Phase 3.
+Numbered phases inside the historical implementation-plan notes below refer to those individual plans, not these three product phases.
 
 | Component | Status |
 |---|---|
@@ -55,10 +60,10 @@ This table precedes every other claim in this document.
 | **Live roster / headcount** | ❌ Roadmap (PRD §5.6) |
 | **Buoy REST endpoint** | 🟡 Public buoy records are available; dashboard buoy markers and health data remain hardcoded/demo data. |
 
-**The end-to-end path that works today:** a phone joins the buoy's WiFi, sends
-an SOS, it reaches the deployed backend, appears on the MDRRMO dashboard within
-10 seconds, a dispatcher acknowledges with an ETA, and that ETA appears on the
-fisher's handset. **No LoRa hardware is required for this path.**
+**Previously reported integration path:** a phone joins the buoy's WiFi, sends an SOS through its WiFi uplink to the backend, and the SOS appears on the MDRRMO dashboard within 10 seconds; a dispatcher acknowledges with an ETA, which returns to the handset.
+**This WiFi route does not prove LoRa delivery or offshore coverage.**
+Phase 1 must re-verify the current handset, buoy, backend and dispatcher together, including the return path, before claiming the handshake complete.
+The dated records below are historical evidence, not a fresh deployment or hardware check.
 
 #### Verification snapshot — 29 August 2026
 
@@ -158,7 +163,12 @@ for verified implementation status.
 
 ### Fisheries intelligence — separate and opt-in
 
-AqOne also has an optional fisheries-intelligence track. Fishers may choose to
+**Phase 3 roadmap: fishing hotspots supporting BFAR fisheries regulation and planning.**
+This work follows the manual SOS handshake and AI safety phases.
+The existing catch-log and aggregate-activity components are a foundation, not a completed BFAR regulatory tool or validated predictive hotspot model.
+The specific BFAR workflow and validation criteria remain to be defined with BFAR.
+
+Fishers may choose to
 record catch logs, which are stored locally first and uploaded only when the
 phone has internet; they never use LoRa airtime reserved for emergencies.
 Catch-activity hotspot guidance currently aggregates consented logs into coarse
@@ -214,21 +224,28 @@ and beacons still depend on a conscious operator. A last known coordinate also
 goes stale quickly, because a person or disabled vessel keeps moving with wind
 and current.
 
-AqOne addresses this in two layers.
+AqOne addresses this through the three product phases above, beginning with a verifiable manual SOS handshake.
 
-**1. Connectivity foundation.** A phone hands an SOS to a nearby buoy over local
-WiFi. Buoys store and forward over LoRa toward a shore gateway, which relays to
-the backend and on to an operations dashboard. The phone never needs cellular
-signal.
+**Phase 1 - Manual SOS handshake.** A phone queues the fisher's SOS and hands it to a nearby buoy over local WiFi, or sends directly when internet is available.
+The backend records one incident, MDRRMO acknowledges it with an ETA, and the handset displays that response once a return path is available.
+The target offshore transport is buoy → LoRa → shore gateway; the current supplied buoy sketch uses WiFi uplink, and LoRa delivery and range remain to be proven.
+The handset must distinguish saving locally, receipt by the buoy, receipt by the backend and an actual MDRRMO response.
+AI inference is not required to send, deliver or acknowledge an SOS.
 
-**2. AI safety layer.** Four models covering the emergency timeline:
+**Phase 2 - AI safety layer.** Four existing model components are reserved for subsequent integration and validation across the emergency timeline:
 
-| Phase | Model | Method | What it does |
+| Scenario stage | Model | Method | Intended role after validation |
 |---|---|---|---|
 | **Before** | Marine hazard | Gradient boosting classifier | Risk zones per sector from live weather |
-| **During** | Squall nowcasting | Logistic regression on pressure-propagation features | Detects a squall crossing the buoy array → **RETURN NOW** |
-| **Overdue** | Trip anomaly | Unsupervised per-vessel statistical profiling | Learns each vessel's habits; flags departures from its *own* pattern, not a fixed timer |
-| **After** | Drift prediction | Monte Carlo Lagrangian particle ensemble | Probability field and 50/75/95% search contours, re-tasked on negative search results |
+| **During** | Squall nowcasting | Logistic regression on pressure-propagation features | Flags a possible approaching squall; live **RETURN NOW** remains gated on field validation and MDRRMO sign-off |
+| **Overdue** | Trip anomaly | Unsupervised per-vessel statistical profiling | Flags missed expected contacts relative to vessel history for responder review; signal loss alone does not establish distress or failure to return home |
+| **After responder escalation** | Drift prediction | Monte Carlo Lagrangian particle ensemble | Estimates search areas conditional on last-known position/time, target type, wind and current; re-tasked on negative search results |
+
+The Phase 2 scenario connects weather context → missed expected contact → MDRRMO review → a drift/search estimate when the available evidence and environmental inputs support one.
+Weather detection is not a prerequisite for an overdue alert, and neither an overdue score nor a manual SOS automatically establishes that a person is drifting.
+Open-Meteo supplies the current weather integration; access to the required PAGASA data is future integration work supported by the university, not an existing feed.
+
+**Phase 3 - Fishing hotspots for BFAR regulation.** Build and validate the fisheries-intelligence workflow described above after Phase 2, using voluntary catch logs and aggregated activity while preserving emergency airtime and fisher privacy.
 
 Drift prediction is **physics, not machine learning** — a Lagrangian simulation
 using published leeway coefficients, the same family of model real SAR services
@@ -241,6 +258,7 @@ judgement.
 
 ### Measured performance
 
+These are historical Phase 2 prototype results, not acceptance evidence for the Phase 1 manual SOS handshake or proof of field readiness.
 Produced by `backend/app/ai/*_eval.py`. Every figure is tagged
 `calibration: "synthetic"` in the API response.
 
@@ -259,15 +277,17 @@ Produced by `backend/app/ai/*_eval.py`. Every figure is tagged
 
 **These figures should be read conservatively.** Containment of 100% across
 eight incidents is encouraging, not proof. Squall recall of 0.133 is weak — the
-model currently misses most squalls. The team's next step is lowering its
-decision threshold to trade precision for recall, on the reasoning that for a
-life-safety system a missed squall is far worse than a false alarm.
+model currently misses most squalls.
+Phase 2 must measure missed events, false alarms and lead time on an appropriate validation set before changing thresholds or claiming operational readiness.
 
 The marine hazard model is the exception: it is trained on **real** data,
 scoring ROC-AUC 0.965, precision 0.829, recall 0.825. Sources, checksums and
 limitations are recorded in [`web/ml/model-card.json`](web/ml/model-card.json).
 
 ### Architecture
+
+Target architecture across Phases 1 and 2; the LoRa relay path remains unproven, as recorded above.
+The Phase 1 SOS path reaches MDRRMO directly from the backend; Phase 2 AI services provide additional decision support.
 
 ```mermaid
 flowchart LR
@@ -276,8 +296,9 @@ flowchart LR
     B <-->|Store-and-forward LoRa| C["Relay buoys"]
     C --> D["Shore gateway"]
     D --> E["FastAPI + PostgreSQL"]
-    E --> F["AI services"]
-    F --> G["MDRRMO dashboard"]
+    E --> G["MDRRMO dashboard"]
+    E -.-> F["Phase 2: AI safety services"]
+    F -.-> G
     G -->|Acknowledge + ETA| E
     E -->|ETA| A
 ```
@@ -522,12 +543,17 @@ nothing rather than placeholder numbers.
 
 ### 7. Manual end-to-end check
 
+**Phase 1 acceptance:** run on the current handset build and actual buoy/gateway, and record the transport used.
+For the phone-without-cellular test, enable airplane mode and then re-enable WiFi to join the buoy.
+
 1. Launch the app and complete onboarding.
 2. Send an SOS with the device offline — it should remain `saved` rather than claiming false delivery.
 3. Restart the app — the SOS should still be in the outbox.
 4. Restore connectivity — it should advance to `relayed` and appear on the dashboard.
 5. Acknowledge it on the dashboard with an ETA — a countdown should appear on the handset.
 6. Power-cycle the buoy mid-delivery — the queued SOS should still arrive, demonstrating that store-and-forward survives a brown-out.
+7. Reload the dashboard and restart the handset; verify that the recorded acknowledgement and ETA are recovered when their retrieval path is available.
+8. Retry the same SOS and confirm it remains one incident; record delivery time, failed attempts, and measured phone-to-buoy and LoRa range separately where tested.
 
 ---
 
@@ -581,7 +607,7 @@ interviews with local fishers, not desk research alone.
 
 | Document | Contents |
 |---|---|
-| `docs/Aqone_PRD (2).md` | **Canonical scope.** Unbuilt sections tagged `[Roadmap — not implemented]` |
+| `docs/Aqone_PRD (2).md` | Detailed PRD; its earlier scope predates the September 5, 2026 delivery priorities recorded above. Unbuilt sections tagged `[Roadmap — not implemented]` |
 | [`00_START_HERE.md`](docs/00_START_HERE.md) | Project brief |
 | [`16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md) | Datasets, AI tools, hardware, bias analysis |
 | [`17_AI_EXPLAINED_SIMPLY.md`](docs/17_AI_EXPLAINED_SIMPLY.md) | Plain-language guide to the four models |
@@ -592,8 +618,9 @@ interviews with local fishers, not desk research alone.
 | [`07_SCOPE_OUT.md`](docs/07_SCOPE_OUT.md) | Deliberate exclusions, and what has since been amended in |
 | [`02_LOAM_PACKET_SPEC.md`](docs/02_LOAM_PACKET_SPEC.md) | LoRa frame format |
 
-`Aqone_PRD (2).md` is the scope of record. Where any other document disagrees
-with it, the PRD takes precedence.
+`docs/Aqone_PRD (2).md` remains the detailed specification.
+For the September 5, 2026 rescope, this README records the updated delivery priorities: Phase 1 manual SOS handshake, Phase 2 AI safety, Phase 3 fishing hotspots for BFAR regulation.
+The PRD and older scope documents have not yet been reconciled with this revision; their broader feature lists are not Phase 1 commitments.
 
 > **Note:** `docs/04_INGEST_API.md` describes a `POST /api/v1/ingest` endpoint
 > that was never built. The real ingest route is `POST /api/sos` — see
