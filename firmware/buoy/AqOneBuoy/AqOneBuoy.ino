@@ -310,7 +310,13 @@ static const uint8_t F_KNOWN     = 0x07;   // any other bit set => drop
 
 static const size_t LOAM_HEADER      = 22;
 static const size_t LOAM_SIG_LEN     = 8;
-static const size_t LOAM_MAX_PAYLOAD = 200;
+// 225 is not a round number, it is the ceiling: the SX1262 carries at most 255
+// LoRa payload bytes, and 22 header + 225 + 8 signature is exactly that. A
+// vessel_id is ALWAYS 32 chars (IdentityStore.generateVesselId fills
+// maxVesselIdLength), so the biggest SOS the app can produce is 255 bytes of
+// JSON - over even this. That is what the shedding passes below are for, and
+// why their order matters.
+static const size_t LOAM_MAX_PAYLOAD = 225;
 static const size_t LOAM_MAX_FRAME   = LOAM_HEADER + LOAM_MAX_PAYLOAD + LOAM_SIG_LEN;
 
 struct LoamFrame {
@@ -682,7 +688,13 @@ struct SosItem {
   double   lon;
   uint32_t clientTs;
   uint32_t seq;        // app-facing counter, shown to the fisher
-  uint16_t meshSeq;    // frame SEQ of the last transmission, matched by ACK
+  // Frame SEQs of the last few transmissions, matched against an incoming
+  // ACK. A RETRY MUST USE A FRESH SEQ or every relay's seen-set drops it as
+  // a duplicate - so by the time the shore's ack for attempt N arrives, the
+  // buoy may already be on attempt N+1. Matching only the newest seq would
+  // discard that ack and keep retransmitting an SOS the backend already has.
+  uint16_t meshSeq[4];
+  uint8_t  meshSeqAt;
   uint8_t  attempts;
   bool     hasFix;
   bool     used;
@@ -762,8 +774,17 @@ size_t buildSosPayload(const SosItem& it, char* out, size_t cap) {
     // Omit lat/lon entirely when there is no fix. Never send 0,0 — that is a
     // real location in the Gulf of Guinea and it would be plotted as one.
     if (it.hasFix) { doc["lat"] = it.lat; doc["lon"] = it.lon; }
-    if (attempt < 2 && it.boat[0]) doc["boat"] = it.boat;
-    if (attempt < 1 && it.note[0]) doc["n"] = it.note;
+    // Shedding order: the BOAT NAME goes first, the note last.
+    //
+    // This looks backwards and is not. The boat name is already in the vessels
+    // table from registration and the backend looks it up by vessel_id -
+    // `payload.boat or payload.vessel_id` in sos.py, and the INSERT COALESCEs
+    // it - so a dropped boat name costs the dispatcher nothing. The fisher's
+    // note exists nowhere else on earth. "taking water" and "engine dead" send
+    // different boats; losing that to save a name the database already has
+    // would be the wrong trade.
+    if (attempt < 1 && it.boat[0]) doc["boat"] = it.boat;
+    if (attempt < 2 && it.note[0]) doc["n"] = it.note;
 
     size_t n = serializeJson(doc, out, cap);
     if (n > 0 && n <= LOAM_MAX_PAYLOAD) {
@@ -933,7 +954,8 @@ void sosTransmit(int slot) {
     return;
   }
 
-  it.meshSeq = meshSeq;   // the SEQ meshSend is about to consume
+  it.meshSeq[it.meshSeqAt % 4] = meshSeq;   // the SEQ meshSend will consume
+  it.meshSeqAt++;
   if (!meshSend(T_SOS, F_WANTS_ACK, payload, n)) {
     // The TX ring was full - transient, and not this SOS's fault. Come back
     // shortly without burning a retry step, or the backoff ladder would widen
@@ -949,7 +971,7 @@ void sosTransmit(int slot) {
   queueRetryAt[slot] = millis() + SOS_RETRY_MS[step] + random(3000);
 
   Serial.printf("[sos] tx %s seq=%u frame=%u attempt=%u\n",
-                it.vesselId, it.seq, it.meshSeq, it.attempts);
+                it.vesselId, it.seq, it.meshSeq[(it.meshSeqAt - 1) % 4], it.attempts);
   queueSave();
 }
 
@@ -1540,14 +1562,16 @@ static uint32_t fnv1a(uint32_t h, const char* s) {
 size_t buildEtaPayload(const JsonObject& ev, const char* state, char* out, size_t cap) {
   for (int attempt = 0; attempt < 3; attempt++) {
     JsonDocument doc;
-    doc["v"]    = 1;
-    doc["kind"] = "eta";
-    doc["vid"]  = ev["vessel_id"];
-    doc["id"]   = ev["id"];
-    doc["ds"]   = state;
+    // No "kind" here, unlike the SOS payload: TYPE 0x06 in the authenticated
+    // header already says what this is, and at 32 hex chars of vessel_id plus
+    // four timestamps this payload has no 14 bytes to spare on restating it.
+    // No client_ts either - RemoteSos.fromJson does not read it.
+    doc["v"]   = 1;
+    doc["vid"] = ev["vessel_id"];
+    doc["id"]  = ev["id"];
+    doc["ds"]  = state;
     if (clockValid()) doc["now"] = (uint32_t)time(nullptr);
-    if (ev["seq"].is<int>())            doc["sq"]  = ev["seq"];
-    if (ev["client_ts"].is<uint32_t>()) doc["cts"] = ev["client_ts"];
+    if (ev["seq"].is<int>()) doc["sq"] = ev["seq"];
 
     uint32_t ackAt = iso8601ToEpoch(ev["acknowledged_at"] | "");
     uint32_t etaAt = iso8601ToEpoch(ev["eta_at"] | "");
@@ -1557,16 +1581,18 @@ size_t buildEtaPayload(const JsonObject& ev, const char* state, char* out, size_
     if (resAt) doc["res"] = resAt;
     if (ev["responder_status"].is<int>()) doc["rs"] = ev["responder_status"];
 
-    // The dispatcher's name and free-text note are the first things to go when
-    // the frame will not fit. Both are context; the ETA and the status code are
-    // the message.
-    if (attempt < 2) {
-      const char* by = ev["acked_by"] | "";
-      if (by[0]) doc["by"] = String(by).substring(0, 23);
-    }
+    // Both of these are truncated hard before they are shed, because half a
+    // dispatcher's note still reads. The NAME goes first if something must go:
+    // "Coast Guard boat en route from Dumaguit" tells a frightened person more
+    // than "dispatcher_maria" does. The ETA and the status code never shed -
+    // they are the message, the rest is context.
     if (attempt < 1) {
+      const char* by = ev["acked_by"] | "";
+      if (by[0]) doc["by"] = String(by).substring(0, 16);
+    }
+    if (attempt < 2) {
       const char* note = ev["responder_note"] | "";
-      if (note[0]) doc["n"] = String(note).substring(0, 48);
+      if (note[0]) doc["n"] = String(note).substring(0, 40);
     }
 
     size_t n = serializeJson(doc, out, cap);
@@ -1785,7 +1811,14 @@ void onMeshFrame(const uint8_t* raw, size_t total, const LoamFrame& f) {
 
       if (ackSrc == NODE_ID && ok) {
         for (int i = 0; i < MAX_QUEUE; i++) {
-          if (!queueBuf[i].used || queueBuf[i].meshSeq != ackSeq) continue;
+          if (!queueBuf[i].used) continue;
+          // Only slots actually written: a fresh entry is memset to zero, and
+          // a rolling uint16 does eventually wrap through 0.
+          int held = queueBuf[i].meshSeqAt < 4 ? queueBuf[i].meshSeqAt : 4;
+          bool mine = false;
+          for (int k = 0; k < held; k++)
+            if (queueBuf[i].meshSeq[k] == ackSeq) { mine = true; break; }
+          if (!mine) continue;
           Serial.printf("[sos] delivered %s seq=%u after %u attempt(s)\n",
                         queueBuf[i].vesselId, queueBuf[i].seq, queueBuf[i].attempts);
           queueBuf[i].used = false;

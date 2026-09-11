@@ -170,7 +170,7 @@ them:
 
 | Deviation | Why |
 |---|---|
-| `PAYLOAD_LEN` cap raised 64 → 200 bytes | 64 cannot hold an SOS carrying a 32-char `vessel_id` **and** a boat name **and** a note, and `vessel_id` is half the backend's de-duplication key, so it cannot be dropped. The field is already 2 bytes wide, so the wire layout is unchanged — only the "drop if > 64" receive rule moves. Frames are still built smallest-first and shed optional fields before they grow. |
+| `PAYLOAD_LEN` cap raised 64 → 225 bytes | `vessel_id` is **always** 32 chars (`IdentityStore.generateVesselId` fills `maxVesselIdLength`) and is half the backend's de-duplication key, so it can never be dropped — 64 bytes cannot hold it alongside a boat name and a note. 225 is the ceiling, not a round number: the SX1262 carries 255 payload bytes, and 22 header + 225 + 8 signature is exactly that. The field is already 2 bytes wide, so the wire layout is unchanged — only the "drop if > 64" receive rule moves. |
 | New `TYPE 0x05 CHAT` | Already reserved for chat by `docs/19_HELTEC_DATA_FLOW.md`. |
 | New `TYPE 0x06 ETA` | The dispatcher's acknowledgement coming back down. The original type list had no frame for it at all. |
 | SF10, not SF7 | `docs/33` supersedes the SF7 in the spec's radio table. |
@@ -181,10 +181,30 @@ not re-sign, TTL flood with a 64-entry seen-set, gateways never re-transmit.
 
 ### Graceful degradation, not failure
 
-A frame that will not fit sheds its optional fields in order of how little the
-recipient needs them — the note first, then the boat name (SOS), or the
-dispatcher's name then their free-text note (ETA). A distress call with fields
-missing is still a rescue; a distress call that did not fit is not.
+A distress call with fields missing is still a rescue; a distress call that did
+not fit is not. So a frame that will not fit sheds fields rather than failing —
+and **the shedding order is a deliberate decision, not a convenience**:
+
+| Frame | Sheds first | Sheds second | Never sheds |
+|---|---|---|---|
+| SOS `0x01` | boat name | note | `vessel_id`, `client_ts`, position |
+| ETA `0x06` | dispatcher name (truncated to 16) | note (truncated to 40) | `eta_at`, `delivery_state`, status code |
+
+The SOS order looks backwards and is not. The boat name is already in the
+`vessels` table from registration and the backend looks it up by `vessel_id`
+(`payload.boat or payload.vessel_id`, then COALESCEd on insert), so dropping it
+costs the dispatcher nothing. The fisher's note exists nowhere else. "Taking
+water" and "engine dead" send different boats.
+
+The worst case is not hypothetical: `vessel_id` is always 32 chars, so an SOS
+with a full 32-char boat name and a 64-char note is 255 bytes of JSON and **will**
+shed its boat name. A typical one (`"Maria Gracia"`, `"engine dead"`) is 182
+bytes and sheds nothing.
+
+The ETA payload also omits `kind` and `client_ts` — `TYPE 0x06` in the
+authenticated header already says what the frame is, and `RemoteSos.fromJson`
+never reads `client_ts`. At 32 hex chars of `vessel_id` plus four timestamps,
+that payload has no bytes to spend on restating things.
 
 ## What it exposes
 
