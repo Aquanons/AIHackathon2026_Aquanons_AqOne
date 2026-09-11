@@ -216,7 +216,8 @@ fixtures/      Shared contract fixtures
 | Arnold | Ingest pipeline and gateway |
 | Daniel | Hardware and buoy firmware |
 | Jade | Dashboard |
-| Doreen Kay | Mobile UI/UX and pitch |
+| Doreen Kay | Company branding and business direction |
+| Kc Condes | Pitching and business development support |
 
 Contributors should read [`AGENTS.md`](AGENTS.md) and the documentation register in [`docs/README.md`](docs/README.md) before changing shared contracts.
 
