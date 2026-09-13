@@ -100,8 +100,12 @@ enum WeatherCondition {
   final String label;
   final IconData icon;
 
-  /// WMO 4677 interpretation codes as served by Open-Meteo.
-  static WeatherCondition fromCode(int code) {
+  /// WMO 4677 interpretation codes as served by Open-Meteo. Returns null
+  /// if the code is negative, unrecognized, or missing.
+  static WeatherCondition? tryFromCode(int? code) {
+    if (code == null || code < 0) {
+      return null;
+    }
     if (code == 0) {
       return WeatherCondition.sunny;
     }
@@ -144,9 +148,14 @@ enum WeatherCondition {
     if (code == 96 || code == 99) {
       return WeatherCondition.severeThunderstorm;
     }
-    if (code >= 95) {
+    if (code >= 95 && code <= 99) {
       return WeatherCondition.thunderstorm;
     }
-    return WeatherCondition.calm;
+    return null;
   }
+
+  /// WMO 4677 interpretation codes as served by Open-Meteo. Falls back to calm
+  /// for legacy backwards-compatibility when a non-null enum is required.
+  static WeatherCondition fromCode(int code) =>
+      tryFromCode(code) ?? WeatherCondition.calm;
 }

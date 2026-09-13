@@ -22,7 +22,7 @@ class HourlyInterval {
   final double? waveM;
 
   WeatherCondition? get condition =>
-      weatherCode != null ? WeatherCondition.fromCode(weatherCode!) : null;
+      weatherCode != null ? WeatherCondition.tryFromCode(weatherCode) : null;
 
   Map<String, Object?> toCacheJson() => <String, Object?>{
         'time': time.toIso8601String(),

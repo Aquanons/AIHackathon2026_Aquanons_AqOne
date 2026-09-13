@@ -265,26 +265,26 @@ Obtain explicit confirmation before Phase 3.
 
 ### Tasks
 
-- [ ] Implement `mobile/lib/services/fishing_window.dart` with explicit time and the calculation/data rules above.
+- [x] Implement `mobile/lib/services/fishing_window.dart` with explicit time and the calculation/data rules above.
   Return values and reason identifiers, not English display strings on enums.
-- [ ] Reuse `RiskLevel` and existing threshold constants; separate known hazard severity from data completeness.
+- [x] Reuse `RiskLevel` and existing threshold constants; separate known hazard severity from data completeness.
   Fix the shared `SafetyScore`/weather-code parsing cases that otherwise erase thunderstorm evidence or present missing codes as clear.
   Trace all callers before changing shared behavior.
-- [ ] Evaluate current and upcoming risk separately, stop contiguous coverage at the first gap, and distinguish hazard onset from coverage end.
-- [ ] Apply official/squall warning precedence without clearing active warnings after network failure.
+- [x] Evaluate current and upcoming risk separately, stop contiguous coverage at the first gap, and distinguish hazard onset from coverage end.
+- [x] Apply official/squall warning precedence without clearing active warnings after network failure.
   Never compare hourly rainfall against daily thresholds or invent a journey buffer.
-- [ ] Add `mobile/test/fishing_window_test.dart` using fixed clocks and compact table-driven cases from the acceptance matrix.
+- [x] Add `mobile/test/fishing_window_test.dart` using fixed clocks and compact table-driven cases from the acceptance matrix.
   Extend the existing `mobile/test/daily_outlook_test.dart` for any shared scoring/parsing correction.
 
 ### Verification Gate
 
-- [ ] From `mobile`: `flutter test test/fishing_window_test.dart test/daily_outlook_test.dart` exits 0.
-- [ ] From `mobile`: `flutter test` exits 0 and `flutter analyze` reports 0 issues.
+- [x] From `mobile`: `flutter test test/fishing_window_test.dart test/daily_outlook_test.dart` exits 0 (37 passed).
+- [x] From `mobile`: `flutter test` exits 0 and `flutter analyze` reports 0 issues (212 passed, 0 issues).
 
 ### Review Gate (Ponytail)
 
-- [ ] One deterministic calculation; no timer, network call, new AI model or independent threshold engine inside it.
-- [ ] No unnecessary abstraction or configurable policy framework; provisional constants remain visibly provisional.
+- [x] One deterministic calculation; no timer, network call, new AI model or independent threshold engine inside it.
+- [x] No unnecessary abstraction or configurable policy framework; provisional constants remain visibly provisional.
 
 ### Git Checkpoint
 

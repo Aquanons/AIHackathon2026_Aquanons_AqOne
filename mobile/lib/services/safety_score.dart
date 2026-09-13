@@ -104,8 +104,18 @@ class SafetyScore {
         break;
     }
 
-    // Nothing at all to go on. Say so instead of defaulting to green.
+    // If numeric inputs are absent, check if a recognized adverse weather condition
+    // raised the level. Never erase thunderstorm/hazard evidence into unknown.
     if (gust == null && wave == null && precip == null) {
+      if (level != RiskLevel.safe) {
+        return RiskAssessment(
+          level: level,
+          source: RiskSource.device,
+          score: _score(gust: gust, wave: wave, precip: precip),
+          reason: _sentence(reasons),
+          inputs: inputs,
+        );
+      }
       return RiskAssessment.unknown;
     }
 

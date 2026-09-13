@@ -230,6 +230,13 @@ void main() {
       expect(WeatherCondition.fromCode(3), WeatherCondition.overcast);
       expect(WeatherCondition.fromCode(45), WeatherCondition.foggy);
     });
+
+    test('tryFromCode returns null on negative or unrecognized codes', () {
+      expect(WeatherCondition.tryFromCode(-1), isNull);
+      expect(WeatherCondition.tryFromCode(999), isNull);
+      expect(WeatherCondition.tryFromCode(null), isNull);
+      expect(WeatherCondition.tryFromCode(95), WeatherCondition.thunderstorm);
+    });
   });
 
   group('SafetyScore thresholds', () {
@@ -301,6 +308,12 @@ void main() {
 
     test('no usable inputs yields unknown, not green', () {
       expect(SafetyScore.assess(day()).level, RiskLevel.unknown);
+    });
+
+    test('a thunderstorm without numeric wind/wave preserves danger evidence', () {
+      final RiskAssessment risk = SafetyScore.assess(day(code: 95));
+      expect(risk.level, RiskLevel.danger);
+      expect(risk.reason?.toLowerCase(), contains('thunderstorm'));
     });
 
     test('a verdict without wave data admits the gap', () {
