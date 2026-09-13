@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../core/config.dart';
 import '../core/tokens.dart';
 import '../data/forecast_cache.dart';
+import '../l10n/app_localizations.dart';
 import '../data/identity_store.dart';
 import '../models/advisory.dart';
 import '../models/catch_record.dart';
@@ -69,11 +70,12 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<SosRecord> _records = const <SosRecord>[];
   BuoyStatus? _buoy;
   Timer? _buoyTimer;
   Timer? _seaTimer;
+  Timer? _minuteTimer;
   StreamSubscription<void>? _changes;
   StreamSubscription<void>? _catchChanges;
   List<CatchRecord> _catchRecords = const <CatchRecord>[];
@@ -105,6 +107,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _changes = widget.service.changes.listen((_) => _loadRecords());
     if (!AqOneConfig.pitchMode) {
       _catchChanges = widget.catches.changes.listen((_) => _loadCatchRecords());
@@ -134,10 +137,27 @@ class _HomePageState extends State<HomePage> {
       AqOneConfig.forecastRefreshInterval,
       (_) => _loadForecast(),
     );
+    _minuteTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      },
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _minuteTimer?.cancel();
     _buoyTimer?.cancel();
     _seaTimer?.cancel();
     _forecastTimer?.cancel();
@@ -272,6 +292,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
+    final t = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
@@ -405,9 +426,13 @@ class _HomePageState extends State<HomePage> {
                 isLoading: _weatherLoading,
                 onRetry: _retryWeather,
                 forecast: _forecast,
+                forecastOutlook: _forecastOutlook,
+                seaCondition: _sea,
+                squall: widget.squall,
                 forecastAge: _forecastFetchedAt,
-                locationLabel:
-                    _weatherAtDevice ? 'your position' : 'Aklan (default)',
+                locationLabel: _weatherAtDevice
+                    ? t.weatherLocationYourPosition
+                    : t.weatherLocationDefault,
               ),
               if (!AqOneConfig.pitchMode) ...<Widget>[
                 const SizedBox(height: AqSpace.base),

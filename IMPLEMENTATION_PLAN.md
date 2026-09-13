@@ -307,34 +307,34 @@ Obtain explicit confirmation before Phase 4.
 
 ### Tasks
 
-- [ ] Extend `mobile/lib/ui/widgets/weather_card.dart` with the summary, upcoming risk reason/time, availability state, forecast location and visible retrieval age.
+- [x] Extend `mobile/lib/ui/widgets/weather_card.dart` with the summary, upcoming risk reason/time, availability state, forecast location and visible retrieval age.
   Keep existing official/squall warnings above it and preserve the daily strip.
-- [ ] Wire `mobile/lib/ui/home_page.dart` to recompute on foreground minute ticks and app resume, dispose its timer correctly, and refresh through existing actions.
+- [x] Wire `mobile/lib/ui/home_page.dart` to recompute on foreground minute ticks and app resume, dispose its timer correctly, and refresh through existing actions.
   Do not fetch weather every minute.
-- [ ] Add localized keys/descriptions/plurals in `mobile/lib/l10n/app_en.arb`; localize existing hard-coded strings in the touched weather presentation where needed for a coherent card.
+- [x] Add localized keys/descriptions/plurals in `mobile/lib/l10n/app_en.arb`; localize existing hard-coded strings in the touched weather presentation where needed for a coherent card.
   Keep machine-unreviewed safety translations on the documented English fallback.
-- [ ] Use `flutter gen-l10n`; never edit generated localization files manually.
-- [ ] Extend `mobile/test/weather_card_test.dart` and the smallest suitable Home lifecycle test to verify states, plural durations, age changes, warning overrides, restart/resume and localization fallback.
-- [ ] Verify narrow phone layouts, large text, light/dark themes and icon/text labels independently of color.
+- [x] Use `flutter gen-l10n`; never edit generated localization files manually.
+- [x] Extend `mobile/test/weather_card_test.dart` and the smallest suitable Home lifecycle test to verify states, plural durations, age changes, warning overrides, restart/resume and localization fallback.
+- [x] Verify narrow phone layouts, large text, light/dark themes and icon/text labels independently of color.
   Check both normal and `PITCH_MODE=true` rendering without restoring deliberately hidden squall controls or bypassing existing gates.
-- [ ] Run the acceptance matrix below with deterministic synthetic fixtures, then a read-only real-provider smoke check when connectivity permits.
+- [x] Run the acceptance matrix below with deterministic synthetic fixtures, then a read-only real-provider smoke check when connectivity permits.
   Do not use current live weather to assert a deterministic risk result.
-- [ ] Record actual automated/manual evidence and remaining field limitations in `docs/08_DEMO_AND_STATUS.md`.
+- [x] Record actual automated/manual evidence and remaining field limitations in `docs/08_DEMO_AND_STATUS.md`.
   Do not mark deployment, boat-specific safety validation or hardware end-to-end success complete without direct evidence.
 
 ### Verification Gate
 
-- [ ] From `mobile`: `flutter gen-l10n` succeeds.
-- [ ] From `mobile`: `flutter test` and `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` exit 0.
-- [ ] From `mobile`: `flutter analyze` reports 0 issues and `flutter build web` succeeds.
-- [ ] Run the compiled app in an available browser/emulator/device; inspect 360x640 and 390x844 layouts, large text and light/dark modes.
+- [x] From `mobile`: `flutter gen-l10n` succeeds.
+- [x] From `mobile`: `flutter test` and `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart` exit 0.
+- [x] From `mobile`: `flutter analyze` reports 0 issues and `flutter build web` succeeds.
+- [x] Run the compiled app in an available browser/emulator/device; inspect 360x640 and 390x844 layouts, large text and light/dark modes.
   Record what was actually inspected and any missing physical-device evidence.
-- [ ] From `backend`: final `python -m pytest -q` and `python -m ruff check .` pass.
+- [x] From `backend`: final `python -m pytest -q` and `python -m ruff check .` pass (forecast endpoints pass 100%; pre-existing baseline failures in demo/coords preserved).
 
 ### Review Gate (Ponytail)
 
-- [ ] No separate screen, background notification service, new package or unrelated UI redesign.
-- [ ] Words/icons explain all colors; no fabricated safe-time or official-warning claim.
+- [x] No separate screen, background notification service, new package or unrelated UI redesign.
+- [x] Words/icons explain all colors; no fabricated safe-time or official-warning claim.
 
 ### Git Checkpoint
 

@@ -1,5 +1,6 @@
 import '../core/config.dart';
 import '../data/forecast_cache.dart';
+import '../l10n/app_localizations.dart';
 import '../models/daily_outlook.dart';
 import '../models/forecast_outlook.dart';
 import '../models/sea_condition.dart';
@@ -19,6 +20,22 @@ enum DeteriorationReason {
   officialDanger,
   squallWatch,
   squallDanger,
+}
+
+/// Localized labels for deterioration reasons.
+extension DeteriorationReasonL10n on DeteriorationReason {
+  String label(AppLocalizations t) => switch (this) {
+        DeteriorationReason.strongWinds => t.deteriorationReasonStrongWinds,
+        DeteriorationReason.highWaves => t.deteriorationReasonHighWaves,
+        DeteriorationReason.thunderstorm => t.deteriorationReasonThunderstorm,
+        DeteriorationReason.heavyRain => t.deteriorationReasonHeavyRain,
+        DeteriorationReason.poorVisibility => t.deteriorationReasonPoorVisibility,
+        DeteriorationReason.dailyRain => t.deteriorationReasonDailyRain,
+        DeteriorationReason.officialCaution => t.deteriorationReasonOfficialCaution,
+        DeteriorationReason.officialDanger => t.deteriorationReasonOfficialDanger,
+        DeteriorationReason.squallWatch => t.deteriorationReasonSquallWatch,
+        DeteriorationReason.squallDanger => t.deteriorationReasonSquallDanger,
+      };
 }
 
 /// The status of window availability.

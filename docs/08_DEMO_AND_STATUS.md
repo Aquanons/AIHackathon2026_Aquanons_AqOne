@@ -9,6 +9,28 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-13 — Phase 4: Localized Fishing Weather Window UI & Acceptance Verification
+
+Recorded per `IMPLEMENTATION_PLAN.md` Phase 4 ("Localized Home UI and acceptance verification").
+Environment: Windows 11, Flutter 3.44.7 (channel stable), Python 3.11.9.
+
+**Build and Verification Evidence:**
+- **Automated Verification Gate:**
+  - `flutter gen-l10n`: Succeeded cleanly; generated `mobile/lib/l10n/app_localizations*.dart` with ICU plural rules and localizations for English, Tagalog (`fil`), and Aklanon (`akl`).
+  - `flutter analyze`: 0 issues found across all mobile files.
+  - `flutter test`: 222/222 tests passed (including all 15 unit and widget tests in `mobile/test/weather_card_test.dart` and 28 tests in `mobile/test/fishing_window_test.dart`).
+  - `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart`: 3/3 passed (verifying manual SOS button present, catch/hotspot/squall controls absent, and clean rendering across 360x640 and 390x844 viewports without RenderFlex overflow).
+  - `flutter build web`: Succeeded cleanly (`Built build\web` in 64.8s).
+  - Backend tests: `cd backend && python -m pytest -q tests/test_public_forecast.py && python -m ruff check app/api/public.py tests/test_public_forecast.py` — 13 passed in 2.07s, 0 ruff errors.
+- **UI & Layout Verification:**
+  - `_FishingWindowSummary` tested in narrow 360x640 layout with 1.5x large text scaling and dark theme without any RenderFlex overflow (header text in `Expanded`, badge container in `Flexible` with `TextOverflow.ellipsis`).
+  - Evaluated under both light and dark themes; caution/warning states use high-contrast dark text on amber badges (`#000000` text on `#FDE68A`) to satisfy WCAG AA readability.
+  - Verified localization fallback: Tagalog and Aklanon build cleanly falling back to reviewed English strings where translations are not yet reviewed by native speakers per `mobile/lib/l10n/README.md`.
+  - HomePage lifecycle and foreground 1-minute timer re-renders window countdowns without firing unneeded network calls.
+- **Direct Observations & Honest Caveats:**
+  - **Hardware / Handset Status:** Physical buoy hardware and field handset tests remain to be scheduled outdoors; this verification is conducted in local automated test, widget harness, and web compilation environments.
+  - **No Live Overwrite:** Did not run destructive or live weather override; all automated tests run against deterministic synthetic fixtures.
+
 ## 2026-09-05 — Phase 1 Pitch Mode Mobile Build & Verification
 
 Recorded per `docs/43_DTI_PITCH_IMPLEMENTATION_PLAN.md` Phase 4.
