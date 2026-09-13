@@ -37,6 +37,9 @@ class SosService {
   Timer? _reconcileTimer;
   bool _relayRunning = false;
   bool _reconcileRunning = false;
+  final Set<String> _closedIncidents = <String>{};
+  final Map<String, int> _pendingReplies = <String, int>{};
+  final Set<String> _syncedReplies = <String>{};
 
   void start() {
     _relayTimer ??= Timer.periodic(
@@ -54,6 +57,9 @@ class SosService {
     _reconcileTimer?.cancel();
     _relayTimer = null;
     _reconcileTimer = null;
+    _closedIncidents.clear();
+    _pendingReplies.clear();
+    _syncedReplies.clear();
     _changes.close();
   }
 
@@ -233,9 +239,17 @@ class SosService {
     if (remoteId == null) {
       // The backend has not told us its id for this incident yet, so there is
       // nothing to attach the reply to. The next reconcile will bring it.
+      _pendingReplies[localId] = reply;
       return false;
     }
-    return _backend.replyToSos(int.tryParse(remoteId) ?? -1, reply);
+    final ok = await _backend.replyToSos(int.tryParse(remoteId) ?? -1, reply);
+    if (ok) {
+      _pendingReplies.remove(localId);
+      _syncedReplies.add(localId);
+    } else {
+      _pendingReplies[localId] = reply;
+    }
+    return ok;
   }
 
   /// Attaches (or fills in) the note on an SOS already dispatched.
@@ -324,7 +338,9 @@ class SosService {
     }
     _reconcileRunning = true;
     try {
-      final pending = await _outbox.awaitingReconcile();
+      final pending = await _outbox.awaitingReconcile(
+        excludedIds: _closedIncidents,
+      );
       if (pending.isEmpty) {
         return;
       }
@@ -426,12 +442,25 @@ class SosService {
       }
 
       // Any fisher reply saved locally before the backend had assigned this SOS
-      // an event id - or while the vessel credential was absent/revoked - can
-      // be flushed once reconcile knows the backend id and a token is present.
-      if (record.fisherReply != null && match.id.isNotEmpty) {
-        unawaited(
-          _backend.replyToSos(int.tryParse(match.id) ?? -1, record.fisherReply!),
-        );
+      // an event id - or while the vessel credential was absent/revoked, or if a
+      // previous attempt failed - can be flushed once reconcile knows the backend id.
+      final pendingReply = _pendingReplies[record.localId] ??
+          (!_syncedReplies.contains(record.localId) ? record.fisherReply : null);
+      if (pendingReply != null && match.id.isNotEmpty) {
+        try {
+          final ok = await _backend.replyToSos(
+            int.tryParse(match.id) ?? -1,
+            pendingReply,
+          );
+          if (ok) {
+            _pendingReplies.remove(record.localId);
+            _syncedReplies.add(record.localId);
+          }
+        } catch (_) {}
+      }
+
+      if (match.resolvedAt != null && !_pendingReplies.containsKey(record.localId)) {
+        _closedIncidents.add(record.localId);
       }
 
     }

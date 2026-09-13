@@ -1,3 +1,5 @@
+import 'package:aqone/l10n/app_localizations.dart';
+
 import '../core/config.dart';
 
 /// Where a queued catch log has got to.
@@ -7,15 +9,13 @@ import '../core/config.dart';
 /// LoRa - airtime is reserved for distress - so it simply waits on the
 /// handset until the phone has internet again.
 enum SyncState {
-  pending('pending', 'Saved on this phone', 'Will upload when you have signal.'),
-  synced('synced', 'Uploaded', 'Recorded on the AqOne backend.'),
-  rejected('rejected', 'Rejected', 'The server would not accept this entry.');
+  pending('pending'),
+  synced('synced'),
+  rejected('rejected');
 
-  const SyncState(this.wire, this.title, this.description);
+  const SyncState(this.wire);
 
   final String wire;
-  final String title;
-  final String description;
 
   static SyncState fromWire(String? value) {
     for (final state in SyncState.values) {
@@ -25,6 +25,20 @@ enum SyncState {
     }
     return SyncState.pending;
   }
+}
+
+extension SyncStateL10n on SyncState {
+  String title(AppLocalizations t) => switch (this) {
+        SyncState.pending => t.syncStatePendingTitle,
+        SyncState.synced => t.syncStateSyncedTitle,
+        SyncState.rejected => t.syncStateRejectedTitle,
+      };
+
+  String description(AppLocalizations t) => switch (this) {
+        SyncState.pending => t.syncStatePendingDescription,
+        SyncState.synced => t.syncStateSyncedDescription,
+        SyncState.rejected => t.syncStateRejectedDescription,
+      };
 }
 
 /// A catch logged by the fisherman, queued locally until it can be uploaded.

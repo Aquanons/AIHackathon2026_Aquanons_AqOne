@@ -50,29 +50,67 @@ class OutboxStore {
     return rows.map(SosRecord.fromRow).toList(growable: false);
   }
 
-  Future<List<SosRecord>> awaitingReconcile() async {
+  Future<List<SosRecord>> awaitingReconcile({Set<String>? excludedIds}) async {
     final db = await _db.database;
     final rows = await db.query(
       'outbox',
-      where: 'state IN (?, ?)',
+      where: 'state IN (?, ?, ?)',
       whereArgs: <Object?>[
         DeliveryState.relayed.wire,
         DeliveryState.delivered.wire,
+        DeliveryState.acknowledged.wire,
       ],
       orderBy: 'client_ts ASC',
     );
-    return rows.map(SosRecord.fromRow).toList(growable: false);
+    final records = rows.map(SosRecord.fromRow).toList(growable: false);
+    if (excludedIds != null && excludedIds.isNotEmpty) {
+      return records
+          .where((r) => !excludedIds.contains(r.localId))
+          .toList(growable: false);
+    }
+    return records;
   }
 
   Future<SosRecord> save(SosRecord record) async {
     final db = await _db.database;
-    await db.update(
-      'outbox',
-      record.toRow(),
-      where: 'local_id = ?',
-      whereArgs: <Object?>[record.localId],
-    );
-    return record;
+    return await db.transaction((txn) async {
+      final rows = await txn.query(
+        'outbox',
+        where: 'local_id = ?',
+        whereArgs: <Object?>[record.localId],
+      );
+      if (rows.isEmpty) {
+        await txn.insert('outbox', record.toRow());
+        return record;
+      }
+      final existing = SosRecord.fromRow(rows.first);
+      final mergedState = existing.state.merge(record.state);
+      final merged = record.copyWith(
+        state: mergedState,
+        buoyId: record.buoyId ?? existing.buoyId,
+        srcId: record.srcId ?? existing.srcId,
+        seq: record.seq ?? existing.seq,
+        serverTs: record.serverTs ?? existing.serverTs,
+        relayedAt: existing.relayedAt ?? record.relayedAt,
+        deliveredAt: existing.deliveredAt ?? record.deliveredAt,
+        acknowledgedAt: existing.acknowledgedAt ?? record.acknowledgedAt,
+        ackedBy: record.ackedBy ?? existing.ackedBy,
+        lastError: record.state.rank > existing.state.rank
+            ? record.lastError
+            : (record.lastError ?? existing.lastError),
+      );
+      final row = merged.toRow();
+      if (record.note == null && existing.note != null) {
+        row['note'] = existing.note;
+      }
+      await txn.update(
+        'outbox',
+        row,
+        where: 'local_id = ?',
+        whereArgs: <Object?>[record.localId],
+      );
+      return merged;
+    });
   }
 
   Future<SosRecord?> advance(

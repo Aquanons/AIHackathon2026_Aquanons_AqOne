@@ -46,7 +46,8 @@ class LocaleController extends ChangeNotifier {
   /// device-locale behaviour rather than blocking launch.
   static Future<LocaleController> load() async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final SharedPreferences prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(milliseconds: 500));
       final String? stored = prefs.getString(_prefsKey);
       if (stored == null || stored.isEmpty) {
         return LocaleController._(null);

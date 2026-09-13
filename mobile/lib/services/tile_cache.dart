@@ -139,29 +139,6 @@ class TileCache {
     } catch (_) {}
   }
 
-  Future<int> sizeInBytes() async {
-    try {
-      final Directory dir = await _directory();
-      int total = 0;
-      for (final FileSystemEntity entry in dir.listSync()) {
-        if (entry is File) {
-          total += entry.statSync().size;
-        }
-      }
-      return total;
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  Future<void> clear() async {
-    try {
-      final Directory dir = await _directory();
-      for (final FileSystemEntity entry in dir.listSync()) {
-        await entry.delete().catchError((_) => entry);
-      }
-    } catch (_) {}
-  }
 
   Future<Uint8List?> fetch(String url) async {
     try {

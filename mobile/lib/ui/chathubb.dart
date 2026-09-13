@@ -456,13 +456,17 @@ class ChatService extends ChangeNotifier {
 
   /// Puts one chat line on the wire and records it for [_isSelfEcho]. Every
   /// outgoing `msg` goes through here so no send path can forget to.
-  void _sendChat(String text) {
-    _selfSends.add(_SelfSend(text, DateTime.now()));
-    _safeSend(jsonEncode({
+  bool _sendChat(String text) {
+    if (!_connected || _channel == null) return false;
+    final ok = _safeSend(jsonEncode({
       'type': 'msg',
       'from': displayName,
       'text': text,
     }));
+    if (ok) {
+      _selfSends.add(_SelfSend(text, DateTime.now()));
+    }
+    return ok;
   }
 
   /// Advances the oldest still-[ChatHubState.queuedLocally] message with this
@@ -516,16 +520,25 @@ class ChatService extends ChangeNotifier {
 
   Future<void> _flushQueue() async {
     if (_pendingQueue.isEmpty || !_connected) return;
-    final batch = List<String>.from(_pendingQueue);
-    _pendingQueue.clear();
-    for (final text in batch) {
-      _sendChat(text);
+    while (_pendingQueue.isNotEmpty && _connected) {
+      final text = _pendingQueue.first;
+      final sent = _sendChat(text);
+      if (!sent) {
+        break;
+      }
+      _pendingQueue.removeAt(0);
       _markHandedToHub(text);
+      _persistQueue();
       // Small delay so the Heltec relay can keep up.
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
-    _persistQueue();
   }
+
+  @visibleForTesting
+  Future<void> flushQueueForTesting() => _flushQueue();
+
+  @visibleForTesting
+  void setConnectedForTesting(bool value) => _connected = value;
 
   Future<void> _loadQueue() async {
     try {
@@ -591,10 +604,14 @@ class ChatService extends ChangeNotifier {
 
   // ----- Helpers ----------------------------------------------------------
 
-  void _safeSend(String data) {
+  bool _safeSend(String data) {
     try {
+      if (!_connected || _channel == null) return false;
       _channel?.sink.add(data);
-    } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Turns a raw WebSocket/HTTP exception into text a fisher standing near
@@ -713,6 +730,7 @@ class _ChathubbState extends State<Chathubb> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _onAquan = false;
+  Timer? _wifiPollTimer;
 
   @override
   void initState() {
@@ -720,13 +738,15 @@ class _ChathubbState extends State<Chathubb> {
     _service.start();
     _checkWifi();
     // Poll WiFi status every 5 s.
-    Timer.periodic(const Duration(seconds: 5), (_) {
+    _wifiPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) _checkWifi();
     });
   }
 
   @override
   void dispose() {
+    _wifiPollTimer?.cancel();
+    _wifiPollTimer = null;
     _service.dispose();
     _controller.dispose();
     _scroll.dispose();

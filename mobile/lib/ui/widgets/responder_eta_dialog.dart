@@ -53,10 +53,10 @@ class _ResponderEtaDialogState extends State<ResponderEtaDialog> {
   /// Never renders a negative number. Once the promised time passes it says
   /// the responder is delayed but still coming, because a countdown expiring
   /// into silence reads as "nobody is coming".
-  String _countdown(DateTime eta) {
+  String _countdown(AppLocalizations t, DateTime eta) {
     final remaining = eta.difference(DateTime.now());
     if (remaining.isNegative) {
-      return 'Delayed — still on the way';
+      return t.responderDelayedStillOnWay;
     }
     final minutes = remaining.inMinutes;
     final seconds = remaining.inSeconds % 60;
@@ -252,7 +252,7 @@ class _ResponderEtaDialogState extends State<ResponderEtaDialog> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _countdown(eta),
+                    _countdown(t, eta),
                     style: TextStyle(
                       fontSize: overdue ? 16 : 34,
                       fontWeight: FontWeight.w900,

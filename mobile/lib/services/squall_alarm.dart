@@ -1,16 +1,10 @@
-import 'dart:async';
-
-import 'package:audioplayers/audioplayers.dart';
-import 'package:vibration/vibration.dart';
+import 'sos_alarm.dart';
 
 /// Persistent RETURN NOW alarm.
 ///
-/// Plays the same looping tone and vibration pattern as [SosAlarm]. It used
-/// to use HapticFeedback and SystemSound to avoid a dependency, but both
-/// packages ship anyway for SOS, and the result was absurd: the alarm telling
-/// a fisherman a squall was twenty minutes out was quieter than the one
-/// confirming he had pressed a button. SystemSound is also silenced by iOS
-/// silent mode, which is where a phone lives on a boat.
+/// Plays the same looping tone and vibration pattern as [SosAlarm]. Delegates
+/// audio and vibration to [SosAlarm] while retaining squall identity and
+/// acknowledgement state.
 ///
 /// ## What this can and cannot do
 ///
@@ -23,10 +17,9 @@ import 'package:vibration/vibration.dart';
 /// Say that plainly if asked. A fisher with the app closed will not be woken
 /// by this.
 class SquallAlarm {
-  SquallAlarm();
+  SquallAlarm({SosAlarm? alarm}) : _alarm = alarm ?? SosAlarm();
 
-  final AudioPlayer _player = AudioPlayer();
-  bool _ringing = false;
+  final SosAlarm _alarm;
 
   /// Identity of the squall currently being alarmed for, so one continuous
   /// squall does not re-trigger on every poll.
@@ -36,7 +29,7 @@ class SquallAlarm {
   /// the previous one was acknowledged.
   String? _acknowledgedIdentity;
 
-  bool get isRinging => _ringing;
+  bool get isRinging => _alarm.isRinging;
 
   bool isAcknowledged(String identity) => _acknowledgedIdentity == identity;
 
@@ -44,37 +37,10 @@ class SquallAlarm {
   /// fisher has already acknowledged this same squall.
   void start(String identity) {
     if (_acknowledgedIdentity == identity) return;
-    if (_ringing && _activeIdentity == identity) return;
+    if (_alarm.isRinging && _activeIdentity == identity) return;
 
     _activeIdentity = identity;
-    _ringing = true;
-
-    // Independent best-effort calls: a phone with no vibration motor must
-    // still get the sound, and a phone with no audio output must still buzz.
-    unawaited(_startVibration());
-    unawaited(_startSound());
-  }
-
-  Future<void> _startVibration() async {
-    try {
-      final bool hasVibrator = await Vibration.hasVibrator();
-      if (!hasVibrator || !_ringing) {
-        return;
-      }
-      // Same pattern as SOS. Two sharp pulses then a pause, repeating - a
-      // single continuous buzz fades into the background of a pocket.
-      await Vibration.vibrate(
-        pattern: const <int>[0, 400, 200, 400, 600],
-        repeat: 0,
-      );
-    } catch (_) {}
-  }
-
-  Future<void> _startSound() async {
-    try {
-      await _player.setReleaseMode(ReleaseMode.loop);
-      await _player.play(AssetSource('audio/sos_alarm.wav'));
-    } catch (_) {}
+    _alarm.start();
   }
 
   /// The fisher pressed "I'm heading back". Sound and vibration stop; the
@@ -83,7 +49,7 @@ class SquallAlarm {
     if (_activeIdentity != null) {
       _acknowledgedIdentity = _activeIdentity;
     }
-    _stopSound();
+    _alarm.stop();
   }
 
   /// The squall cleared server-side. Reset fully so a later squall alarms
@@ -91,17 +57,10 @@ class SquallAlarm {
   void clear() {
     _activeIdentity = null;
     _acknowledgedIdentity = null;
-    _stopSound();
-  }
-
-  void _stopSound() {
-    _ringing = false;
-    unawaited(Vibration.cancel().catchError((_) {}));
-    unawaited(_player.stop().catchError((_) {}));
+    _alarm.stop();
   }
 
   void dispose() {
-    _stopSound();
-    unawaited(_player.dispose().catchError((_) {}));
+    _alarm.dispose();
   }
 }

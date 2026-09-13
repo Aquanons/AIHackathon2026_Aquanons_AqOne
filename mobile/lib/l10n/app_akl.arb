@@ -1,15 +1,12 @@
 {
   "@@locale": "akl",
-
   "languageSettingTitle": "Lengguwahe",
   "languageSettingSubtitle": "Pilia ro lengguwahe para sa bug-os nga app",
   "languagePickerPrompt": "Pilia ro imong lengguwahe",
-
   "navHome": "Home",
   "navVenture": "Paglayag",
   "navAdvisories": "Mga Abiso",
   "navProfile": "Profile",
-
   "deliveryStateSavedTitle": "Nasave",
   "deliveryStateSavedDescription": "Owa pa napadaea — waeay malapit nga buoy. Automatiko nga ipapadaea.",
   "deliveryStateRelayedTitle": "Napasa",
@@ -18,14 +15,12 @@
   "deliveryStateDeliveredDescription": "Nabaton ron it dashboard it MDRRMO.",
   "deliveryStateAcknowledgedTitle": "Nasabat",
   "deliveryStateAcknowledgedDescription": "Nakita ron it responder ining SOS.",
-
   "deliveryMetaPosition": "Posisyon",
   "deliveryMetaBuoy": "Buoy",
   "deliveryMetaNote": "Nota",
   "deliveryMetaResponder": "Responder",
   "deliveryMetaLastAttempt": "Huling pagtinguha",
   "deliveryNoGpsFix": "Waeay narekord nga GPS",
-
   "seaStatusSafeHeadline": "Ligtas nga Magguwa",
   "seaStatusSafeSubtitle": "Maayad ro kahimtangan it dagat.",
   "seaStatusCautionHeadline": "Mag-andam - Basaha ro Abiso",
@@ -34,7 +29,6 @@
   "seaStatusNotAdvisedSubtitle": "Magpabilin sa baybay - delikado ro kahimtangan.",
   "seaStatusUnknownHeadline": "Waeay pa nga Abiso",
   "seaStatusUnknownSubtitle": "Basaha ro mga abiso bag-o magguwa.",
-
   "crashTitle": "May problema nga natabo",
   "crashBody": "Indi mabuksan ining parte it screen. Subuki nga magbalik, o i-restart ro app kon padayon ini.",
   "onboardingWelcomeBack": "Maayad nga pagbalik",
@@ -107,12 +101,30 @@
   "responderReplySentStillInDanger": "Naeaman it MDRRMO nga nagahueat ka pa gihapon it bueig.",
   "responderReplySentSafeNow": "Napahibaeuan ron ro MDRRMO nga seguro ka ron.",
   "responderReplyPending": "Owa pa napadaea — automatiko nga ipapadaea kon may koneksyon ron.",
-
   "chatStatusQueued": "Nakapila",
   "chatStatusSent": "Napadaea",
   "chatStatusSynced": "Na-sync",
   "chatCharacterLimitLabel": "{used}/{max}",
   "squallStaleTitle": "Pagtantiya sa unos: waeay masaligan nga kahimtangan",
   "squallStaleBodyWithAge": "Huling nahibaeuan nga reading: {age} na ang nakalabay. Waeay ipakita nga kahimtangan it unos subong.",
-  "squallStaleBodyNoAge": "Waeay ipakita nga kahimtangan it unos subong."
+  "squallStaleBodyNoAge": "Waeay ipakita nga kahimtangan it unos subong.",
+  "sosCancelledNothingSent": "Ginkansela ro SOS. Waeay it napadaea.",
+  "sosSetupBoatRequired": "Tapuson ro pagrehistro it imong baroto bag-o magpadaea it SOS.",
+  "responderDelayedStillOnWay": "Naulang — nagapakadto pa gihapon",
+  "syncStatePendingTitle": "Nasave sa telepono nga raya",
+  "syncStatePendingDescription": "I-upload kon may signal ka eon.",
+  "syncStateSyncedTitle": "Na-upload eon",
+  "syncStateSyncedDescription": "Narekord eon sa backend it AqOne.",
+  "syncStateRejectedTitle": "Ginpamalibaran",
+  "syncStateRejectedDescription": "Owa ginbaton it server ining rekord.",
+  "catchConfirmWeightTitle": "Kumpirmahon ro matuod nga kabug-aton",
+  "catchEstimatedAtSeaLabel": "Tantiya sa dagat: {weight} kg{species}",
+  "catchActualWeightLabel": "Matuod nga kabug-aton (kg)",
+  "catchDialogConfirm": "Kumpirmahon",
+  "catchWeightConfirmedSnackbar": "Nakumpirma eon ro kabug-aton.",
+  "catchWeightSaveFailedSnackbar": "Indi ma-save ro kabug-aton nga ato.",
+  "catchTodayCatchesTitle": "Mga dakop makaron nga adlaw",
+  "catchNoCatchesToday": "Owa pa it nailista nga dakop makaron nga adlaw.",
+  "catchSpeciesUnspecified": "Waeay gintumod",
+  "catchEstimatedSummary": "~{weight} kg tantiya · {time}"
 }

@@ -176,7 +176,7 @@ class ForecastOutlook {
     if (hoursRaw is List) {
       for (final item in hoursRaw) {
         final h = HourlyInterval.fromCacheJson(item);
-        if (h != null) _mergeInterval(hoursMap, h);
+        if (h != null) mergeInterval(hoursMap, h);
       }
     }
     final hours = hoursMap.values.toList()..sort((a, b) => a.time.compareTo(b.time));
@@ -233,7 +233,7 @@ class ForecastOutlook {
           if (timeStr is String) {
             final time = parseForecastTime(timeStr, offset);
             if (time != null) {
-              _mergeInterval(
+              mergeInterval(
                 hoursMap,
                 HourlyInterval(
                   time: time,
@@ -353,7 +353,7 @@ class ForecastOutlook {
           if (time == null) continue;
 
           final wave = marineWavesByTime[time];
-          _mergeInterval(
+          mergeInterval(
             hoursMap,
             HourlyInterval(
               time: time,
@@ -427,7 +427,7 @@ class ForecastOutlook {
     return rank(condA) >= rank(condB) ? a : b;
   }
 
-  static void _mergeInterval(
+  static void mergeInterval(
     Map<DateTime, HourlyInterval> map,
     HourlyInterval next,
   ) {

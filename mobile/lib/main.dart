@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -180,8 +182,11 @@ class _AqOneAppState extends State<AqOneApp> {
     );
     // Keystore before the rest of restore, so a returning skipper's profile
     // decrypts on first read rather than showing blanks for a frame.
-    _restoreSecureState().whenComplete(_restore);
+    _restoreSecureStateWithTimeout().whenComplete(_restore);
   }
+
+  static const Duration _secureRestoreTimeout = Duration(seconds: 2);
+  bool _secureRestoreTimedOut = false;
 
   void _onLocaleChanged() {
     if (mounted) {
@@ -200,6 +205,14 @@ class _AqOneAppState extends State<AqOneApp> {
     super.dispose();
   }
 
+  Future<void> _restoreSecureStateWithTimeout() async {
+    try {
+      await _restoreSecureState().timeout(_secureRestoreTimeout);
+    } catch (_) {
+      _secureRestoreTimedOut = true;
+    }
+  }
+
   /// Reads the keystore and, if it answers, turns on field encryption and
   /// restores the vessel credential.
   ///
@@ -212,11 +225,11 @@ class _AqOneAppState extends State<AqOneApp> {
   Future<void> _restoreSecureState() async {
     try {
       final List<int>? key = await _secureStore.readOrCreateFieldKey();
-      if (key != null) {
+      if (!_secureRestoreTimedOut && key != null) {
         _identityStore.useCipher(FieldCipher.withKey(key));
       }
       final String? token = await _secureStore.readVesselToken();
-      if (token != null) {
+      if (!_secureRestoreTimedOut && token != null) {
         _backend.setVesselBearerToken(token);
       }
     } catch (_) {
@@ -226,8 +239,6 @@ class _AqOneAppState extends State<AqOneApp> {
   }
 
   Future<void> _restore() async {
-    // Language first: everything after this point may need to render text,
-    // and switching locale mid-restore would flash English at the user.
     final controller = await LocaleController.load();
     if (!mounted) {
       return;
@@ -268,8 +279,8 @@ class _AqOneAppState extends State<AqOneApp> {
       AppDiagnostics.log('restore', e);
       if (!mounted) return;
       setState(() {
-        _identity = null;
         _loading = false;
+        _entered = false;
       });
     }
   }

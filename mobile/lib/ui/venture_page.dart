@@ -395,7 +395,7 @@ class _VenturePageState extends State<VenturePage> {
     if (!shouldSend) {
       unawaited(_sosAlarm.stop());
       setState(() => _isSendingSos = false);
-      _snack('SOS cancelled. Nothing was sent.');
+      _snack(AppLocalizations.of(context).sosCancelledNothingSent);
       return;
     }
 
@@ -410,7 +410,7 @@ class _VenturePageState extends State<VenturePage> {
       await _showEmergencyDetailsSheet(record);
     } on StateError {
       if (mounted) {
-        _snack('Finish setting up your boat before sending an SOS.');
+        _snack(AppLocalizations.of(context).sosSetupBoatRequired);
       }
     } finally {
       unawaited(_sosAlarm.stop());

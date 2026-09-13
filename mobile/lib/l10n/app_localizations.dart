@@ -1125,6 +1125,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Aklan (default)'**
   String get weatherLocationDefault;
+
+  /// Shown when the fisher cancels the emergency SOS countdown before dispatch.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS cancelled. Nothing was sent.'**
+  String get sosCancelledNothingSent;
+
+  /// Shown when attempting to send an SOS without completing vessel setup.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish setting up your boat before sending an SOS.'**
+  String get sosSetupBoatRequired;
+
+  /// SAFETY CRITICAL. Shown in the responder countdown when the estimated arrival time has passed but rescue is still en route.
+  ///
+  /// In en, this message translates to:
+  /// **'Delayed — still on the way'**
+  String get responderDelayedStillOnWay;
+
+  /// Title for catch sync state: pending upload.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved on this phone'**
+  String get syncStatePendingTitle;
+
+  /// Description for catch sync state: pending upload.
+  ///
+  /// In en, this message translates to:
+  /// **'Will upload when you have signal.'**
+  String get syncStatePendingDescription;
+
+  /// Title for catch sync state: synced.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploaded'**
+  String get syncStateSyncedTitle;
+
+  /// Description for catch sync state: synced.
+  ///
+  /// In en, this message translates to:
+  /// **'Recorded on the AqOne backend.'**
+  String get syncStateSyncedDescription;
+
+  /// Title for catch sync state: rejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get syncStateRejectedTitle;
+
+  /// Description for catch sync state: rejected.
+  ///
+  /// In en, this message translates to:
+  /// **'The server would not accept this entry.'**
+  String get syncStateRejectedDescription;
+
+  /// Title of dialog to confirm actual catch weight.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm actual weight'**
+  String get catchConfirmWeightTitle;
+
+  /// Subtitle in weight confirmation dialog showing the original sea estimate and species.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated at sea: {weight} kg{species}'**
+  String catchEstimatedAtSeaLabel(String weight, String species);
+
+  /// Input label for confirmed weight in kg.
+  ///
+  /// In en, this message translates to:
+  /// **'Actual weight (kg)'**
+  String get catchActualWeightLabel;
+
+  /// Action button to confirm catch weight.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get catchDialogConfirm;
+
+  /// Snackbar shown after successfully confirming catch weight.
+  ///
+  /// In en, this message translates to:
+  /// **'Weight confirmed.'**
+  String get catchWeightConfirmedSnackbar;
+
+  /// Snackbar shown when confirming catch weight fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save that weight.'**
+  String get catchWeightSaveFailedSnackbar;
+
+  /// AppBar title for today's catches screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s catches'**
+  String get catchTodayCatchesTitle;
+
+  /// Placeholder message when no catches are logged today.
+  ///
+  /// In en, this message translates to:
+  /// **'No catches logged today yet.'**
+  String get catchNoCatchesToday;
+
+  /// Label when catch species is unspecified or empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Unspecified'**
+  String get catchSpeciesUnspecified;
+
+  /// Summary line on catch tile showing estimated weight and time.
+  ///
+  /// In en, this message translates to:
+  /// **'~{weight} kg estimated · {time}'**
+  String catchEstimatedSummary(String weight, String time);
 }
 
 class _AppLocalizationsDelegate

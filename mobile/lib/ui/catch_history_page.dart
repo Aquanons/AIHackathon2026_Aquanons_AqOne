@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
@@ -18,6 +19,9 @@ class CatchHistoryPage extends StatefulWidget {
   @override
   State<CatchHistoryPage> createState() => _CatchHistoryPageState();
 }
+
+String _trimZero(double value) =>
+    value == value.roundToDouble() ? value.toInt().toString() : '$value';
 
 class _CatchHistoryPageState extends State<CatchHistoryPage> {
   StreamSubscription<void>? _sub;
@@ -49,9 +53,11 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
   }
 
   Future<void> _confirmWeight(CatchRecord record) async {
+    final t = AppLocalizations.of(context);
     final controller = TextEditingController(
       text: _trimZero(record.estimatedQuantityKg),
     );
+    final species = record.speciesName != null ? ' · ${record.speciesName}' : '';
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -62,14 +68,13 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
         // content in a scroll view (what `scrollable: true` does) lets it
         // adapt instead.
         scrollable: true,
-        title: const Text('Confirm actual weight'),
+        title: Text(t.catchConfirmWeightTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Estimated at sea: ${_trimZero(record.estimatedQuantityKg)} kg'
-              '${record.speciesName != null ? ' · ${record.speciesName}' : ''}',
+              t.catchEstimatedAtSeaLabel(_trimZero(record.estimatedQuantityKg), species),
               style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
@@ -77,8 +82,8 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
               controller: controller,
               autofocus: true,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Actual weight (kg)',
+              decoration: InputDecoration(
+                labelText: t.catchActualWeightLabel,
                 isDense: true,
               ),
             ),
@@ -87,7 +92,7 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(t.actionCancel),
           ),
           FilledButton(
             onPressed: () {
@@ -97,7 +102,7 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
               }
               Navigator.pop(ctx, parsed);
             },
-            child: const Text('Confirm'),
+            child: Text(t.catchDialogConfirm),
           ),
         ],
       ),
@@ -110,23 +115,21 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
       await widget.catches.confirmWeight(record.localId, result);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Weight confirmed.')),
+          SnackBar(content: Text(AppLocalizations.of(context).catchWeightConfirmedSnackbar)),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save that weight.')),
+          SnackBar(content: Text(AppLocalizations.of(context).catchWeightSaveFailedSnackbar)),
         );
       }
     }
   }
 
-  static String _trimZero(double value) =>
-      value == value.roundToDouble() ? value.toInt().toString() : '$value';
-
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     final palette = AqPalette.of(context);
     return Scaffold(
       backgroundColor: palette.canvas,
@@ -134,7 +137,7 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
         backgroundColor: palette.surface,
         elevation: 0,
         title: Text(
-          "Today's catches",
+          t.catchTodayCatchesTitle,
           style: TextStyle(color: palette.primaryText, fontWeight: FontWeight.w700),
         ),
         iconTheme: IconThemeData(color: palette.primaryText),
@@ -150,7 +153,7 @@ class _CatchHistoryPageState extends State<CatchHistoryPage> {
                         const SizedBox(height: 120),
                         Center(
                           child: Text(
-                            'No catches logged today yet.',
+                            t.catchNoCatchesToday,
                             style: TextStyle(color: palette.dimText),
                           ),
                         ),
@@ -187,8 +190,9 @@ class _CatchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     final species = record.speciesName?.trim();
-    final label = species == null || species.isEmpty ? 'Unspecified' : species;
+    final label = species == null || species.isEmpty ? t.catchSpeciesUnspecified : species;
     final time = TimeOfDay.fromDateTime(record.createdAt).format(context);
 
     return Container(
@@ -223,7 +227,7 @@ class _CatchTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '~${record.estimatedQuantityKg == record.estimatedQuantityKg.roundToDouble() ? record.estimatedQuantityKg.toInt() : record.estimatedQuantityKg} kg estimated · $time',
+                  t.catchEstimatedSummary(_trimZero(record.estimatedQuantityKg), time),
                   style: TextStyle(fontSize: 11.5, color: palette.dimText),
                 ),
                 const SizedBox(height: 4),
@@ -240,7 +244,7 @@ class _CatchTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      record.state.title,
+                      record.state.title(t),
                       style: TextStyle(fontSize: 11, color: palette.secondaryText),
                     ),
                   ],
@@ -273,7 +277,7 @@ class _CatchTile extends StatelessWidget {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('Confirm', style: TextStyle(fontSize: 11.5)),
+              child: Text(t.catchDialogConfirm, style: const TextStyle(fontSize: 11.5)),
             ),
         ],
       ),

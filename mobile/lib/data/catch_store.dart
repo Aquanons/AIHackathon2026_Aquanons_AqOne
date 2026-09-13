@@ -96,13 +96,38 @@ class CatchStore {
 
   Future<CatchRecord> save(CatchRecord record) async {
     final db = await _db.database;
-    await db.update(
-      _table,
-      record.toRow(),
-      where: 'local_id = ?',
-      whereArgs: <Object?>[record.localId],
-    );
-    return record;
+    return await db.transaction((txn) async {
+      final rows = await txn.query(
+        _table,
+        where: 'local_id = ?',
+        whereArgs: <Object?>[record.localId],
+      );
+      if (rows.isEmpty) {
+        await txn.insert(_table, record.toRow());
+        return record;
+      }
+      final existing = CatchRecord.fromRow(rows.first);
+      final merged = record.copyWith(
+        quantityKg: record.quantityKg ?? existing.quantityKg,
+        quantityConfirmedAt:
+            record.quantityConfirmedAt ?? existing.quantityConfirmedAt,
+        quantitySyncedAt:
+            record.quantitySyncedAt ?? existing.quantitySyncedAt,
+        serverId: record.serverId ?? existing.serverId,
+        state: (record.state == SyncState.pending &&
+                existing.state == SyncState.synced)
+            ? existing.state
+            : record.state,
+        syncedAt: record.syncedAt ?? existing.syncedAt,
+      );
+      await txn.update(
+        _table,
+        merged.toRow(),
+        where: 'local_id = ?',
+        whereArgs: <Object?>[record.localId],
+      );
+      return merged;
+    });
   }
 
   Future<CatchRecord?> markSynced(String localId, {String? serverId}) async {

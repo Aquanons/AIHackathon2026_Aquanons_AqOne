@@ -125,6 +125,21 @@ class FishingWindowResult {
 class FishingWindowCalculator {
   const FishingWindowCalculator._();
 
+  static DateTime _calculateOnset(HourlyInterval h, _HourRisk hRisk) {
+    final isWaveOnly = hRisk.reason == DeteriorationReason.highWaves &&
+        !(h.gustKph != null &&
+            h.gustKph! >=
+                (hRisk.level == RiskLevel.danger
+                    ? AqOneConfig.dangerGustKph
+                    : AqOneConfig.cautionGustKph)) &&
+        !(h.condition == WeatherCondition.severeThunderstorm ||
+            h.condition == WeatherCondition.thunderstorm ||
+            h.condition == WeatherCondition.heavyRain ||
+            h.condition == WeatherCondition.rainy ||
+            h.condition == WeatherCondition.showers ||
+            h.condition == WeatherCondition.foggy);
+    return isWaveOnly ? h.time : h.time.subtract(const Duration(hours: 1));
+  }
   static FishingWindowResult calculate({
     required ForecastOutlook? forecast,
     SeaCondition? seaCondition,
@@ -261,21 +276,7 @@ class FishingWindowCalculator {
     final Map<DateTime, HourlyInterval> deduplicatedHours =
         <DateTime, HourlyInterval>{};
     for (final h in forecast.hours) {
-      final existing = deduplicatedHours[h.time];
-      if (existing == null) {
-        deduplicatedHours[h.time] = h;
-      } else {
-        deduplicatedHours[h.time] = HourlyInterval(
-          time: h.time,
-          weatherCode: ForecastOutlook.moreSevereWeatherCode(
-              existing.weatherCode, h.weatherCode),
-          tempC: existing.tempC ?? h.tempC,
-          windKph: ForecastOutlook.maxNullable(existing.windKph, h.windKph),
-          gustKph: ForecastOutlook.maxNullable(existing.gustKph, h.gustKph),
-          precipMm: ForecastOutlook.maxNullable(existing.precipMm, h.precipMm),
-          waveM: ForecastOutlook.maxNullable(existing.waveM, h.waveM),
-        );
-      }
+      ForecastOutlook.mergeInterval(deduplicatedHours, h);
     }
     final sortedHours = deduplicatedHours.values.toList()
       ..sort((a, b) => a.time.compareTo(b.time));
@@ -339,14 +340,22 @@ class FishingWindowCalculator {
     }
 
     // Atmospheric interval covering now:
-    // Interval with timestamp T covers [T - 1h, T]
+    // Interval with timestamp T covers [T - 1h, T)
     HourlyInterval? currentHour;
     for (final h in sortedHours) {
       final start = h.time.subtract(const Duration(hours: 1));
       final end = h.time;
-      if (!start.isAfter(now) && (now.isBefore(end) || (h.time == now && now == end))) {
+      if (!start.isAfter(now) && now.isBefore(end)) {
         currentHour = h;
         break;
+      }
+    }
+    if (currentHour == null) {
+      for (final h in sortedHours.reversed) {
+        if (!h.time.isAfter(now)) {
+          currentHour = h;
+          break;
+        }
       }
     }
 
@@ -399,19 +408,7 @@ class FishingWindowCalculator {
         final hRisk = _assessHour(h);
         if (hRisk.level == RiskLevel.caution ||
             hRisk.level == RiskLevel.danger) {
-          final isWaveOnly = hRisk.reason == DeteriorationReason.highWaves &&
-              !(h.gustKph != null &&
-                  h.gustKph! >=
-                      (hRisk.level == RiskLevel.danger
-                          ? AqOneConfig.dangerGustKph
-                          : AqOneConfig.cautionGustKph)) &&
-              !(h.condition == WeatherCondition.severeThunderstorm ||
-                  h.condition == WeatherCondition.thunderstorm ||
-                  h.condition == WeatherCondition.heavyRain ||
-                  h.condition == WeatherCondition.rainy ||
-                  h.condition == WeatherCondition.showers ||
-                  h.condition == WeatherCondition.foggy);
-          final onset = isWaveOnly ? h.time : h.time.subtract(const Duration(hours: 1));
+          final onset = _calculateOnset(h, hRisk);
           return FishingWindowResult(
             currentRisk: RiskLevel.safe,
             upcomingRisk: hRisk.level,
@@ -447,20 +444,7 @@ class FishingWindowCalculator {
 
       final hRisk = _assessHour(h);
       if (hRisk.level == RiskLevel.caution || hRisk.level == RiskLevel.danger) {
-        final isWaveOnly = hRisk.reason == DeteriorationReason.highWaves &&
-            !(h.gustKph != null &&
-                h.gustKph! >=
-                    (hRisk.level == RiskLevel.danger
-                        ? AqOneConfig.dangerGustKph
-                        : AqOneConfig.cautionGustKph)) &&
-            !(h.condition == WeatherCondition.severeThunderstorm ||
-                h.condition == WeatherCondition.thunderstorm ||
-                h.condition == WeatherCondition.heavyRain ||
-                h.condition == WeatherCondition.rainy ||
-                h.condition == WeatherCondition.showers ||
-                h.condition == WeatherCondition.foggy);
-
-        final onset = isWaveOnly ? h.time : intervalStart;
+        final onset = _calculateOnset(h, hRisk);
         deteriorationTime = onset;
         upcomingRisk = hRisk.level;
         upcomingReason = hRisk.reason;
@@ -477,6 +461,54 @@ class FishingWindowCalculator {
       }
 
       lastEnd = h.time;
+    }
+
+    // Check future daily rain restrictions (date-level, no invented midnight countdown)
+    DailyOutlook? earliestAdverseDay;
+    for (final day in forecast.days) {
+      final isFutureDay = (day.date.year > now.year) ||
+          (day.date.year == now.year && day.date.month > now.month) ||
+          (day.date.year == now.year &&
+              day.date.month == now.month &&
+              day.date.day > now.day);
+      if (isFutureDay &&
+          ((day.precipMm != null &&
+              day.precipMm! >= AqOneConfig.cautionPrecipMm) ||
+           (day.risk.level == RiskLevel.danger ||
+            day.risk.level == RiskLevel.caution))) {
+        if (earliestAdverseDay == null || day.date.isBefore(earliestAdverseDay.date)) {
+          earliestAdverseDay = day;
+        }
+      }
+    }
+
+    if (earliestAdverseDay != null) {
+      final adverseDayDate = DateTime.utc(
+        earliestAdverseDay.date.year,
+        earliestAdverseDay.date.month,
+        earliestAdverseDay.date.day,
+      );
+      final deteriorationDate = deteriorationTime != null
+          ? DateTime.utc(
+              deteriorationTime.year,
+              deteriorationTime.month,
+              deteriorationTime.day,
+            )
+          : null;
+
+      if (deteriorationDate == null || adverseDayDate.isBefore(deteriorationDate)) {
+        final isDanger = (earliestAdverseDay.precipMm != null &&
+                earliestAdverseDay.precipMm! >= AqOneConfig.dangerPrecipMm) ||
+            earliestAdverseDay.risk.level == RiskLevel.danger;
+        return FishingWindowResult(
+          currentRisk: RiskLevel.safe,
+          upcomingRisk: isDanger ? RiskLevel.danger : RiskLevel.caution,
+          upcomingReason: DeteriorationReason.dailyRain,
+          firstAdverseDay: earliestAdverseDay.date,
+          availability: FishingWindowAvailability.missingHourly,
+          coverageEnd: lastUsableCoverageEnd,
+        );
+      }
     }
 
     // If deterioration occurred from hourly data
@@ -513,28 +545,6 @@ class FishingWindowCalculator {
         availability: FishingWindowAvailability.incompleteData,
         coverageEnd: lastUsableCoverageEnd,
       );
-    }
-
-    // Check future daily rain restrictions (date-level, no invented midnight countdown)
-    for (final day in forecast.days) {
-      final isFutureDay = (day.date.year > now.year) ||
-          (day.date.year == now.year && day.date.month > now.month) ||
-          (day.date.year == now.year &&
-              day.date.month == now.month &&
-              day.date.day > now.day);
-      if (isFutureDay &&
-          day.precipMm != null &&
-          day.precipMm! >= AqOneConfig.cautionPrecipMm) {
-        final isDanger = day.precipMm! >= AqOneConfig.dangerPrecipMm;
-        return FishingWindowResult(
-          currentRisk: RiskLevel.safe,
-          upcomingRisk: isDanger ? RiskLevel.danger : RiskLevel.caution,
-          upcomingReason: DeteriorationReason.dailyRain,
-          firstAdverseDay: day.date,
-          availability: FishingWindowAvailability.missingHourly,
-          coverageEnd: lastUsableCoverageEnd,
-        );
-      }
     }
 
     final effectiveCoverageEnd = lastUsableCoverageEnd.isBefore(horizonEnd)

@@ -620,4 +620,69 @@ class AppLocalizationsAkl extends AppLocalizations {
 
   @override
   String get weatherLocationDefault => 'Aklan (default)';
+
+  @override
+  String get sosCancelledNothingSent => 'Ginkansela ro SOS. Waeay it napadaea.';
+
+  @override
+  String get sosSetupBoatRequired =>
+      'Tapuson ro pagrehistro it imong baroto bag-o magpadaea it SOS.';
+
+  @override
+  String get responderDelayedStillOnWay => 'Naulang — nagapakadto pa gihapon';
+
+  @override
+  String get syncStatePendingTitle => 'Nasave sa telepono nga raya';
+
+  @override
+  String get syncStatePendingDescription => 'I-upload kon may signal ka eon.';
+
+  @override
+  String get syncStateSyncedTitle => 'Na-upload eon';
+
+  @override
+  String get syncStateSyncedDescription => 'Narekord eon sa backend it AqOne.';
+
+  @override
+  String get syncStateRejectedTitle => 'Ginpamalibaran';
+
+  @override
+  String get syncStateRejectedDescription =>
+      'Owa ginbaton it server ining rekord.';
+
+  @override
+  String get catchConfirmWeightTitle => 'Kumpirmahon ro matuod nga kabug-aton';
+
+  @override
+  String catchEstimatedAtSeaLabel(String weight, String species) {
+    return 'Tantiya sa dagat: $weight kg$species';
+  }
+
+  @override
+  String get catchActualWeightLabel => 'Matuod nga kabug-aton (kg)';
+
+  @override
+  String get catchDialogConfirm => 'Kumpirmahon';
+
+  @override
+  String get catchWeightConfirmedSnackbar => 'Nakumpirma eon ro kabug-aton.';
+
+  @override
+  String get catchWeightSaveFailedSnackbar =>
+      'Indi ma-save ro kabug-aton nga ato.';
+
+  @override
+  String get catchTodayCatchesTitle => 'Mga dakop makaron nga adlaw';
+
+  @override
+  String get catchNoCatchesToday =>
+      'Owa pa it nailista nga dakop makaron nga adlaw.';
+
+  @override
+  String get catchSpeciesUnspecified => 'Waeay gintumod';
+
+  @override
+  String catchEstimatedSummary(String weight, String time) {
+    return '~$weight kg tantiya · $time';
+  }
 }

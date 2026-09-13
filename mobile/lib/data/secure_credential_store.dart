@@ -121,8 +121,17 @@ class SecureCredentialStore {
   /// Null means the platform store is unavailable. Callers must then fall
   /// back to plaintext rather than refusing to work - see [FieldCipher].
   Future<List<int>?> readOrCreateFieldKey() async {
-    final String? existing = await _read(_keyFieldKey);
-    if (existing != null) {
+    final String? existing;
+    try {
+      existing = await _storage.read(key: _keyFieldKey);
+    } catch (_) {
+      // Platform read failed (transient error or keystore unavailable).
+      // Returning null keeps profile in plaintext rather than overwriting
+      // an existing key and destroying data.
+      return null;
+    }
+
+    if (existing != null && existing.isNotEmpty) {
       try {
         final List<int> bytes = base64Decode(existing);
         if (bytes.length == 32) {
