@@ -10,6 +10,7 @@ import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
 import '../models/community_spot.dart';
 import '../models/daily_outlook.dart';
+import '../models/forecast_outlook.dart';
 import '../models/hazard_alert.dart';
 import '../models/hotspot_cell.dart';
 import '../models/sea_condition.dart';
@@ -100,6 +101,21 @@ class VentureFeeds {
     }
   }
 
+  /// Complete forecast outlook including daily strips, hourly intervals,
+  /// and retrieval provenance.
+  Future<ForecastOutlook?> forecastOutlook({
+    required double lat,
+    required double lon,
+    String? municipality,
+  }) {
+    return _forecast.outlook(
+      lat: lat,
+      lon: lon,
+      municipality: municipality ?? AqOneConfig.defaultMunicipality,
+      days: AqOneConfig.forecastDays,
+    );
+  }
+
   /// Seven-day outlook with a per-day risk verdict.
   ///
   /// Delegates to the configured [ForecastProvider], which tries the fused
@@ -109,13 +125,13 @@ class VentureFeeds {
     required double lat,
     required double lon,
     String? municipality,
-  }) {
-    return _forecast.daily(
+  }) async {
+    final outlook = await forecastOutlook(
       lat: lat,
       lon: lon,
-      municipality: municipality ?? AqOneConfig.defaultMunicipality,
-      days: AqOneConfig.forecastDays,
+      municipality: municipality,
     );
+    return outlook?.days;
   }
 
   Future<List<BuoyMarker>?> buoys() async {
@@ -180,16 +196,31 @@ class VentureFeeds {
   /// The MDRRMO-set sea condition. Falls back to the public endpoint so the
   /// banner still populates if the authenticated one is unavailable.
   Future<SeaCondition?> seaCondition() async {
-    final decoded = await _cachedJson(
-      MapSnapshotStore.feedSeaCondition,
-      () async =>
-          await _backend.getJson(AqOneConfig.seaConditionPath) ??
-          await _backend.getJson(AqOneConfig.publicSeaConditionPath),
-    );
-    if (decoded == null) {
+    final Object? live =
+        await _backend.getJson(AqOneConfig.seaConditionPath) ??
+        await _backend.getJson(AqOneConfig.publicSeaConditionPath);
+
+    final MapSnapshotStore? store = _snapshots;
+    if (live != null) {
+      if (store != null) {
+        await store.save(MapSnapshotStore.feedSeaCondition, jsonEncode(live));
+      }
+      return SeaCondition.tryParse(live);
+    }
+    if (store == null) {
       return null;
     }
-    return SeaCondition.tryParse(decoded);
+    final MapSnapshot? cached =
+        await store.load(MapSnapshotStore.feedSeaCondition);
+    if (cached == null) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(cached.payload);
+      return SeaCondition.tryParse(decoded, fetchedAt: cached.fetchedAt);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Squall nowcast (AI #1).

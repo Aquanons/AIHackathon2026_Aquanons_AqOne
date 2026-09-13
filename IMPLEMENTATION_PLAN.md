@@ -219,29 +219,29 @@ Do not touch Phase 2 files until the user confirms.
 
 ### Tasks
 
-- [ ] Add the small forecast result/parser in `mobile/lib/models/forecast_outlook.dart`; reuse `DailyOutlook` for daily values.
-- [ ] Update `mobile/lib/services/forecast_provider.dart` and `mobile/lib/services/venture_feeds.dart` to return the result without adding a second independently refreshed weather pipeline.
+- [x] Add the small forecast result/parser in `mobile/lib/models/forecast_outlook.dart`; reuse `DailyOutlook` for daily values.
+- [x] Update `mobile/lib/services/forecast_provider.dart` and `mobile/lib/services/venture_feeds.dart` to return the result without adding a second independently refreshed weather pipeline.
   Backend remains first choice; direct Open-Meteo fallback supports the same hourly schema and sampling policy.
-- [ ] Handle older daily-only backend responses deliberately: try the existing fallback for missing hourly coverage, keep usable backend days, and preserve the provenance of whichever sources are displayed.
+- [x] Handle older daily-only backend responses deliberately: try the existing fallback for missing hourly coverage, keep usable backend days, and preserve the provenance of whichever sources are displayed.
   If hourly fallback fails, display daily-only guidance; do not treat it as an empty valid window.
-- [ ] Update `mobile/lib/data/forecast_cache.dart` and Home wiring to retain timestamps on every successful fetch and preserve source/location metadata across restarts.
+- [x] Update `mobile/lib/data/forecast_cache.dart` and Home wiring to retain timestamps on every successful fetch and preserve source/location metadata across restarts.
   Use one complete versioned record and preserve the previous usable record when writes fail.
-- [ ] Prevent an old cache restore or slower request from replacing newer data.
+- [x] Prevent an old cache restore or slower request from replacing newer data.
   Reuse the existing request-ordering pattern in `venture_feeds.dart` rather than introducing another concurrency abstraction.
-- [ ] Repair sea-condition provenance in the existing `seaCondition` retrieval path; a cached response must retain its stored fetch time.
+- [x] Repair sea-condition provenance in the existing `seaCondition` retrieval path; a cached response must retain its stored fetch time.
   Inspect every caller of changed shared methods and preserve existing snapshot behavior outside this path.
-- [ ] Extend `mobile/test/forecast_provider_test.dart` and existing feed/cache tests where available; add one focused forecast-cache test file if none exists.
+- [x] Extend `mobile/test/forecast_provider_test.dart` and existing feed/cache tests where available; add one focused forecast-cache test file if none exists.
   Cover old schema, fallback failures, corrupt/future/expired caches, source/location round-trip, cached official timestamps, and out-of-order results.
 
 ### Verification Gate
 
-- [ ] From `mobile`: `flutter test` exits 0, including provider/cache/provenance regressions.
-- [ ] From `mobile`: `flutter analyze` reports 0 issues.
+- [x] From `mobile`: `flutter test` exits 0, including provider/cache/provenance regressions.
+- [x] From `mobile`: `flutter analyze` reports 0 issues.
 
 ### Review Gate (Ponytail)
 
-- [ ] No new package, database migration, permissions, duplicate polling timer or generic cache framework.
-- [ ] Only actual forecast callers and the required official timestamp path changed.
+- [x] No new package, database migration, permissions, duplicate polling timer or generic cache framework.
+- [x] Only actual forecast callers and the required official timestamp path changed.
 
 ### Git Checkpoint
 

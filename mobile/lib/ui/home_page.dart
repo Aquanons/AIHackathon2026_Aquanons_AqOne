@@ -11,6 +11,7 @@ import '../data/identity_store.dart';
 import '../models/advisory.dart';
 import '../models/catch_record.dart';
 import '../models/daily_outlook.dart';
+import '../models/forecast_outlook.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
 import '../models/sos_record.dart';
@@ -90,12 +91,16 @@ class _HomePageState extends State<HomePage> {
   // daily data does not change minute to minute and the battery has to last
   // a trip.
   List<DailyOutlook> _forecast = const <DailyOutlook>[];
+  ForecastOutlook? _forecastOutlook;
   Timer? _forecastTimer;
   static const ForecastCache _forecastCache = ForecastCache();
+  final RequestGuard _forecastGuard = RequestGuard();
 
-  /// Set only while the strip on screen came from the offline cache, so it
-  /// can be stamped with when it was actually fetched.
+  /// Retrieval timestamp for the forecast on screen.
   DateTime? _forecastFetchedAt;
+
+  @visibleForTesting
+  ForecastOutlook? get forecastOutlook => _forecastOutlook;
 
   @override
   void initState() {
@@ -195,6 +200,7 @@ class _HomePageState extends State<HomePage> {
     }
     setState(() {
       _forecast = cached.days;
+      _forecastOutlook = cached.outlook;
       _forecastFetchedAt = cached.fetchedAt;
     });
   }
@@ -208,22 +214,26 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadForecast() async {
+    final int version = _forecastGuard.begin();
     final fix = await widget.location.cachedFixIfPermitted();
-    final List<DailyOutlook>? days = await widget.feeds.forecast(
+    final ForecastOutlook? outlook = await widget.feeds.forecastOutlook(
       lat: fix?.lat ?? AqOneConfig.aklanLat,
       lon: fix?.lon ?? AqOneConfig.aklanLon,
     );
-    if (!mounted || days == null || days.isEmpty) {
+    if (!mounted ||
+        !_forecastGuard.isCurrent(version) ||
+        outlook == null ||
+        outlook.days.isEmpty) {
       // Failure leaves whatever is on screen alone. A dropped poll at sea is
       // routine and must not blank the outlook.
       return;
     }
     setState(() {
-      _forecast = days;
-      // Live data, so drop the "as of" stamp the cached strip was carrying.
-      _forecastFetchedAt = null;
+      _forecast = outlook.days;
+      _forecastOutlook = outlook;
+      _forecastFetchedAt = outlook.fetchedAt;
     });
-    unawaited(_forecastCache.save(days, DateTime.now()));
+    unawaited(_forecastCache.saveOutlook(outlook));
   }
 
   Future<void> _loadRecords() async {

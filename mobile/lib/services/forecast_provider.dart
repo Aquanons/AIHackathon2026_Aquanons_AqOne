@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../core/config.dart';
 import '../core/endpoint_guard.dart';
 import '../models/daily_outlook.dart';
+import '../models/forecast_outlook.dart';
 import 'backend_client.dart';
 import 'safety_score.dart';
 
@@ -25,6 +26,15 @@ abstract class ForecastProvider {
   /// Returns null on any failure. Callers keep showing the last good data
   /// rather than clearing the strip - a dropped poll at sea is normal.
   Future<List<DailyOutlook>?> daily({
+    required double lat,
+    required double lon,
+    String? municipality,
+    int days,
+  });
+
+  /// Complete outlook with both daily strips and hourly intervals,
+  /// plus source provenance.
+  Future<ForecastOutlook?> outlook({
     required double lat,
     required double lon,
     String? municipality,
@@ -52,26 +62,48 @@ class OpenMeteoForecastProvider implements ForecastProvider {
     String? municipality,
     int days = AqOneConfig.forecastDays,
   }) async {
-    final List<DailyOutlook>? outlook = await _atmospheric(lat, lon, days);
-    if (outlook == null) {
+    final res = await outlook(
+      lat: lat,
+      lon: lon,
+      municipality: municipality,
+      days: days,
+    );
+    return res?.days;
+  }
+
+  @override
+  Future<ForecastOutlook?> outlook({
+    required double lat,
+    required double lon,
+    String? municipality,
+    int days = AqOneConfig.forecastDays,
+  }) async {
+    final Object? atmoRaw = await _atmosphericRaw(lat, lon, days);
+    if (atmoRaw == null) {
       return null;
     }
 
-    final Map<DateTime, double> waves = await _waves(days);
+    final Object? marineRaw = await _marineRaw(days);
 
-    return outlook
-        .map((DailyOutlook day) {
-          final DateTime key =
-              DateTime(day.date.year, day.date.month, day.date.day);
-          final double? wave = waves[key];
-          return SafetyScore.applyTo(
-            wave == null ? day : day.copyWith(waveM: wave),
-          );
-        })
-        .toList(growable: false);
+    final parsed = ForecastOutlook.parseOpenMeteo(
+      atmo: atmoRaw,
+      marine: marineRaw,
+      fetchedAt: DateTime.now(),
+      lat: lat,
+      lon: lon,
+      marineLat: AqOneConfig.marineSampleLat,
+      marineLon: AqOneConfig.marineSampleLon,
+    );
+    if (parsed == null) {
+      return null;
+    }
+
+    final scoredDays =
+        parsed.days.map(SafetyScore.applyTo).toList(growable: false);
+    return parsed.copyWith(days: scoredDays);
   }
 
-  Future<List<DailyOutlook>?> _atmospheric(
+  Future<Object?> _atmosphericRaw(
     double lat,
     double lon,
     int days,
@@ -86,6 +118,8 @@ class OpenMeteoForecastProvider implements ForecastProvider {
           'longitude': '$lon',
           'daily':
               'weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum',
+          'hourly':
+              'weather_code,temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation',
           'forecast_days': '$days',
           'timezone': 'auto',
         },
@@ -95,7 +129,7 @@ class OpenMeteoForecastProvider implements ForecastProvider {
       if (response.statusCode != 200) {
         return null;
       }
-      return DailyOutlook.parseOpenMeteoList(jsonDecode(response.body));
+      return jsonDecode(response.body);
     } catch (_) {
       return null;
     }
@@ -104,7 +138,7 @@ class OpenMeteoForecastProvider implements ForecastProvider {
   /// Wave heights are sampled at a fixed offshore point rather than at the
   /// municipal centre: the marine grid only covers water, and asking it about
   /// a point on Panay returns nothing at all.
-  Future<Map<DateTime, double>> _waves(int days) async {
+  Future<Object?> _marineRaw(int days) async {
     try {
       final Uri uri = EndpointGuard.requireHttpsAbsolute(
         AqOneConfig.openMeteoMarineBase,
@@ -121,11 +155,11 @@ class OpenMeteoForecastProvider implements ForecastProvider {
       final http.Response response =
           await _client.get(uri).timeout(AqOneConfig.backendTimeout);
       if (response.statusCode != 200) {
-        return const <DateTime, double>{};
+        return null;
       }
-      return DailyOutlook.parseMarineDailyMax(jsonDecode(response.body));
+      return jsonDecode(response.body);
     } catch (_) {
-      return const <DateTime, double>{};
+      return null;
     }
   }
 
@@ -158,14 +192,54 @@ class AqOneForecastProvider implements ForecastProvider {
     String? municipality,
     int days = AqOneConfig.forecastDays,
   }) async {
+    final res = await outlook(
+      lat: lat,
+      lon: lon,
+      municipality: municipality,
+      days: days,
+    );
+    return res?.days;
+  }
+
+  @override
+  Future<ForecastOutlook?> outlook({
+    required double lat,
+    required double lon,
+    String? municipality,
+    int days = AqOneConfig.forecastDays,
+  }) async {
     final Object? decoded = await _backend.getJson(
       '${AqOneConfig.publicForecastPath}?lat=$lat&lon=$lon&days=$days',
     );
-    final List<DailyOutlook>? fused = DailyOutlook.parseAqOneList(decoded);
-    if (fused != null && fused.isNotEmpty) {
-      return fused.map(SafetyScore.applyTo).toList(growable: false);
+    final ForecastOutlook? parsed = decoded != null
+        ? ForecastOutlook.parseBackend(decoded, fetchedAt: DateTime.now())
+        : null;
+
+    if (parsed != null && parsed.days.isNotEmpty) {
+      final scoredDays =
+          parsed.days.map(SafetyScore.applyTo).toList(growable: false);
+      var result = parsed.copyWith(days: scoredDays);
+
+      if (!result.hasHourly) {
+        // Backend answered without hourly intervals (older server version).
+        // Fuse hourly intervals from fallback provider if available.
+        final fallbackOutlook = await _fallback.outlook(
+          lat: lat,
+          lon: lon,
+          municipality: municipality,
+          days: days,
+        );
+        if (fallbackOutlook != null && fallbackOutlook.hours.isNotEmpty) {
+          result = result.copyWith(
+            hours: fallbackOutlook.hours,
+            source: 'backend+open-meteo-fallback',
+          );
+        }
+      }
+      return result;
     }
-    return _fallback.daily(
+
+    return _fallback.outlook(
       lat: lat,
       lon: lon,
       municipality: municipality,

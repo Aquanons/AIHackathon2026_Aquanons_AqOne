@@ -115,7 +115,7 @@ class SeaCondition {
         : trimmed;
   }
 
-  static SeaCondition? tryParse(Object? decoded) {
+  static SeaCondition? tryParse(Object? decoded, {DateTime? fetchedAt}) {
     if (decoded is! Map) {
       return null;
     }
@@ -136,7 +136,7 @@ class SeaCondition {
           setBy is String && setBy.trim().isNotEmpty ? setBy.trim() : null,
       createdAt:
           createdAt is String ? DateTime.tryParse(createdAt)?.toUtc() : null,
-      fetchedAt: DateTime.now(),
+      fetchedAt: fetchedAt ?? DateTime.now(),
       source: telemetryMap['source']?.toString(),
       buoyCount: telemetryMap['buoy_count'] is num
           ? (telemetryMap['buoy_count'] as num).toInt()
