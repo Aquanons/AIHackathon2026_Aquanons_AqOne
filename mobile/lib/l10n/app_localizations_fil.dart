@@ -437,4 +437,189 @@ class AppLocalizationsFil extends AppLocalizations {
   @override
   String get squallStaleBodyNoAge =>
       'Wala munang ipapakitang katayuan ng unos ngayon.';
+
+  @override
+  String get weatherWindowTitle => 'Fishing weather window';
+
+  @override
+  String get weatherWindowLowerRisk => 'Lower forecast risk';
+
+  @override
+  String get weatherWindowCautionNow => 'Conditions need caution now';
+
+  @override
+  String get weatherWindowCautionSubtitle => 'Prepare and check advisories.';
+
+  @override
+  String get weatherWindowDangerNow => 'High-risk conditions now';
+
+  @override
+  String get weatherWindowDangerSubtitle => 'Follow MDRRMO guidance.';
+
+  @override
+  String weatherWindowWorsenPrefix(String duration) {
+    return 'Conditions may worsen in about $duration';
+  }
+
+  @override
+  String get weatherWindowWithinHour => 'within an hour';
+
+  @override
+  String weatherWindowDurationDaysHours(int days, int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days',
+      one: '1 day',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$_temp0 $_temp1';
+  }
+
+  @override
+  String weatherWindowDurationDaysOnly(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String weatherWindowDurationHoursOnly(int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String weatherWindowUpcoming(String time, String cause) {
+    return 'From $time: $cause';
+  }
+
+  @override
+  String get weatherWindowReturnTravelDisclaimer =>
+      'Does not include return travel or preparation time.';
+
+  @override
+  String weatherWindowNoWorsening(String time) {
+    return 'No worsening forecast through $time';
+  }
+
+  @override
+  String get weatherWindowNoWorseningSubtitle =>
+      'Near-term forecast remains low risk.';
+
+  @override
+  String get weatherWindowEarlierMissing => 'Earlier conditions unavailable';
+
+  @override
+  String get weatherWindowEarlierMissingSubtitle =>
+      'Earlier hourly conditions unavailable — continuous window cannot be calculated.';
+
+  @override
+  String get weatherWindowDailyOnly =>
+      'Hourly estimate unavailable from daily forecast';
+
+  @override
+  String weatherWindowDailyAdverse(String day) {
+    return 'Higher risk forecast on $day; hourly estimate unavailable';
+  }
+
+  @override
+  String get weatherWindowIncomplete => 'Forecast estimate incomplete';
+
+  @override
+  String get weatherWindowIncompleteSubtitle =>
+      'Missing hourly wave or wind data. Tap to refresh.';
+
+  @override
+  String get weatherWindowRefreshNeeded => 'Forecast refresh needed';
+
+  @override
+  String get weatherWindowRefreshNeededSubtitle =>
+      'Forecast is over 30 minutes old. Tap to refresh.';
+
+  @override
+  String get weatherWindowExpired => 'Forecast expired';
+
+  @override
+  String get weatherWindowExpiredSubtitle =>
+      'Cached forecast is over 12 hours old. Refresh needed.';
+
+  @override
+  String get weatherWindowClockSkew => 'Forecast timestamp unavailable';
+
+  @override
+  String get weatherWindowClockSkewSubtitle =>
+      'Device clock or forecast timestamp is out of sync.';
+
+  @override
+  String get weatherWindowNoForecast => 'Weather window unavailable';
+
+  @override
+  String get weatherWindowNoForecastSubtitle =>
+      'No forecast data available. Tap to load.';
+
+  @override
+  String weatherWindowLocationLabel(String location) {
+    return 'Forecast location: $location';
+  }
+
+  @override
+  String get deteriorationReasonStrongWinds => 'stronger winds';
+
+  @override
+  String get deteriorationReasonHighWaves => 'higher waves';
+
+  @override
+  String get deteriorationReasonThunderstorm => 'thunderstorms';
+
+  @override
+  String get deteriorationReasonHeavyRain => 'heavy rain';
+
+  @override
+  String get deteriorationReasonPoorVisibility => 'poor visibility';
+
+  @override
+  String get deteriorationReasonDailyRain => 'heavy daily rain';
+
+  @override
+  String get deteriorationReasonOfficialCaution => 'official caution';
+
+  @override
+  String get deteriorationReasonOfficialDanger =>
+      'official warning: not advised';
+
+  @override
+  String get deteriorationReasonSquallWatch => 'squall watch';
+
+  @override
+  String get deteriorationReasonSquallDanger => 'squall danger: return now';
+
+  @override
+  String get weatherLoading => 'Loading weather…';
+
+  @override
+  String get weatherUnavailable => 'Weather unavailable';
+
+  @override
+  String get weatherRetry => 'Retry';
+
+  @override
+  String get weatherLocationYourPosition => 'your position';
+
+  @override
+  String get weatherLocationDefault => 'Aklan (default)';
 }

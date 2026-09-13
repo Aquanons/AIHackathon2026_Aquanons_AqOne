@@ -11,7 +11,7 @@ import 'package:aqone/models/advisory.dart';
 import 'package:aqone/models/buoy_contact.dart';
 import 'package:aqone/models/buoy_marker.dart';
 import 'package:aqone/models/catch_record.dart';
-import 'package:aqone/models/daily_outlook.dart';
+import 'package:aqone/models/forecast_outlook.dart';
 import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/hotspot_cell.dart';
 import 'package:aqone/models/sea_condition.dart';
@@ -109,12 +109,12 @@ class _FakeVentureFeeds extends VentureFeeds {
   Future<WeatherSnapshot?> weather({required double lat, required double lon}) async => null;
 
   @override
-  Future<List<DailyOutlook>?> forecast({
+  Future<ForecastOutlook?> forecastOutlook({
     required double lat,
     required double lon,
     String? municipality,
   }) async =>
-      const <DailyOutlook>[];
+      null;
 
   @override
   Future<List<BuoyMarker>?> buoys() async => const <BuoyMarker>[];

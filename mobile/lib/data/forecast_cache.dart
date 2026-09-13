@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/daily_outlook.dart';
+import '../models/forecast_outlook.dart';
 
 /// Last good forecast, kept across restarts.
 ///
@@ -13,6 +14,7 @@ import '../models/daily_outlook.dart';
 class ForecastCache {
   const ForecastCache();
 
+  static const String _keyRecordV2 = 'forecast_record_v2';
   static const String _keyDays = 'forecast_days_v1';
   static const String _keyFetchedAt = 'forecast_fetched_at_v1';
 
@@ -20,19 +22,15 @@ class ForecastCache {
   /// outlook is worse than no outlook - its "today" is not today.
   static const Duration maxAge = Duration(hours: 12);
 
-  Future<void> save(List<DailyOutlook> days, DateTime fetchedAt) async {
+  /// Future timestamps beyond this margin are rejected as clock corruption.
+  static const Duration maxFutureSkew = Duration(minutes: 1);
+
+  Future<void> saveOutlook(ForecastOutlook outlook) async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _keyDays,
-        jsonEncode(
-          days.map((DailyOutlook d) => d.toCacheJson()).toList(growable: false),
-        ),
-      );
-      await prefs.setString(_keyFetchedAt, fetchedAt.toIso8601String());
+      await prefs.setString(_keyRecordV2, jsonEncode(outlook.toCacheJson()));
     } catch (_) {
-      // A cache write failing is not worth surfacing; the live fetch already
-      // succeeded or this would not have been called.
+      // Cache write failure is non-fatal.
     }
   }
 
@@ -40,17 +38,43 @@ class ForecastCache {
   Future<CachedForecast?> load() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? raw = prefs.getString(_keyDays);
+      final DateTime now = DateTime.now();
+      final DateTime midnight = DateTime(now.year, now.month, now.day);
+
+      // Try v2 record first
+      final String? rawV2 = prefs.getString(_keyRecordV2);
+      if (rawV2 != null) {
+        try {
+          final Object? decoded = jsonDecode(rawV2);
+          final ForecastOutlook? outlook = ForecastOutlook.fromCacheJson(decoded);
+          if (outlook != null && _isFresh(outlook.fetchedAt, now)) {
+            final List<DailyOutlook> currentDays = outlook.days
+                .where((DailyOutlook d) => !d.date.isBefore(midnight))
+                .toList(growable: false);
+            if (currentDays.isNotEmpty) {
+              return CachedForecast(
+                days: currentDays,
+                fetchedAt: outlook.fetchedAt,
+                outlook: outlook.copyWith(days: currentDays),
+              );
+            }
+          }
+        } catch (_) {
+          // Corrupted v2 payload, fall through to legacy fallback
+        }
+      }
+
+      // Fall back to legacy v1 keys
+      final String? rawDays = prefs.getString(_keyDays);
       final String? at = prefs.getString(_keyFetchedAt);
-      if (raw == null || at == null) {
+      if (rawDays == null || at == null) {
         return null;
       }
       final DateTime? fetchedAt = DateTime.tryParse(at);
-      if (fetchedAt == null ||
-          DateTime.now().difference(fetchedAt) > maxAge) {
+      if (fetchedAt == null || !_isFresh(fetchedAt, now)) {
         return null;
       }
-      final Object? decoded = jsonDecode(raw);
+      final Object? decoded = jsonDecode(rawDays);
       if (decoded is! List) {
         return null;
       }
@@ -64,26 +88,47 @@ class ForecastCache {
       if (days.isEmpty) {
         return null;
       }
-      // Days that have already passed are dropped, so the first chip is
-      // genuinely today rather than yesterday wearing the label.
-      final DateTime today = DateTime.now();
-      final DateTime midnight = DateTime(today.year, today.month, today.day);
       final List<DailyOutlook> current = days
           .where((DailyOutlook d) => !d.date.isBefore(midnight))
           .toList(growable: false);
       if (current.isEmpty) {
         return null;
       }
-      return CachedForecast(days: current, fetchedAt: fetchedAt);
+      final legacyOutlook = ForecastOutlook(
+        days: current,
+        hours: const <HourlyInterval>[],
+        fetchedAt: fetchedAt,
+        source: 'cache_v1',
+      );
+      return CachedForecast(
+        days: current,
+        fetchedAt: fetchedAt,
+        outlook: legacyOutlook,
+      );
     } catch (_) {
       return null;
     }
   }
+
+  static bool _isFresh(DateTime fetchedAt, DateTime now) {
+    if (fetchedAt.isAfter(now.add(maxFutureSkew))) {
+      return false;
+    }
+    if (now.difference(fetchedAt) > maxAge) {
+      return false;
+    }
+    return true;
+  }
 }
 
 class CachedForecast {
-  const CachedForecast({required this.days, required this.fetchedAt});
+  const CachedForecast({
+    required this.days,
+    required this.fetchedAt,
+    this.outlook,
+  });
 
   final List<DailyOutlook> days;
   final DateTime fetchedAt;
+  final ForecastOutlook? outlook;
 }

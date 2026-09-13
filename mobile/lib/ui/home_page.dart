@@ -7,10 +7,12 @@ import 'package:flutter/material.dart';
 import '../core/config.dart';
 import '../core/tokens.dart';
 import '../data/forecast_cache.dart';
+import '../l10n/app_localizations.dart';
 import '../data/identity_store.dart';
 import '../models/advisory.dart';
 import '../models/catch_record.dart';
 import '../models/daily_outlook.dart';
+import '../models/forecast_outlook.dart';
 import '../models/buoy_contact.dart';
 import '../models/sea_condition.dart';
 import '../models/sos_record.dart';
@@ -68,11 +70,12 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<SosRecord> _records = const <SosRecord>[];
   BuoyStatus? _buoy;
   Timer? _buoyTimer;
   Timer? _seaTimer;
+  Timer? _minuteTimer;
   StreamSubscription<void>? _changes;
   StreamSubscription<void>? _catchChanges;
   List<CatchRecord> _catchRecords = const <CatchRecord>[];
@@ -90,16 +93,21 @@ class _HomePageState extends State<HomePage> {
   // daily data does not change minute to minute and the battery has to last
   // a trip.
   List<DailyOutlook> _forecast = const <DailyOutlook>[];
+  ForecastOutlook? _forecastOutlook;
   Timer? _forecastTimer;
   static const ForecastCache _forecastCache = ForecastCache();
+  final RequestGuard _forecastGuard = RequestGuard();
 
-  /// Set only while the strip on screen came from the offline cache, so it
-  /// can be stamped with when it was actually fetched.
+  /// Retrieval timestamp for the forecast on screen.
   DateTime? _forecastFetchedAt;
+
+  @visibleForTesting
+  ForecastOutlook? get forecastOutlook => _forecastOutlook;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _changes = widget.service.changes.listen((_) => _loadRecords());
     if (!AqOneConfig.pitchMode) {
       _catchChanges = widget.catches.changes.listen((_) => _loadCatchRecords());
@@ -129,10 +137,27 @@ class _HomePageState extends State<HomePage> {
       AqOneConfig.forecastRefreshInterval,
       (_) => _loadForecast(),
     );
+    _minuteTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      },
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _minuteTimer?.cancel();
     _buoyTimer?.cancel();
     _seaTimer?.cancel();
     _forecastTimer?.cancel();
@@ -195,6 +220,7 @@ class _HomePageState extends State<HomePage> {
     }
     setState(() {
       _forecast = cached.days;
+      _forecastOutlook = cached.outlook;
       _forecastFetchedAt = cached.fetchedAt;
     });
   }
@@ -208,22 +234,26 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadForecast() async {
+    final int version = _forecastGuard.begin();
     final fix = await widget.location.cachedFixIfPermitted();
-    final List<DailyOutlook>? days = await widget.feeds.forecast(
+    final ForecastOutlook? outlook = await widget.feeds.forecastOutlook(
       lat: fix?.lat ?? AqOneConfig.aklanLat,
       lon: fix?.lon ?? AqOneConfig.aklanLon,
     );
-    if (!mounted || days == null || days.isEmpty) {
+    if (!mounted ||
+        !_forecastGuard.isCurrent(version) ||
+        outlook == null ||
+        outlook.days.isEmpty) {
       // Failure leaves whatever is on screen alone. A dropped poll at sea is
       // routine and must not blank the outlook.
       return;
     }
     setState(() {
-      _forecast = days;
-      // Live data, so drop the "as of" stamp the cached strip was carrying.
-      _forecastFetchedAt = null;
+      _forecast = outlook.days;
+      _forecastOutlook = outlook;
+      _forecastFetchedAt = outlook.fetchedAt;
     });
-    unawaited(_forecastCache.save(days, DateTime.now()));
+    unawaited(_forecastCache.saveOutlook(outlook));
   }
 
   Future<void> _loadRecords() async {
@@ -262,6 +292,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final palette = AqPalette.of(context);
+    final t = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
@@ -395,9 +426,13 @@ class _HomePageState extends State<HomePage> {
                 isLoading: _weatherLoading,
                 onRetry: _retryWeather,
                 forecast: _forecast,
+                forecastOutlook: _forecastOutlook,
+                seaCondition: _sea,
+                squall: widget.squall,
                 forecastAge: _forecastFetchedAt,
-                locationLabel:
-                    _weatherAtDevice ? 'your position' : 'Aklan (default)',
+                locationLabel: _weatherAtDevice
+                    ? t.weatherLocationYourPosition
+                    : t.weatherLocationDefault,
               ),
               if (!AqOneConfig.pitchMode) ...<Widget>[
                 const SizedBox(height: AqSpace.base),

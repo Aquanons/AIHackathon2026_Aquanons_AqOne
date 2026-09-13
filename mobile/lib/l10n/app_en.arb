@@ -406,5 +406,241 @@
   "squallStaleBodyNoAge": "Not showing a squall status right now.",
   "@squallStaleBodyNoAge": {
     "description": "SAFETY CRITICAL. Body text on the neutral squall notice when no last-reading time is available at all."
+  },
+  "weatherWindowTitle": "Fishing weather window",
+  "@weatherWindowTitle": {
+    "description": "Section title for the fishing weather window summary card."
+  },
+  "weatherWindowLowerRisk": "Lower forecast risk",
+  "@weatherWindowLowerRisk": {
+    "description": "SAFETY CRITICAL. Status badge when current forecast conditions are below caution thresholds."
+  },
+  "weatherWindowCautionNow": "Conditions need caution now",
+  "@weatherWindowCautionNow": {
+    "description": "SAFETY CRITICAL. Headline when current conditions or active advisories require caution."
+  },
+  "weatherWindowCautionSubtitle": "Prepare and check advisories.",
+  "@weatherWindowCautionSubtitle": {
+    "description": "SAFETY CRITICAL. Subtitle under caution headline. Must remind fishers to check advisories."
+  },
+  "weatherWindowDangerNow": "High-risk conditions now",
+  "@weatherWindowDangerNow": {
+    "description": "SAFETY CRITICAL. Headline when current conditions or official warnings are dangerous."
+  },
+  "weatherWindowDangerSubtitle": "Follow MDRRMO guidance.",
+  "@weatherWindowDangerSubtitle": {
+    "description": "SAFETY CRITICAL. Subtitle under high-risk headline. Keep MDRRMO untranslated."
+  },
+  "weatherWindowWorsenPrefix": "Conditions may worsen in about {duration}",
+  "@weatherWindowWorsenPrefix": {
+    "description": "SAFETY CRITICAL. Main countdown line for positive fishing weather window. {duration} is formatted duration.",
+    "placeholders": {
+      "duration": {
+        "type": "String",
+        "example": "1 day 6 hours"
+      }
+    }
+  },
+  "weatherWindowWithinHour": "within an hour",
+  "@weatherWindowWithinHour": {
+    "description": "Used when forecast deterioration is expected in less than one hour."
+  },
+  "weatherWindowDurationDaysHours": "{days, plural, =1{1 day} other{{days} days}} {hours, plural, =1{1 hour} other{{hours} hours}}",
+  "@weatherWindowDurationDaysHours": {
+    "description": "Formatted duration with days and hours.",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "1"
+      },
+      "hours": {
+        "type": "int",
+        "example": "6"
+      }
+    }
+  },
+  "weatherWindowDurationDaysOnly": "{days, plural, =1{1 day} other{{days} days}}",
+  "@weatherWindowDurationDaysOnly": {
+    "description": "Formatted duration with days only.",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "weatherWindowDurationHoursOnly": "{hours, plural, =1{1 hour} other{{hours} hours}}",
+  "@weatherWindowDurationHoursOnly": {
+    "description": "Formatted duration with hours only.",
+    "placeholders": {
+      "hours": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "weatherWindowUpcoming": "From {time}: {cause}",
+  "@weatherWindowUpcoming": {
+    "description": "Upcoming deterioration details with time and cause. {time} is formatted time, {cause} is localized reason.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "Tue, 3 PM"
+      },
+      "cause": {
+        "type": "String",
+        "example": "stronger winds"
+      }
+    }
+  },
+  "weatherWindowReturnTravelDisclaimer": "Does not include return travel or preparation time.",
+  "@weatherWindowReturnTravelDisclaimer": {
+    "description": "SAFETY CRITICAL. Reminder that the forecast window ends when conditions worsen and does not include travel back to shore."
+  },
+  "weatherWindowNoWorsening": "No worsening forecast through {time}",
+  "@weatherWindowNoWorsening": {
+    "description": "Headline when no caution/danger thresholds are crossed within the near-term forecast horizon.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "Thu, 3 PM"
+      }
+    }
+  },
+  "weatherWindowNoWorseningSubtitle": "Near-term forecast remains low risk.",
+  "@weatherWindowNoWorseningSubtitle": {
+    "description": "Subtitle when no deterioration is forecast in the confident horizon."
+  },
+  "weatherWindowEarlierMissing": "Earlier conditions unavailable",
+  "@weatherWindowEarlierMissing": {
+    "description": "Shown when future hazard is known but earlier hourly intervals have gaps."
+  },
+  "weatherWindowEarlierMissingSubtitle": "Earlier hourly conditions unavailable — continuous window cannot be calculated.",
+  "@weatherWindowEarlierMissingSubtitle": {
+    "description": "Subtitle explaining why countdown is not shown when data gaps exist."
+  },
+  "weatherWindowDailyOnly": "Hourly estimate unavailable from daily forecast",
+  "@weatherWindowDailyOnly": {
+    "description": "Shown when only daily forecast is available without hourly data."
+  },
+  "weatherWindowDailyAdverse": "Higher risk forecast on {day}; hourly estimate unavailable",
+  "@weatherWindowDailyAdverse": {
+    "description": "Shown when daily forecast indicates higher risk on a specific day but hourly breakdown is missing.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Tuesday"
+      }
+    }
+  },
+  "weatherWindowIncomplete": "Forecast estimate incomplete",
+  "@weatherWindowIncomplete": {
+    "description": "Shown when hourly wave, wind, or condition data is missing during scan."
+  },
+  "weatherWindowIncompleteSubtitle": "Missing hourly wave or wind data. Tap to refresh.",
+  "@weatherWindowIncompleteSubtitle": {
+    "description": "Subtitle explaining missing data with refresh prompt."
+  },
+  "weatherWindowRefreshNeeded": "Forecast refresh needed",
+  "@weatherWindowRefreshNeeded": {
+    "description": "Headline when forecast is older than 30 minutes."
+  },
+  "weatherWindowRefreshNeededSubtitle": "Forecast is over 30 minutes old. Tap to refresh.",
+  "@weatherWindowRefreshNeededSubtitle": {
+    "description": "Subtitle for stale forecast beyond refresh threshold."
+  },
+  "weatherWindowExpired": "Forecast expired",
+  "@weatherWindowExpired": {
+    "description": "Headline when forecast is older than 12 hours."
+  },
+  "weatherWindowExpiredSubtitle": "Cached forecast is over 12 hours old. Refresh needed.",
+  "@weatherWindowExpiredSubtitle": {
+    "description": "Subtitle when cache has expired."
+  },
+  "weatherWindowClockSkew": "Forecast timestamp unavailable",
+  "@weatherWindowClockSkew": {
+    "description": "Headline when forecast timestamp is in the future or clock is skewed."
+  },
+  "weatherWindowClockSkewSubtitle": "Device clock or forecast timestamp is out of sync.",
+  "@weatherWindowClockSkewSubtitle": {
+    "description": "Subtitle for clock skew issue."
+  },
+  "weatherWindowNoForecast": "Weather window unavailable",
+  "@weatherWindowNoForecast": {
+    "description": "Headline when no forecast data is available."
+  },
+  "weatherWindowNoForecastSubtitle": "No forecast data available. Tap to load.",
+  "@weatherWindowNoForecastSubtitle": {
+    "description": "Subtitle when forecast is null or empty."
+  },
+  "weatherWindowLocationLabel": "Forecast location: {location}",
+  "@weatherWindowLocationLabel": {
+    "description": "Metadata line showing the forecast location.",
+    "placeholders": {
+      "location": {
+        "type": "String",
+        "example": "Aklan"
+      }
+    }
+  },
+  "deteriorationReasonStrongWinds": "stronger winds",
+  "@deteriorationReasonStrongWinds": {
+    "description": "Reason: wind gusts meeting caution or danger threshold."
+  },
+  "deteriorationReasonHighWaves": "higher waves",
+  "@deteriorationReasonHighWaves": {
+    "description": "Reason: wave height meeting caution or danger threshold."
+  },
+  "deteriorationReasonThunderstorm": "thunderstorms",
+  "@deteriorationReasonThunderstorm": {
+    "description": "Reason: thunderstorm condition."
+  },
+  "deteriorationReasonHeavyRain": "heavy rain",
+  "@deteriorationReasonHeavyRain": {
+    "description": "Reason: heavy rain condition."
+  },
+  "deteriorationReasonPoorVisibility": "poor visibility",
+  "@deteriorationReasonPoorVisibility": {
+    "description": "Reason: fog or poor visibility."
+  },
+  "deteriorationReasonDailyRain": "heavy daily rain",
+  "@deteriorationReasonDailyRain": {
+    "description": "Reason: daily rainfall threshold exceeded."
+  },
+  "deteriorationReasonOfficialCaution": "official caution",
+  "@deteriorationReasonOfficialCaution": {
+    "description": "Reason: MDRRMO sea condition set to caution."
+  },
+  "deteriorationReasonOfficialDanger": "official warning: not advised",
+  "@deteriorationReasonOfficialDanger": {
+    "description": "Reason: MDRRMO sea condition set to not advised."
+  },
+  "deteriorationReasonSquallWatch": "squall watch",
+  "@deteriorationReasonSquallWatch": {
+    "description": "Reason: squall watch alert active."
+  },
+  "deteriorationReasonSquallDanger": "squall danger: return now",
+  "@deteriorationReasonSquallDanger": {
+    "description": "Reason: squall return now alert active."
+  },
+  "weatherLoading": "Loading weather…",
+  "@weatherLoading": {
+    "description": "Loading indicator text on weather card."
+  },
+  "weatherUnavailable": "Weather unavailable",
+  "@weatherUnavailable": {
+    "description": "Shown when weather reading is unavailable."
+  },
+  "weatherRetry": "Retry",
+  "@weatherRetry": {
+    "description": "Button label to retry fetching weather."
+  },
+  "weatherLocationYourPosition": "your position",
+  "@weatherLocationYourPosition": {
+    "description": "Shown when forecast is using current device position."
+  },
+  "weatherLocationDefault": "Aklan (default)",
+  "@weatherLocationDefault": {
+    "description": "Shown when forecast is using default municipal coordinates."
   }
 }

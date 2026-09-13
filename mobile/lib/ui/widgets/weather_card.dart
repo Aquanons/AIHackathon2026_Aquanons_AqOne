@@ -1,11 +1,16 @@
 import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/config.dart';
 import '../../models/daily_outlook.dart';
+import '../../models/forecast_outlook.dart';
+import '../../models/sea_condition.dart';
+import '../../models/squall_watch.dart';
 import '../../models/weather_snapshot.dart';
+import '../../services/fishing_window.dart';
 
-/// Current conditions and a seven-day outlook from Open-Meteo.
+/// Current conditions, fishing weather window, and seven-day outlook from Open-Meteo.
 ///
 /// Weather is a third-party reading, not an AqOne judgement, and this sits
 /// below the sea-condition banner so the official MDRRMO call always reads
@@ -18,6 +23,10 @@ class WeatherCard extends StatelessWidget {
     required this.isLoading,
     required this.onRetry,
     this.forecast = const <DailyOutlook>[],
+    this.forecastOutlook,
+    this.seaCondition,
+    this.squall,
+    this.now,
     this.forecastAge,
     this.locationLabel = 'Aklan',
   });
@@ -29,6 +38,18 @@ class WeatherCard extends StatelessWidget {
   /// Up to [AqOneConfig.forecastDays] days, today first. Empty while loading
   /// or when every source failed.
   final List<DailyOutlook> forecast;
+
+  /// Complete forecast result including hourly intervals and provenance.
+  final ForecastOutlook? forecastOutlook;
+
+  /// Current official MDRRMO sea condition call.
+  final SeaCondition? seaCondition;
+
+  /// Current squall watch / return-now alert.
+  final SquallWatch? squall;
+
+  /// Injected clock for deterministic rendering and testing.
+  final DateTime? now;
 
   /// When the shown forecast was fetched. Non-null only when it came from the
   /// offline cache, so a stale strip can say so instead of passing itself off
@@ -42,6 +63,26 @@ class WeatherCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final List<DailyOutlook> effectiveDays = forecast.isNotEmpty
+        ? forecast
+        : (forecastOutlook?.days ?? const <DailyOutlook>[]);
+
+    final bool shouldCalculateWindow = forecastOutlook != null ||
+        seaCondition?.status == SeaStatus.notAdvised ||
+        seaCondition?.status == SeaStatus.caution ||
+        squall?.level == SquallLevel.returnNow ||
+        squall?.level == SquallLevel.watch ||
+        squall?.returnNow == true;
+
+    final FishingWindowResult? windowResult = shouldCalculateWindow
+        ? FishingWindowCalculator.calculate(
+            forecast: forecastOutlook,
+            seaCondition: seaCondition,
+            squall: squall,
+            now: now ?? DateTime.now(),
+          )
+        : null;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -55,11 +96,13 @@ class WeatherCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          if (forecast.isNotEmpty) ...<Widget>[
-            _ForecastStrip(
-              days: forecast,
+          if (windowResult != null) ...<Widget>[
+            _FishingWindowSummary(
+              result: windowResult,
+              forecast: forecastOutlook,
               isDark: isDark,
-              age: forecastAge,
+              locationLabel: locationLabel,
+              onRetry: onRetry,
             ),
             const SizedBox(height: 14),
             Divider(
@@ -68,23 +111,37 @@ class WeatherCard extends StatelessWidget {
             ),
             const SizedBox(height: 14),
           ],
-          _buildContent(isDark),
+          if (effectiveDays.isNotEmpty) ...<Widget>[
+            _ForecastStrip(
+              days: effectiveDays,
+              isDark: isDark,
+              age: forecastAge ?? forecastOutlook?.fetchedAt,
+            ),
+            const SizedBox(height: 14),
+            Divider(
+              height: 1,
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            ),
+            const SizedBox(height: 14),
+          ],
+          _buildContent(context, isDark),
         ],
       ),
     );
   }
 
-  Widget _buildContent(bool isDark) {
+  Widget _buildContent(BuildContext context, bool isDark) {
+    final AppLocalizations t = AppLocalizations.of(context);
     if (isLoading && snapshot == null) {
-      return const Row(
+      return Row(
         children: <Widget>[
-          SizedBox(
+          const SizedBox(
             width: 18,
             height: 18,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          SizedBox(width: 12),
-          Text('Loading weather…', style: TextStyle(fontSize: 13)),
+          const SizedBox(width: 12),
+          Text(t.weatherLoading, style: const TextStyle(fontSize: 13)),
         ],
       );
     }
@@ -101,14 +158,14 @@ class WeatherCard extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Weather unavailable',
+              t.weatherUnavailable,
               style: TextStyle(
                 fontSize: 13,
                 color: isDark ? Colors.white70 : const Color(0xFF475569),
               ),
             ),
           ),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
+          TextButton(onPressed: onRetry, child: Text(t.weatherRetry)),
         ],
       );
     }
@@ -198,6 +255,449 @@ class WeatherCard extends StatelessWidget {
   }
 }
 
+/// Compact fishing weather window summary card.
+class _FishingWindowSummary extends StatelessWidget {
+  const _FishingWindowSummary({
+    required this.result,
+    this.forecast,
+    required this.isDark,
+    required this.locationLabel,
+    required this.onRetry,
+  });
+
+  final FishingWindowResult result;
+  final ForecastOutlook? forecast;
+  final bool isDark;
+  final String locationLabel;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations t = AppLocalizations.of(context);
+    final _SummaryStyle style = _resolveStyle(result, isDark, t);
+    final String headline = _resolveHeadline(result, context, t);
+    final String? subtitle = _resolveSubtitle(result, context, t);
+
+    return Semantics(
+      label: '${t.weatherWindowTitle}. $headline. ${subtitle ?? ''}',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: style.backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: style.borderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  style.icon,
+                  size: 18,
+                  color: style.iconColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    t.weatherWindowTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                      color: isDark ? Colors.white70 : const Color(0xFF334155),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: style.badgeBackgroundColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      style.badgeText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: style.badgeTextColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              headline,
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: style.headlineColor,
+              ),
+            ),
+            if (subtitle != null && subtitle.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 3),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (result.hasPositiveWindow && result.upcomingRisk != null) ...<Widget>[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, right: 5),
+                      child: Icon(
+                        result.upcomingRisk!.icon,
+                        size: 13,
+                        color: result.upcomingRisk!.color,
+                      ),
+                    ),
+                  ],
+                  Expanded(
+                    child: Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        fontWeight: FontWeight.w500,
+                        color: style.subtitleColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (result.hasPositiveWindow) ...<Widget>[
+              const SizedBox(height: 4),
+              Text(
+                t.weatherWindowReturnTravelDisclaimer,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: isDark ? Colors.white54 : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    _footerProvenance(t),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+                if (_needsRetryAction(result.availability))
+                  InkWell(
+                    onTap: onRetry,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Text(
+                        t.weatherRetry,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.blue.shade300 : const Color(0xFF0B4C8C),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _footerProvenance(AppLocalizations t) {
+    final StringBuffer sb = StringBuffer();
+    final String targetLoc;
+    if (forecast?.latitude != null && forecast?.longitude != null) {
+      final lat = forecast!.latitude!;
+      final lon = forecast!.longitude!;
+      final latStr = '${lat.abs().toStringAsFixed(2)}°${lat >= 0 ? 'N' : 'S'}';
+      final lonStr = '${lon.abs().toStringAsFixed(2)}°${lon >= 0 ? 'E' : 'W'}';
+      targetLoc = '$locationLabel ($latStr, $lonStr)';
+    } else {
+      targetLoc = locationLabel;
+    }
+    sb.write(t.weatherWindowLocationLabel(targetLoc));
+    final fetchedAt = forecast?.fetchedAt;
+    if (fetchedAt != null) {
+      sb.write(' · ');
+      sb.write(t.forecastAsOf(_clock(fetchedAt)));
+    }
+    return sb.toString();
+  }
+
+  static bool _needsRetryAction(FishingWindowAvailability availability) {
+    return availability == FishingWindowAvailability.staleRefreshNeeded ||
+        availability == FishingWindowAvailability.incompleteData ||
+        availability == FishingWindowAvailability.expired ||
+        availability == FishingWindowAvailability.noForecast;
+  }
+
+  static String _resolveHeadline(
+    FishingWindowResult result,
+    BuildContext context,
+    AppLocalizations t,
+  ) {
+    if (result.hasPositiveWindow) {
+      final String durationStr;
+      if (result.isUnderOneHour) {
+        durationStr = t.weatherWindowWithinHour;
+      } else {
+        final int days = result.windowDays ?? 0;
+        final int hours = result.windowHours ?? 0;
+        if (days > 0 && hours > 0) {
+          durationStr = t.weatherWindowDurationDaysHours(days, hours);
+        } else if (days > 0) {
+          durationStr = t.weatherWindowDurationDaysOnly(days);
+        } else {
+          durationStr = t.weatherWindowDurationHoursOnly(hours);
+        }
+      }
+      return t.weatherWindowWorsenPrefix(durationStr);
+    }
+
+    if (result.currentRisk == RiskLevel.danger ||
+        result.availability == FishingWindowAvailability.currentDanger) {
+      return t.weatherWindowDangerNow;
+    }
+
+    if (result.currentRisk == RiskLevel.caution ||
+        result.availability == FishingWindowAvailability.currentCaution) {
+      return t.weatherWindowCautionNow;
+    }
+
+    return switch (result.availability) {
+      FishingWindowAvailability.noWorseningForecast =>
+        t.weatherWindowNoWorsening(_formatDateTime(context, result.coverageEnd ?? DateTime.now())),
+      FishingWindowAvailability.earlierDataMissing =>
+        result.deteriorationTime != null && result.upcomingReason != null
+            ? '${t.weatherWindowUpcoming(
+                _formatDateTime(context, result.deteriorationTime!),
+                result.upcomingReason!.label(t),
+              )}${result.upcomingRisk != null ? ' (${result.upcomingRisk!.label(t)})' : ''}'
+            : t.weatherWindowEarlierMissing,
+      FishingWindowAvailability.missingHourly =>
+        result.firstAdverseDay != null
+            ? t.weatherWindowDailyAdverse(_formatDay(context, result.firstAdverseDay!))
+            : t.weatherWindowDailyOnly,
+      FishingWindowAvailability.incompleteData => t.weatherWindowIncomplete,
+      FishingWindowAvailability.staleRefreshNeeded => t.weatherWindowRefreshNeeded,
+      FishingWindowAvailability.expired => t.weatherWindowExpired,
+      FishingWindowAvailability.clockSkew => t.weatherWindowClockSkew,
+      FishingWindowAvailability.noForecast => t.weatherWindowNoForecast,
+      _ => t.weatherWindowNoForecast,
+    };
+  }
+
+  static String? _resolveSubtitle(
+    FishingWindowResult result,
+    BuildContext context,
+    AppLocalizations t,
+  ) {
+    if (result.hasPositiveWindow) {
+      if (result.deteriorationTime != null && result.upcomingReason != null) {
+        final String base = t.weatherWindowUpcoming(
+          _formatDateTime(context, result.deteriorationTime!),
+          result.upcomingReason!.label(t),
+        );
+        if (result.upcomingRisk != null) {
+          return '$base (${result.upcomingRisk!.label(t)})';
+        }
+        return base;
+      }
+      return null;
+    }
+
+    if (result.currentRisk == RiskLevel.danger ||
+        result.availability == FishingWindowAvailability.currentDanger) {
+      return result.currentReason != null
+          ? '${result.currentReason!.label(t)}. ${t.weatherWindowDangerSubtitle}'
+          : t.weatherWindowDangerSubtitle;
+    }
+
+    if (result.currentRisk == RiskLevel.caution ||
+        result.availability == FishingWindowAvailability.currentCaution) {
+      return result.currentReason != null
+          ? '${result.currentReason!.label(t)}. ${t.weatherWindowCautionSubtitle}'
+          : t.weatherWindowCautionSubtitle;
+    }
+
+    return switch (result.availability) {
+      FishingWindowAvailability.noWorseningForecast =>
+        t.weatherWindowNoWorseningSubtitle,
+      FishingWindowAvailability.earlierDataMissing =>
+        t.weatherWindowEarlierMissingSubtitle,
+      FishingWindowAvailability.missingHourly =>
+        t.weatherWindowEarlierMissingSubtitle,
+      FishingWindowAvailability.incompleteData =>
+        t.weatherWindowIncompleteSubtitle,
+      FishingWindowAvailability.staleRefreshNeeded =>
+        t.weatherWindowRefreshNeededSubtitle,
+      FishingWindowAvailability.expired =>
+        t.weatherWindowExpiredSubtitle,
+      FishingWindowAvailability.clockSkew =>
+        t.weatherWindowClockSkewSubtitle,
+      FishingWindowAvailability.noForecast =>
+        t.weatherWindowNoForecastSubtitle,
+      _ => null,
+    };
+  }
+
+  static _SummaryStyle _resolveStyle(
+    FishingWindowResult result,
+    bool isDark,
+    AppLocalizations t,
+  ) {
+    if (result.currentRisk == RiskLevel.danger ||
+        result.availability == FishingWindowAvailability.currentDanger) {
+      return _SummaryStyle(
+        backgroundColor: isDark
+            ? const Color(0xFF7F1D1D).withValues(alpha: 0.35)
+            : const Color(0xFFFEF2F2),
+        borderColor: isDark
+            ? const Color(0xFFDC2626).withValues(alpha: 0.5)
+            : const Color(0xFFFECACA),
+        iconColor: isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626),
+        headlineColor: isDark ? Colors.white : const Color(0xFF991B1B),
+        subtitleColor: isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C),
+        icon: Icons.error_outline_rounded,
+        badgeText: t.riskLevelDanger,
+        badgeBackgroundColor: isDark ? const Color(0xFF991B1B) : const Color(0xFFFEE2E2),
+        badgeTextColor: isDark ? Colors.white : const Color(0xFF991B1B),
+      );
+    }
+
+    if (result.currentRisk == RiskLevel.caution ||
+        result.availability == FishingWindowAvailability.currentCaution) {
+      return _SummaryStyle(
+        backgroundColor: isDark
+            ? const Color(0xFF78350F).withValues(alpha: 0.35)
+            : const Color(0xFFFEF3C7),
+        borderColor: isDark
+            ? const Color(0xFFD97706).withValues(alpha: 0.5)
+            : const Color(0xFFFDE68A),
+        iconColor: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+        headlineColor: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F),
+        subtitleColor: isDark ? const Color(0xFFFCD34D) : const Color(0xFF92400E),
+        icon: Icons.warning_amber_rounded,
+        badgeText: t.riskLevelCaution,
+        badgeBackgroundColor: isDark ? const Color(0xFF92400E) : const Color(0xFFFDE68A),
+        badgeTextColor: isDark ? Colors.white : const Color(0xFF78350F),
+      );
+    }
+
+    if (result.hasPositiveWindow) {
+      return _SummaryStyle(
+        backgroundColor: isDark
+            ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+            : const Color(0xFFECFDF5),
+        borderColor: isDark
+            ? const Color(0xFF059669).withValues(alpha: 0.5)
+            : const Color(0xFFA7F3D0),
+        iconColor: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+        headlineColor: isDark ? Colors.white : const Color(0xFF065F46),
+        subtitleColor: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF047857),
+        icon: Icons.schedule_rounded,
+        badgeText: t.weatherWindowLowerRisk,
+        badgeBackgroundColor: isDark ? const Color(0xFF047857) : const Color(0xFFD1FAE5),
+        badgeTextColor: isDark ? Colors.white : const Color(0xFF065F46),
+      );
+    }
+
+    if (result.availability == FishingWindowAvailability.noWorseningForecast) {
+      return _SummaryStyle(
+        backgroundColor: isDark
+            ? const Color(0xFF0C4A6E).withValues(alpha: 0.35)
+            : const Color(0xFFF0FDF4),
+        borderColor: isDark
+            ? const Color(0xFF0284C7).withValues(alpha: 0.4)
+            : const Color(0xFFBBF7D0),
+        iconColor: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+        headlineColor: isDark ? Colors.white : const Color(0xFF0C4A6E),
+        subtitleColor: isDark ? const Color(0xFFBAE6FD) : const Color(0xFF0369A1),
+        icon: Icons.check_circle_outline_rounded,
+        badgeText: t.weatherWindowLowerRisk,
+        badgeBackgroundColor: isDark ? const Color(0xFF0369A1) : const Color(0xFFE0F2FE),
+        badgeTextColor: isDark ? Colors.white : const Color(0xFF0C4A6E),
+      );
+    }
+
+    return _SummaryStyle(
+      backgroundColor: isDark
+          ? const Color(0xFF334155).withValues(alpha: 0.35)
+          : const Color(0xFFF8FAFC),
+      borderColor: isDark ? const Color(0xFF475569) : const Color(0xFFE2E8F0),
+      iconColor: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+      headlineColor: isDark ? Colors.white : const Color(0xFF1E293B),
+      subtitleColor: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+      icon: Icons.info_outline_rounded,
+      badgeText: t.riskLevelUnknown,
+      badgeBackgroundColor: isDark ? const Color(0xFF475569) : const Color(0xFFE2E8F0),
+      badgeTextColor: isDark ? Colors.white : const Color(0xFF475569),
+    );
+  }
+
+  static String _formatDateTime(BuildContext context, DateTime at) {
+    try {
+      final String locale = Localizations.localeOf(context).languageCode;
+      return DateFormat('E, h a', locale).format(at.toLocal());
+    } catch (_) {
+      return DateFormat('E, h a').format(at.toLocal());
+    }
+  }
+
+  static String _formatDay(BuildContext context, DateTime at) {
+    try {
+      final String locale = Localizations.localeOf(context).languageCode;
+      return DateFormat('EEEE', locale).format(at.toLocal());
+    } catch (_) {
+      return DateFormat('EEEE').format(at.toLocal());
+    }
+  }
+
+  static String _clock(DateTime at) {
+    final int hour = at.hour % 12 == 0 ? 12 : at.hour % 12;
+    final String minute = at.minute.toString().padLeft(2, '0');
+    return '$hour:$minute ${at.hour < 12 ? 'AM' : 'PM'}';
+  }
+}
+
+class _SummaryStyle {
+  const _SummaryStyle({
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.iconColor,
+    required this.headlineColor,
+    required this.subtitleColor,
+    required this.icon,
+    required this.badgeText,
+    required this.badgeBackgroundColor,
+    required this.badgeTextColor,
+  });
+
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color iconColor;
+  final Color headlineColor;
+  final Color subtitleColor;
+  final IconData icon;
+  final String badgeText;
+  final Color badgeBackgroundColor;
+  final Color badgeTextColor;
+}
+
 /// The seven-day strip.
 class _ForecastStrip extends StatelessWidget {
   const _ForecastStrip({
@@ -226,16 +726,19 @@ class _ForecastStrip extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Text(
-              t.forecastStripTitle,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: isDark ? Colors.white : const Color(0xFF0F172A),
+            Expanded(
+              child: Text(
+                t.forecastStripTitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Spacer(),
-            if (age != null)
+            if (age != null) ...<Widget>[
+              const SizedBox(width: 8),
               Text(
                 t.forecastAsOf(_clock(age!)),
                 style: TextStyle(
@@ -243,6 +746,7 @@ class _ForecastStrip extends StatelessWidget {
                   color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
                 ),
               ),
+            ],
           ],
         ),
         const SizedBox(height: 10),

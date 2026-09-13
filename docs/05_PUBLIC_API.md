@@ -473,20 +473,22 @@ reading this backend has ever seen — never a fabricated calm baseline.
 trained on simulated pressure fields rather than observed squalls — this is
 not a PAGASA warning, and the handset must keep saying so.
 
-## Daily outlook for the app — **implemented as a transparent proxy**
+## Daily and hourly forecast for the app — **implemented as a transparent proxy**
 
 ### `GET /api/public/forecast`
 
-The seven-day outlook behind Home's forecast strip.
+The seven-day daily outlook behind Home's forecast strip and the hourly forecast coverage behind the fishing weather window.
+
+**Stakeholder Coordination (Phase 1 contract update):**
+- **Affected Owners:** Lenard (backend / proxy implementation), Arnold (integration & gateway), Jade / Doreen Kay (mobile UI & forecast window consumer).
+- **Scope of Change:** Purely additive. Exposes hourly atmospheric and marine conditions alongside existing daily outlooks, with explicit units, timezone metadata, and sampling provenance. Existing clients consuming only `days` continue to work without modification.
 
 **No server-side fusion model exists yet.** What is implemented today is a
-transparent Open-Meteo/marine proxy: the backend fetches the same two
-providers the handset's own fallback would, applies a short upstream
-timeout, and returns them in this shape. `source` is `"open-meteo"`, not
-`"aqone-fusion"`, and the `risk` block below is always omitted — a fisher
-must never be told a verdict was fused from buoy telemetry when none was
-used. The shape leaves room for a real fusion model to fill in `risk`
-later without a contract change; until then the handset scores every day
+transparent Open-Meteo weather and marine proxy: the backend fetches both
+atmospheric and marine endpoints, applies an upstream timeout (5.0s), aligns
+hourly and daily records, and returns them in this shape. `source` is
+`"open-meteo"`, not `"aqone-fusion"`, and the daily `risk` block below
+remains omitted until server-side fusion is built — the handset scores risk
 itself, exactly as if this endpoint had 404'd
 (`mobile/lib/services/forecast_provider.dart`'s `AqOneForecastProvider`
 already implements this precedence and its Open-Meteo fallback).
@@ -495,7 +497,7 @@ already implements this precedence and its Open-Meteo fallback).
 |---|---|---|
 | `lat` | — | Position to forecast for. Required, `-90..90`. |
 | `lon` | — | Position to forecast for. Required, `-180..180`. |
-| `days` | 7 | Days requested, `1..7`. |
+| `days` | 7 | Days requested, `1..7`. Maximum 7 days. |
 
 An out-of-range `lat`/`lon`/`days`, or an upstream provider timeout/error,
 returns `422`/`502` respectively — never a `200` with an empty or invented
@@ -508,16 +510,40 @@ Response `200`:
 {
   "source": "open-meteo",
   "generated_at": "2026-08-16T04:00:00Z",
+  "latitude": 11.68,
+  "longitude": 122.41,
+  "timezone": "Asia/Manila",
+  "timezone_abbreviation": "PST",
+  "utc_offset_seconds": 28800,
+  "units": {
+    "time": "iso8601",
+    "temperature": "celsius",
+    "wind_speed": "km/h",
+    "wind_gusts": "km/h",
+    "precipitation": "mm",
+    "wave_height": "m"
+  },
   "days": [
     {
       "date": "2026-08-16",
       "weather_code": 95,
       "temp_max": 31.2,
       "temp_min": 25.8,
-      "wind_kph": 24,
-      "gust_kph": 41,
+      "wind_kph": 24.0,
+      "gust_kph": 41.0,
       "precip_mm": 18.4,
       "wave_m": 2.1
+    }
+  ],
+  "hours": [
+    {
+      "time": "2026-08-16T00:00",
+      "weather_code": 95,
+      "temp_c": 26.5,
+      "wind_kph": 22.0,
+      "gust_kph": 38.0,
+      "precip_mm": 2.1,
+      "wave_m": 1.8
     }
   ]
 }
@@ -533,6 +559,33 @@ A future fusion model would additionally attach a `risk` block per day:
         "inputs": ["buoy:buoy-b", "open-meteo"]
       }
 ```
+
+#### Hourly Schema and Interval Semantics
+
+- **`hours` Array**: An ordered sequence of hourly forecast intervals covering the requested horizon (up to `days * 24` hours). If upstream hourly atmospheric data is unavailable or malformed, `hours` may be omitted or empty while preserving `days`.
+- **`time`**: ISO local date-time string (`"YYYY-MM-DDTHH:MM"`) in the forecast's declared local timezone (`timezone`).
+- **Interval Semantics & Timing**:
+  - `gust_kph`: Open-Meteo's `wind_gusts_10m` records the maximum wind gust during the **preceding 1-hour interval** ending at `time` (i.e. `[time - 1h, time]`).
+  - `precip_mm`: Cumulative precipitation over the preceding 1-hour interval ending at `time`.
+  - `wave_m`: Instantaneous significant wave height sampled at `time`. Nullable (see Missing Data below).
+  - `wind_kph`: Instantaneous / 10m wind speed at `time`.
+  - `temp_c`: Temperature in degrees Celsius at `time`.
+  - `weather_code`: WMO 4677 weather code describing conditions for the interval.
+- **Risk Alignment Rule**: When calculating deterioration or window intervals, because a gust reported at `T + 1h` occurred between `T` and `T + 1h`, any threshold crossing at `T + 1h` indicates adverse conditions during that hour. Downstream window logic aligns by actual timestamps and treats the earliest affected boundary conservatively; gust hazards must never be shifted one hour later or indexed blindly.
+
+#### Timezones and Provenance
+
+- **`timezone` & `utc_offset_seconds`**: Open-Meteo resolves timezone automatically from coordinates (`timezone=auto`). The daily calendar day partition uses this local timezone (`Asia/Manila` in Panay/Aklan), ensuring daily dates remain consistent with local day boundaries.
+- **`generated_at`**: ISO 8601 UTC timestamp of response generation by the backend. It indicates backend query time, **not** upstream weather model issuance time.
+- **`latitude` / `longitude`**: Echo the coordinate position of the weather forecast.
+
+#### Missing-Data & Degradation Rules
+
+- **`wave_m` is Nullable**: Nearshore coastal cells often lack wave model coverage in Open-Meteo Marine. When marine data is missing for a given hour or day, `wave_m` is `null`. It is **never** sent as `0.0` (which would falsely indicate flat calm and dangerously paint high-risk days green).
+- **Marine Failure Degradation**: If the marine API fails (HTTP error, timeout, or empty response), the forecast returns HTTP 200 with all `wave_m` set to `null`, preserving atmospheric forecast data.
+- **Atmospheric Failure**: If the primary atmospheric API fails or times out, the endpoint raises HTTP 502 (`detail: "upstream weather provider unavailable"`), triggering client-side fallback.
+- **No Index Joining**: Atmospheric and marine hourly series must be joined strictly by matching `time` timestamps. If an hourly marine sample is missing for an atmospheric hour, `wave_m` for that hour is `null`.
+- **Validation**: Non-finite (`NaN`, `inf`), negative speeds/heights/precip, or corrupted values are sanitized to `null` or excluded; never coerced to calm/zero.
 
 Field notes, all of them load-bearing:
 

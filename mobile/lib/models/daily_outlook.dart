@@ -219,10 +219,10 @@ class DailyOutlook {
       weatherCode: _int(entry['weather_code']) ?? 0,
       tempMax: _double(entry['temp_max']),
       tempMin: _double(entry['temp_min']),
-      windKph: _double(entry['wind_kph']),
-      gustKph: _double(entry['gust_kph']),
-      precipMm: _double(entry['precip_mm']),
-      waveM: _double(entry['wave_m']),
+      windKph: _nonnegativeDouble(entry['wind_kph']),
+      gustKph: _nonnegativeDouble(entry['gust_kph']),
+      precipMm: _nonnegativeDouble(entry['precip_mm']),
+      waveM: _nonnegativeDouble(entry['wave_m']),
       risk: _risk(entry['risk']),
     );
   }
@@ -275,9 +275,9 @@ class DailyOutlook {
           weatherCode: _int(_at(daily['weather_code'], i)) ?? 0,
           tempMax: _double(_at(daily['temperature_2m_max'], i)),
           tempMin: _double(_at(daily['temperature_2m_min'], i)),
-          windKph: _double(_at(daily['wind_speed_10m_max'], i)),
-          gustKph: _double(_at(daily['wind_gusts_10m_max'], i)),
-          precipMm: _double(_at(daily['precipitation_sum'], i)),
+          windKph: _nonnegativeDouble(_at(daily['wind_speed_10m_max'], i)),
+          gustKph: _nonnegativeDouble(_at(daily['wind_gusts_10m_max'], i)),
+          precipMm: _nonnegativeDouble(_at(daily['precipitation_sum'], i)),
           risk: RiskAssessment.unknown,
         ),
       );
@@ -304,7 +304,7 @@ class DailyOutlook {
     }
     for (int i = 0; i < times.length && i < heights.length; i++) {
       final DateTime? at = _date(times[i]);
-      final double? height = _double(heights[i]);
+      final double? height = _nonnegativeDouble(heights[i]);
       // Nulls are frequent in nearshore cells the wave model does not cover.
       // Skipping them leaves waveM null, which the UI reports honestly.
       if (at == null || height == null) {
@@ -350,30 +350,34 @@ class DailyOutlook {
       return null;
     }
     final Object? rawRisk = entry['risk'];
-    RiskAssessment risk = RiskAssessment.unknown;
+    final RiskAssessment risk;
     if (rawRisk is Map) {
+      final RiskLevel level = RiskLevel.fromWire(rawRisk['level'] as String?);
+      final RiskSource source = rawRisk['source'] == 'backend'
+          ? RiskSource.backend
+          : RiskSource.device;
       final Object? inputs = rawRisk['inputs'];
       risk = RiskAssessment(
-        level: RiskLevel.fromWire(rawRisk['level'] as String?),
-        source: rawRisk['source'] == 'backend'
-            ? RiskSource.backend
-            : RiskSource.device,
+        level: level,
+        source: source,
         score: _double(rawRisk['score']),
         reason: rawRisk['reason'] is String ? rawRisk['reason'] as String : null,
         inputs: inputs is List
             ? inputs.whereType<String>().toList(growable: false)
             : const <String>[],
       );
+    } else {
+      risk = RiskAssessment.unknown;
     }
     return DailyOutlook(
       date: date,
       weatherCode: _int(entry['weather_code']) ?? 0,
       tempMax: _double(entry['temp_max']),
       tempMin: _double(entry['temp_min']),
-      windKph: _double(entry['wind_kph']),
-      gustKph: _double(entry['gust_kph']),
-      precipMm: _double(entry['precip_mm']),
-      waveM: _double(entry['wave_m']),
+      windKph: _nonnegativeDouble(entry['wind_kph']),
+      gustKph: _nonnegativeDouble(entry['gust_kph']),
+      precipMm: _nonnegativeDouble(entry['precip_mm']),
+      waveM: _nonnegativeDouble(entry['wave_m']),
       risk: risk,
     );
   }
@@ -383,6 +387,14 @@ class DailyOutlook {
   static Object? _at(Object? list, int index) {
     if (list is List && index < list.length) {
       return list[index];
+    }
+    return null;
+  }
+
+  static double? _nonnegativeDouble(Object? value) {
+    if (value is num) {
+      final double d = value.toDouble();
+      return (d.isFinite && d >= 0) ? d : null;
     }
     return null;
   }

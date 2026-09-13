@@ -9,6 +9,39 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-13 — Phase 4: Localized Fishing Weather Window & Audit Corrections Verification
+
+Recorded per `IMPLEMENTATION_PLAN.md` and `docs/GEMINI_FISHING_WINDOW_AUDIT.md`.
+Environment: Windows 11, Flutter 3.44.7 (channel stable), Python 3.11.9.
+
+**Audit Resolution and Corrective Changes:**
+- **Finding 1 (Precedence):** Restrictive warnings evaluate independently of forecast availability; danger warnings return immediately as high risk; caution warnings set a minimum floor of caution without downgrading higher forecast danger. `WeatherCard` evaluates the window whenever a forecast or active warning is present.
+- **Finding 2 (Wave Semantics):** Instantaneous wave heights at `now` (and nearest past/covering interval) are evaluated for current risk. Future wave threshold onset is `h.time` (instantaneous), while atmospheric onset is `intervalStart` (`h.time - 1h`).
+- **Finding 3 (Daily Rain):** Removed fabricated midnight countdowns from future daily rain totals; exposes date-level advisory (`firstAdverseDay = day.date`, `availability = missingHourly`) without positive duration.
+- **Finding 4 (Validation & Completeness):** Input validation via `_nonnegativeDouble` rejects negative speeds and heights across `ForecastOutlook`, `DailyOutlook`, cache, and fallback parsers. `_assessHour` requires gust completeness for green certification (no replacement with mean wind).
+- **Finding 5 (Duplicate Timestamps):** Implemented conservative duplicate timestamp merging (most severe weather code, maximum numeric hazards) across backend, fallback, cache, and calculator.
+- **Finding 6 (Location Consistency):** Mobile fallback wave queries match requested coordinates (`$lat`, `$lon`); forecast location coordinates are displayed in the UI footer (`_footerProvenance`).
+- **Finding 7 (Timezone Metadata):** Offset-free timestamps are converted to UTC using declared `utcOffsetSeconds` (`parseForecastTime`); replaced wall-clock `day.isToday` with injected `now`.
+- **Finding 8 (Upcoming Risk Tier):** Rendered upcoming risk icon, color, and localized label (`result.upcomingRisk!.label(t)`) in `WeatherCard`'s subtitle alongside onset.
+- **Ponytail Complexity Reductions:** Deleted dead `CommunitySpot`/`spots()`, removed unused daily provider adapters, dropped duplicate provenance fields from `FishingWindowResult` (reads from `ForecastOutlook`), and simplified `ForecastCache` to v2 single-record persistence (-255 lines net).
+
+**Build and Verification Evidence:**
+- **Automated Verification Gate:**
+  - `flutter gen-l10n`: Succeeded cleanly; generated `mobile/lib/l10n/app_localizations*.dart` with ICU plural rules and localizations for English, Tagalog (`fil`), and Aklanon (`akl`).
+  - `flutter analyze`: 0 issues found across all mobile files.
+  - `flutter test`: 235/235 tests passed (including all 18 unit/widget tests in `mobile/test/weather_card_test.dart` and 24 tests in `mobile/test/fishing_window_test.dart`).
+  - `flutter test --dart-define=PITCH_MODE=true test/pitch_mode_test.dart`: 3/3 passed (verifying manual SOS button present, catch/hotspot/squall controls absent, and clean rendering across 360x640 and 390x844 viewports without RenderFlex overflow).
+  - `flutter build web`: Succeeded cleanly (`Built build\web` in 45.4s).
+  - Backend tests: `cd backend && python -m pytest -q tests/test_public_forecast.py && python -m ruff check app/api/public.py tests/test_public_forecast.py` — 13 passed in 3.03s, 0 ruff errors.
+- **UI & Layout Verification:**
+  - `_FishingWindowSummary` tested in narrow 360x640 layout with 1.5x large text scaling and dark theme without any RenderFlex overflow (header text in `Expanded`, badge container in `Flexible` with `TextOverflow.ellipsis`, upcoming risk tier in subtitle `Row` with `Expanded`).
+  - Evaluated under both light and dark themes; caution/warning states use high-contrast dark text on amber badges (`#000000` text on `#FDE68A`) to satisfy WCAG AA readability.
+  - Verified localization fallback: Tagalog and Aklanon build cleanly falling back to reviewed English strings where translations are not yet reviewed by native speakers per `mobile/lib/l10n/README.md`.
+  - HomePage lifecycle and foreground 1-minute timer re-renders window countdowns without firing unneeded network calls.
+- **Direct Observations & Honest Caveats:**
+  - **Hardware / Handset Status:** Physical buoy hardware and field handset tests remain to be scheduled outdoors; this verification is conducted in local automated test, widget harness, and web compilation environments.
+  - **No Live Overwrite:** Did not run destructive or live weather override; all automated tests run against deterministic synthetic fixtures.
+
 ## 2026-09-05 — Phase 1 Pitch Mode Mobile Build & Verification
 
 Recorded per `docs/43_DTI_PITCH_IMPLEMENTATION_PLAN.md` Phase 4.
