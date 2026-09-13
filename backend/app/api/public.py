@@ -18,6 +18,7 @@ credentials the person at risk cannot hold.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 import httpx
@@ -125,6 +126,76 @@ async def public_sea_condition() -> dict[str, object]:
     return {'current': current}
 
 
+FORECAST_UNITS: dict[str, str] = {
+    'time': 'iso8601',
+    'temperature': 'celsius',
+    'wind_speed': 'km/h',
+    'wind_gusts': 'km/h',
+    'precipitation': 'mm',
+    'wave_height': 'm',
+}
+
+
+def _safe_float(val: object, allow_negative: bool = True) -> float | None:
+    if val is None or isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    f = float(val)
+    if not math.isfinite(f):
+        return None
+    if not allow_negative and f < 0:
+        return None
+    return f
+
+
+def _safe_int(val: object, allow_negative: bool = False) -> int | None:
+    if val is None or isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    try:
+        f = float(val)
+        if not math.isfinite(f):
+            return None
+        i = int(f)
+        if not allow_negative and i < 0:
+            return None
+        return i
+    except (ValueError, OverflowError):
+        return None
+
+
+def _parse_marine_hourly(marine_payload: dict[str, object]) -> dict[str, float | None]:
+    """Extract hourly significant wave heights keyed by ISO timestamp string.
+
+    Returns a mapping from time string to wave height in metres (or None if
+    missing, non-finite, negative, or ambiguous).
+    Duplicate timestamps with conflicting readings are marked None so they are
+    never guessed or shifted.
+    """
+    hourly = marine_payload.get('hourly')
+    if not isinstance(hourly, dict):
+        return {}
+    times = hourly.get('time')
+    heights = hourly.get('wave_height')
+    if not isinstance(times, list) or not isinstance(heights, list):
+        return {}
+
+    marine_by_time: dict[str, float | None] = {}
+    seen_counts: dict[str, int] = {}
+
+    for time_str, raw_height in zip(times, heights, strict=False):
+        if not isinstance(time_str, str):
+            continue
+        seen_counts[time_str] = seen_counts.get(time_str, 0) + 1
+        valid_height = _safe_float(raw_height, allow_negative=False)
+        if seen_counts[time_str] == 1:
+            marine_by_time[time_str] = valid_height
+        else:
+            prev = marine_by_time.get(time_str)
+            if prev != valid_height or valid_height is None:
+                marine_by_time[time_str] = None
+
+    return marine_by_time
+
+
 def _daily_wave_max(marine_payload: dict[str, object]) -> dict[str, float]:
     """Max hourly significant wave height per calendar day.
 
@@ -134,20 +205,87 @@ def _daily_wave_max(marine_payload: dict[str, object]) -> dict[str, float]:
     - kept in sync so a proxied day and a directly-fetched fallback day never
     disagree about the same swell.
     """
-    hourly = marine_payload.get('hourly')
-    if not isinstance(hourly, dict):
-        return {}
-    times = hourly.get('time')
-    heights = hourly.get('wave_height')
-    if not isinstance(times, list) or not isinstance(heights, list):
-        return {}
+    hourly_waves = _parse_marine_hourly(marine_payload)
     by_day: dict[str, float] = {}
-    for time_str, height in zip(times, heights, strict=False):
-        if not isinstance(time_str, str) or not isinstance(height, (int, float)):
+    for time_str, height in hourly_waves.items():
+        if height is None:
             continue
         day = time_str[:10]
-        by_day[day] = max(by_day.get(day, float('-inf')), float(height))
+        by_day[day] = max(by_day.get(day, float('-inf')), height)
     return by_day
+
+
+def _parse_atmo_hourly(
+    atmo_payload: dict[str, object],
+    marine_by_time: dict[str, float | None],
+    max_hours: int,
+) -> list[dict[str, object]]:
+    hourly = atmo_payload.get('hourly')
+    if not isinstance(hourly, dict):
+        return []
+    times = hourly.get('time')
+    if not isinstance(times, list):
+        return []
+
+    codes = hourly.get('weather_code')
+    temps = hourly.get('temperature_2m')
+    winds = hourly.get('wind_speed_10m')
+    gusts = hourly.get('wind_gusts_10m')
+    precips = hourly.get('precipitation')
+
+    def _val(series: object, idx: int) -> object:
+        if isinstance(series, list) and idx < len(series):
+            return series[idx]
+        return None
+
+    seen_times: set[str] = set()
+    duplicate_times: set[str] = set()
+    for t in times:
+        if isinstance(t, str):
+            if t in seen_times:
+                duplicate_times.add(t)
+            seen_times.add(t)
+
+    emitted_times: set[str] = set()
+    out_hours: list[dict[str, object]] = []
+
+    for index, time_str in enumerate(times):
+        if not isinstance(time_str, str) or time_str in emitted_times:
+            continue
+        if len(out_hours) >= max_hours:
+            break
+
+        emitted_times.add(time_str)
+        is_ambiguous = time_str in duplicate_times
+
+        wave = marine_by_time.get(time_str)
+
+        if is_ambiguous:
+            out_hours.append(
+                {
+                    'time': time_str,
+                    'weather_code': None,
+                    'temp_c': None,
+                    'wind_kph': None,
+                    'gust_kph': None,
+                    'precip_mm': None,
+                    'wave_m': None,
+                }
+            )
+        else:
+            out_hours.append(
+                {
+                    'time': time_str,
+                    'weather_code': _safe_int(_val(codes, index), allow_negative=False),
+                    'temp_c': _safe_float(_val(temps, index), allow_negative=True),
+                    'wind_kph': _safe_float(_val(winds, index), allow_negative=False),
+                    'gust_kph': _safe_float(_val(gusts, index), allow_negative=False),
+                    'precip_mm': _safe_float(_val(precips, index), allow_negative=False),
+                    'wave_m': wave,
+                }
+            )
+
+    return out_hours
 
 
 @router.get('/forecast')
@@ -156,13 +294,16 @@ async def public_forecast(
     lon: float = Query(..., ge=-180, le=180),
     days: int = Query(default=7, ge=1, le=MAX_FORECAST_DAYS),
 ) -> dict[str, object]:
-    """Transparent Open-Meteo/marine proxy - see docs/05_PUBLIC_API.md.
+    """Transparent Open-Meteo weather and marine proxy - see docs/05_PUBLIC_API.md.
 
+    Supplies both seven-day daily outlook and hourly forecast coverage.
     No server-side fusion model exists yet, so this never claims
     `aqone-fusion` and never includes a `risk` block - the handset scores
     each day itself when `risk` is absent. `wave_m` stays null rather than
-    0.0 whenever the marine model has nothing for a day: a missing reading
+    0.0 whenever the marine model has nothing for an interval: a missing reading
     must never read as flat calm.
+    The daily calendar day partitioning stays on the local timezone ('auto'),
+    preserving existing client day boundaries.
     """
     try:
         async with httpx.AsyncClient(timeout=FORECAST_UPSTREAM_TIMEOUT_SECONDS) as client:
@@ -174,6 +315,10 @@ async def public_forecast(
                     'daily': (
                         'weather_code,temperature_2m_max,temperature_2m_min,'
                         'wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum'
+                    ),
+                    'hourly': (
+                        'weather_code,temperature_2m,wind_speed_10m,'
+                        'wind_gusts_10m,precipitation'
                     ),
                     'forecast_days': days,
                     'timezone': 'auto',
@@ -214,6 +359,7 @@ async def public_forecast(
     if not isinstance(times, list):
         raise HTTPException(status_code=502, detail='malformed weather provider response')
 
+    marine_by_time = _parse_marine_hourly(marine)
     wave_by_day = _daily_wave_max(marine)
 
     def _at(key: str, index: int) -> object | None:
@@ -226,24 +372,41 @@ async def public_forecast(
     for index, date_str in enumerate(times):
         if not isinstance(date_str, str):
             continue
+        if len(out_days) >= days:
+            break
         wave = wave_by_day.get(date_str)
         out_days.append(
             {
                 'date': date_str,
-                'weather_code': _at('weather_code', index),
-                'temp_max': _at('temperature_2m_max', index),
-                'temp_min': _at('temperature_2m_min', index),
-                'wind_kph': _at('wind_speed_10m_max', index),
-                'gust_kph': _at('wind_gusts_10m_max', index),
-                'precip_mm': _at('precipitation_sum', index),
+                'weather_code': _safe_int(_at('weather_code', index), allow_negative=False),
+                'temp_max': _safe_float(_at('temperature_2m_max', index), allow_negative=True),
+                'temp_min': _safe_float(_at('temperature_2m_min', index), allow_negative=True),
+                'wind_kph': _safe_float(_at('wind_speed_10m_max', index), allow_negative=False),
+                'gust_kph': _safe_float(_at('wind_gusts_10m_max', index), allow_negative=False),
+                'precip_mm': _safe_float(_at('precipitation_sum', index), allow_negative=False),
                 'wave_m': wave,
             }
         )
 
+    out_hours = _parse_atmo_hourly(atmo, marine_by_time, max_hours=days * 24)
+
+    timezone_name = str(atmo.get('timezone') or 'auto')
+    timezone_abbr = str(atmo.get('timezone_abbreviation') or '')
+    utc_offset = _safe_int(atmo.get('utc_offset_seconds')) or 0
+    resp_lat = _safe_float(atmo.get('latitude'))
+    resp_lon = _safe_float(atmo.get('longitude'))
+
     return {
         'source': 'open-meteo',
         'generated_at': datetime.now(UTC).isoformat(),
+        'latitude': resp_lat if resp_lat is not None else lat,
+        'longitude': resp_lon if resp_lon is not None else lon,
+        'timezone': timezone_name,
+        'timezone_abbreviation': timezone_abbr,
+        'utc_offset_seconds': utc_offset,
+        'units': FORECAST_UNITS,
         'days': out_days,
+        'hours': out_hours,
     }
 
 
