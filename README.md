@@ -22,9 +22,9 @@ Obtain current evaluator access from Team Aquanons rather than relying on creden
 | Mobile pitch build | 🟡 Built and automatically tested | The September 5 build recorded `flutter analyze` with no issues and 184 passing tests. Physical handset installation and the hardware demonstration remain unverified. |
 | Backend and dashboard software | 🟡 Built and locally tested | The hosted Railway service is unavailable. Current deployment behavior cannot be demonstrated. |
 | Phone to buoy WiFi | 🟡 Implemented in source | The current buoy address is `192.168.4.1`. The complete path has not been reverified on a physical handset and buoy. |
-| Buoy firmware | 🟡 WiFi gateway sketch exists | The checked-in sketch accepts SOS messages, queues them, and uses its own WiFi uplink. It does not implement the LoRa relay path. |
-| Multi-hop LoRa mesh | ❌ Not implemented | The frame contract exists, but relay firmware and outdoor range evidence do not. |
-| Responder acknowledgement and ETA | 🟡 Software paths exist | The current firmware polls the backend without the vessel-device authorization now required by the backend. The checked-in versions need reconciliation before this return path can be claimed. |
+| Buoy firmware | 🟡 Buoy and shore sketches exist, compile clean | SOS, responder ETA and chat all cross LoRa; the buoy has no internet of its own. Neither sketch has run on hardware. |
+| Multi-hop LoRa mesh | 🟡 Implemented, unproven | TTL flood, seen-set and relay logic are written. No middle node has been built and no outdoor range has been measured — every figure in `docs/33_LORA_RF_BUDGET.md` is modelled. |
+| Responder acknowledgement and ETA | 🟡 Implemented, needs a credential | The gateway reads `GET /api/sos/active` and pushes the ETA back down the mesh. That endpoint needs an operator bearer token, which must be configured before this path works. |
 | AI safety features | 🟡 Prototype software exists | Most operational evaluations use synthetic data. Field validation and deployment remain incomplete. |
 | Catch activity features | 🟡 Foundation exists | Offline logging and coarse aggregation exist. The intended BFAR workflow has not been validated. |
 
@@ -161,17 +161,34 @@ flutter build apk --release \
 The bundled [`mobile/AqOne.apk`](mobile/AqOne.apk) predates the September 5 pitch build.
 Do not present it as the current verified source build.
 
-## Buoy firmware
+## Firmware
 
-The current sketch is [`firmware/buoy/AqOneBuoy/AqOneBuoy.ino`](firmware/buoy/AqOneBuoy/AqOneBuoy.ino).
-Board setup, required libraries, HTTP routes, and hardware limitations are described in [`firmware/buoy/README.md`](firmware/buoy/README.md).
+Two sketches, one per kind of board:
+
+| Sketch | Flash it to |
+|---|---|
+| [`firmware/buoy/AqOneBuoy/`](firmware/buoy/AqOneBuoy/) | The boards that float. WiFi access point for phones, plus LoRa. No internet of its own. |
+| [`firmware/shore/AqOneShore/`](firmware/shore/AqOneShore/) | The board on the mast with the internet. LoRa plus a WiFi station, no access point. |
+
+Both include `AqOneLoam.h`, the shared radio layer. The file exists in both
+sketch folders and **the two copies must stay byte-identical** — a mismatch
+behaves exactly like being out of range.
+
+Board setup, required libraries, the frame format, HTTP routes, the bring-up
+order and the hardware limitations are in
+[`firmware/README.md`](firmware/README.md).
 
 Before flashing:
 
 - Replace local uplink credentials with values supplied outside version control.
+- Change `LOAM_KEY`. Until you do, anyone with this repository can inject a
+  distress call into the mesh.
+- Confirm `LORA_FREQ_MHZ` matches the band your boards and antennas were built
+  for. The repository's own docs disagree on this and it is still an open item.
 - Point the firmware at a verified backend.
-- Treat the documented acknowledgement and ETA return as unverified until firmware authorization matches the backend contract.
-- Do not claim LoRa delivery; this sketch currently uses WiFi for its backend uplink.
+- The dispatcher's acknowledgement needs an operator credential on the gateway;
+  without one, SOS and chat still work and the return path does not.
+- Do not claim a LoRa range. The mesh is implemented; no range has been measured.
 
 ## AI and data
 
@@ -200,7 +217,7 @@ Dataset sources, licences, limitations, and measured results are documented in [
 
 ```text
 backend/       FastAPI, PostgreSQL migrations, AI services, and tests
-firmware/buoy/ ESP32-S3 buoy firmware
+firmware/      ESP32-S3 firmware: buoy/ and shore/ sketches
 gateway/       Gateway work area
 mobile/        Flutter handset application
 web/           MDRRMO dashboard and browser hazard model
