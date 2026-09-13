@@ -87,10 +87,6 @@ class FishingWindowResult {
     this.upcomingReason,
     this.coverageEnd,
     this.firstAdverseDay,
-    this.forecastFetchedAt,
-    this.forecastSource,
-    this.forecastLat,
-    this.forecastLon,
   });
 
   final RiskLevel currentRisk;
@@ -102,10 +98,6 @@ class FishingWindowResult {
   final DeteriorationReason? upcomingReason;
   final DateTime? coverageEnd;
   final DateTime? firstAdverseDay;
-  final DateTime? forecastFetchedAt;
-  final String? forecastSource;
-  final double? forecastLat;
-  final double? forecastLon;
 
   /// Whether a positive safe window countdown is valid and present.
   bool get hasPositiveWindow =>
@@ -142,7 +134,47 @@ class FishingWindowCalculator {
     Duration cacheMaxAge = ForecastCache.maxAge,
     int confidentDays = AqOneConfig.forecastConfidentDays,
   }) {
+    // 1. Warning precedence and warning floor
+    final bool squallDanger =
+        squall?.returnNow == true || squall?.level == SquallLevel.returnNow;
+    final bool officialDanger = seaCondition?.status == SeaStatus.notAdvised;
+    final bool squallCaution = squall?.level == SquallLevel.watch;
+    final bool officialCaution = seaCondition?.status == SeaStatus.caution;
+
+    final RiskLevel warningRisk = (squallDanger || officialDanger)
+        ? RiskLevel.danger
+        : (squallCaution || officialCaution)
+            ? RiskLevel.caution
+            : RiskLevel.safe;
+
+    final DeteriorationReason? warningReason = squallDanger
+        ? DeteriorationReason.squallDanger
+        : officialDanger
+            ? DeteriorationReason.officialDanger
+            : squallCaution
+                ? DeteriorationReason.squallWatch
+                : officialCaution
+                    ? DeteriorationReason.officialCaution
+                    : null;
+
+    // Warning danger always wins immediately regardless of forecast availability
+    if (warningRisk == RiskLevel.danger) {
+      return FishingWindowResult(
+        currentRisk: RiskLevel.danger,
+        currentReason: warningReason,
+        availability: FishingWindowAvailability.currentDanger,
+      );
+    }
+
+    // 2. If forecast is null, warning caution takes precedence over unknown/noForecast
     if (forecast == null) {
+      if (warningRisk == RiskLevel.caution) {
+        return FishingWindowResult(
+          currentRisk: RiskLevel.caution,
+          currentReason: warningReason,
+          availability: FishingWindowAvailability.currentCaution,
+        );
+      }
       return const FishingWindowResult(
         currentRisk: RiskLevel.unknown,
         availability: FishingWindowAvailability.noForecast,
@@ -151,79 +183,48 @@ class FishingWindowCalculator {
 
     final DateTime fetchedAt = forecast.fetchedAt;
 
-    // 1. Check clock skew (> 1 min in the future)
+    // 3. Check clock skew (> 1 min in the future)
     if (fetchedAt.isAfter(now.add(ForecastCache.maxFutureSkew))) {
-      return FishingWindowResult(
+      if (warningRisk == RiskLevel.caution) {
+        return FishingWindowResult(
+          currentRisk: RiskLevel.caution,
+          currentReason: warningReason,
+          availability: FishingWindowAvailability.currentCaution,
+        );
+      }
+      return const FishingWindowResult(
         currentRisk: RiskLevel.unknown,
         availability: FishingWindowAvailability.clockSkew,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
       );
     }
 
-    // 2. Check cache expiration (> 12h)
+    // 4. Check cache expiration (> 12h)
     if (now.difference(fetchedAt) > cacheMaxAge) {
-      return FishingWindowResult(
+      if (warningRisk == RiskLevel.caution) {
+        return FishingWindowResult(
+          currentRisk: RiskLevel.caution,
+          currentReason: warningReason,
+          availability: FishingWindowAvailability.currentCaution,
+        );
+      }
+      return const FishingWindowResult(
         currentRisk: RiskLevel.unknown,
         availability: FishingWindowAvailability.expired,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
-      );
-    }
-
-    // 3. Official warnings and squall alerts precedence:
-    // Danger: official notAdvised or squall returnNow
-    final bool squallDanger =
-        squall?.returnNow == true || squall?.level == SquallLevel.returnNow;
-    final bool officialDanger = seaCondition?.status == SeaStatus.notAdvised;
-    if (squallDanger || officialDanger) {
-      return FishingWindowResult(
-        currentRisk: RiskLevel.danger,
-        currentReason: squallDanger
-            ? DeteriorationReason.squallDanger
-            : DeteriorationReason.officialDanger,
-        availability: FishingWindowAvailability.currentDanger,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
-      );
-    }
-
-    // Caution: official caution or squall watch
-    final bool squallCaution = squall?.level == SquallLevel.watch;
-    final bool officialCaution = seaCondition?.status == SeaStatus.caution;
-    if (squallCaution || officialCaution) {
-      return FishingWindowResult(
-        currentRisk: RiskLevel.caution,
-        currentReason: squallCaution
-            ? DeteriorationReason.squallWatch
-            : DeteriorationReason.officialCaution,
-        availability: FishingWindowAvailability.currentCaution,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
       );
     }
 
     final bool isStale = now.difference(fetchedAt) > refreshMaxAge;
 
-    // 4. Check if hourly data is missing (daily-only fallback)
+    // 5. Check if hourly data is missing (daily-only fallback)
     if (!forecast.hasHourly) {
       DateTime? firstAdverse;
-      RiskLevel dailyCurrentRisk = RiskLevel.safe;
-      DeteriorationReason? dailyCurrentReason;
+      RiskLevel dailyCurrentRisk = warningRisk;
+      DeteriorationReason? dailyCurrentReason = warningReason;
 
       for (final day in forecast.days) {
-        final isToday = day.isToday ||
-            (day.date.year == now.year &&
-                day.date.month == now.month &&
-                day.date.day == now.day);
+        final isToday = day.date.year == now.year &&
+            day.date.month == now.month &&
+            day.date.day == now.day;
         if (isToday) {
           if (day.risk.level == RiskLevel.danger) {
             dailyCurrentRisk = RiskLevel.danger;
@@ -231,7 +232,7 @@ class FishingWindowCalculator {
           } else if (day.risk.level == RiskLevel.caution &&
               dailyCurrentRisk != RiskLevel.danger) {
             dailyCurrentRisk = RiskLevel.caution;
-            dailyCurrentReason = _reasonFromDaily(day);
+            dailyCurrentReason = dailyCurrentReason ?? _reasonFromDaily(day);
           }
         } else if (day.date.isAfter(now)) {
           if (day.risk.level == RiskLevel.caution ||
@@ -253,156 +254,181 @@ class FishingWindowCalculator {
         currentReason: dailyCurrentReason,
         firstAdverseDay: firstAdverse,
         availability: avail,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
       );
     }
 
-    // 5. Hourly scanning
-    final sortedHours = List<HourlyInterval>.from(forecast.hours)
+    // 6. Conservative deduplication across intervals
+    final Map<DateTime, HourlyInterval> deduplicatedHours =
+        <DateTime, HourlyInterval>{};
+    for (final h in forecast.hours) {
+      final existing = deduplicatedHours[h.time];
+      if (existing == null) {
+        deduplicatedHours[h.time] = h;
+      } else {
+        deduplicatedHours[h.time] = HourlyInterval(
+          time: h.time,
+          weatherCode: ForecastOutlook.moreSevereWeatherCode(
+              existing.weatherCode, h.weatherCode),
+          tempC: existing.tempC ?? h.tempC,
+          windKph: ForecastOutlook.maxNullable(existing.windKph, h.windKph),
+          gustKph: ForecastOutlook.maxNullable(existing.gustKph, h.gustKph),
+          precipMm: ForecastOutlook.maxNullable(existing.precipMm, h.precipMm),
+          waveM: ForecastOutlook.maxNullable(existing.waveM, h.waveM),
+        );
+      }
+    }
+    final sortedHours = deduplicatedHours.values.toList()
       ..sort((a, b) => a.time.compareTo(b.time));
 
     final horizonEnd = now.add(Duration(days: confidentDays));
 
-    // Find interval covering 'now':
-    // Each interval with timestamp T covers [T - 1h, T]
-    HourlyInterval? currentHour;
-    final futureHours = <HourlyInterval>[];
+    // 7. Evaluate current conditions
+    RiskLevel currentRisk = warningRisk;
+    DeteriorationReason? currentReason = warningReason;
+    bool currentIsIncomplete = false;
 
+    void applyCurrentRisk(RiskLevel level, DeteriorationReason? reason) {
+      if (level == RiskLevel.danger) {
+        currentRisk = RiskLevel.danger;
+        currentReason = reason;
+      } else if (level == RiskLevel.caution && currentRisk != RiskLevel.danger) {
+        currentRisk = RiskLevel.caution;
+        currentReason = reason;
+      }
+    }
+
+    // Today daily rain check using injected now
+    for (final day in forecast.days) {
+      final isToday = day.date.year == now.year &&
+          day.date.month == now.month &&
+          day.date.day == now.day;
+      if (isToday && day.precipMm != null) {
+        if (day.precipMm! >= AqOneConfig.dangerPrecipMm) {
+          applyCurrentRisk(RiskLevel.danger, DeteriorationReason.dailyRain);
+        } else if (day.precipMm! >= AqOneConfig.cautionPrecipMm) {
+          applyCurrentRisk(RiskLevel.caution, DeteriorationReason.dailyRain);
+        }
+      }
+    }
+
+    // Instantaneous wave covering now:
+    // Check samples at now or nearest past/covering interval
+    HourlyInterval? waveSampleAtNow;
+    for (final h in sortedHours) {
+      if (h.waveM != null) {
+        if (h.time == now) {
+          waveSampleAtNow = h;
+          break;
+        } else if (!h.time.isAfter(now) &&
+            now.difference(h.time) <= const Duration(hours: 1)) {
+          waveSampleAtNow = h;
+        } else if (waveSampleAtNow == null &&
+            h.time.isAfter(now) &&
+            !h.time.subtract(const Duration(hours: 1)).isAfter(now)) {
+          waveSampleAtNow = h;
+        }
+      }
+    }
+    if (waveSampleAtNow?.waveM != null) {
+      final w = waveSampleAtNow!.waveM!;
+      if (w >= AqOneConfig.dangerWaveM) {
+        applyCurrentRisk(RiskLevel.danger, DeteriorationReason.highWaves);
+      } else if (w >= AqOneConfig.cautionWaveM) {
+        applyCurrentRisk(RiskLevel.caution, DeteriorationReason.highWaves);
+      }
+    }
+
+    // Atmospheric interval covering now:
+    // Interval with timestamp T covers [T - 1h, T]
+    HourlyInterval? currentHour;
     for (final h in sortedHours) {
       final start = h.time.subtract(const Duration(hours: 1));
       final end = h.time;
-      if (!end.isAfter(now)) {
-        // Interval ended in the past
-        continue;
-      }
-      if (!start.isAfter(now) && now.isBefore(end)) {
+      if (!start.isAfter(now) && (now.isBefore(end) || (h.time == now && now == end))) {
         currentHour = h;
-      } else {
-        futureHours.add(h);
+        break;
       }
     }
 
-    // Check current hour:
     if (currentHour != null) {
-      final currentAssessment = _assessHour(currentHour);
-      if (currentAssessment.level == RiskLevel.danger) {
-        return FishingWindowResult(
-          currentRisk: RiskLevel.danger,
-          currentReason: currentAssessment.reason,
-          availability: FishingWindowAvailability.currentDanger,
-          forecastFetchedAt: fetchedAt,
-          forecastSource: forecast.source,
-          forecastLat: forecast.latitude,
-          forecastLon: forecast.longitude,
-        );
-      }
-      if (currentAssessment.level == RiskLevel.caution) {
-        return FishingWindowResult(
-          currentRisk: RiskLevel.caution,
-          currentReason: currentAssessment.reason,
-          availability: FishingWindowAvailability.currentCaution,
-          forecastFetchedAt: fetchedAt,
-          forecastSource: forecast.source,
-          forecastLat: forecast.latitude,
-          forecastLon: forecast.longitude,
-        );
-      }
-      if (currentAssessment.isIncomplete) {
-        return FishingWindowResult(
-          currentRisk: RiskLevel.unknown,
-          availability: FishingWindowAvailability.incompleteData,
-          forecastFetchedAt: fetchedAt,
-          forecastSource: forecast.source,
-          forecastLat: forecast.latitude,
-          forecastLon: forecast.longitude,
-        );
-      }
-    } else {
-      // If no interval covers 'now', check if first future hour starts near 'now'
-      if (futureHours.isEmpty) {
-        return FishingWindowResult(
-          currentRisk: RiskLevel.unknown,
-          availability: FishingWindowAvailability.incompleteData,
-          forecastFetchedAt: fetchedAt,
-          forecastSource: forecast.source,
-          forecastLat: forecast.latitude,
-          forecastLon: forecast.longitude,
-        );
-      }
-      final firstStart =
-          futureHours.first.time.subtract(const Duration(hours: 1));
-      if (firstStart.difference(now) > const Duration(minutes: 15)) {
-        // Gap between now and first future hour!
-        for (final h in futureHours) {
-          final hRisk = _assessHour(h);
-          if (hRisk.level == RiskLevel.caution ||
-              hRisk.level == RiskLevel.danger) {
-            return FishingWindowResult(
-              currentRisk: RiskLevel.safe,
-              upcomingRisk: hRisk.level,
-              upcomingReason: hRisk.reason,
-              deteriorationTime: h.time.subtract(const Duration(hours: 1)),
-              availability: FishingWindowAvailability.earlierDataMissing,
-              forecastFetchedAt: fetchedAt,
-              forecastSource: forecast.source,
-              forecastLat: forecast.latitude,
-              forecastLon: forecast.longitude,
-            );
-          }
-        }
-        return FishingWindowResult(
-          currentRisk: RiskLevel.safe,
-          availability: FishingWindowAvailability.incompleteData,
-          forecastFetchedAt: fetchedAt,
-          forecastSource: forecast.source,
-          forecastLat: forecast.latitude,
-          forecastLon: forecast.longitude,
-        );
+      final hRisk = _assessHour(currentHour);
+      if (hRisk.level == RiskLevel.danger) {
+        applyCurrentRisk(RiskLevel.danger, hRisk.reason);
+      } else if (hRisk.level == RiskLevel.caution) {
+        applyCurrentRisk(RiskLevel.caution, hRisk.reason);
+      } else if (hRisk.isIncomplete) {
+        currentIsIncomplete = true;
       }
     }
 
-    // Current hour is safe.
-    // Check Rule 5: Daily rain threshold on today
-    for (final day in forecast.days) {
-      final isToday = day.isToday ||
-          (day.date.year == now.year &&
-              day.date.month == now.month &&
-              day.date.day == now.day);
-      if (isToday) {
-        if (day.precipMm != null &&
-            day.precipMm! >= AqOneConfig.dangerPrecipMm) {
+    if (currentRisk == RiskLevel.danger) {
+      return FishingWindowResult(
+        currentRisk: RiskLevel.danger,
+        currentReason: currentReason,
+        availability: FishingWindowAvailability.currentDanger,
+      );
+    }
+    if (currentRisk == RiskLevel.caution) {
+      return FishingWindowResult(
+        currentRisk: RiskLevel.caution,
+        currentReason: currentReason,
+        availability: FishingWindowAvailability.currentCaution,
+      );
+    }
+    if (currentIsIncomplete && currentHour == null) {
+      return const FishingWindowResult(
+        currentRisk: RiskLevel.unknown,
+        availability: FishingWindowAvailability.incompleteData,
+      );
+    }
+
+    // 8. Future hours scanning
+    final futureHours = sortedHours.where((h) => h.time.isAfter(now)).toList();
+    if (futureHours.isEmpty) {
+      return const FishingWindowResult(
+        currentRisk: RiskLevel.unknown,
+        availability: FishingWindowAvailability.incompleteData,
+      );
+    }
+
+    final firstStart =
+        futureHours.first.time.subtract(const Duration(hours: 1));
+    if (firstStart.difference(now) > const Duration(minutes: 15)) {
+      // Gap before first future hour
+      for (final h in futureHours) {
+        final hRisk = _assessHour(h);
+        if (hRisk.level == RiskLevel.caution ||
+            hRisk.level == RiskLevel.danger) {
+          final isWaveOnly = hRisk.reason == DeteriorationReason.highWaves &&
+              !(h.gustKph != null &&
+                  h.gustKph! >=
+                      (hRisk.level == RiskLevel.danger
+                          ? AqOneConfig.dangerGustKph
+                          : AqOneConfig.cautionGustKph)) &&
+              !(h.condition == WeatherCondition.severeThunderstorm ||
+                  h.condition == WeatherCondition.thunderstorm ||
+                  h.condition == WeatherCondition.heavyRain ||
+                  h.condition == WeatherCondition.rainy ||
+                  h.condition == WeatherCondition.showers ||
+                  h.condition == WeatherCondition.foggy);
+          final onset = isWaveOnly ? h.time : h.time.subtract(const Duration(hours: 1));
           return FishingWindowResult(
-            currentRisk: RiskLevel.danger,
-            currentReason: DeteriorationReason.dailyRain,
-            availability: FishingWindowAvailability.currentDanger,
-            forecastFetchedAt: fetchedAt,
-            forecastSource: forecast.source,
-            forecastLat: forecast.latitude,
-            forecastLon: forecast.longitude,
-          );
-        }
-        if (day.precipMm != null &&
-            day.precipMm! >= AqOneConfig.cautionPrecipMm) {
-          return FishingWindowResult(
-            currentRisk: RiskLevel.caution,
-            currentReason: DeteriorationReason.dailyRain,
-            availability: FishingWindowAvailability.currentCaution,
-            forecastFetchedAt: fetchedAt,
-            forecastSource: forecast.source,
-            forecastLat: forecast.latitude,
-            forecastLon: forecast.longitude,
+            currentRisk: RiskLevel.safe,
+            upcomingRisk: hRisk.level,
+            upcomingReason: hRisk.reason,
+            deteriorationTime: onset,
+            availability: FishingWindowAvailability.earlierDataMissing,
           );
         }
       }
+      return const FishingWindowResult(
+        currentRisk: RiskLevel.safe,
+        availability: FishingWindowAvailability.incompleteData,
+      );
     }
 
-    // Scan future hours:
     DateTime lastEnd = currentHour?.time ?? now;
     bool hasGap = false;
-
     DateTime? deteriorationTime;
     Duration? durationUntilDeterioration;
     RiskLevel? upcomingRisk;
@@ -415,19 +441,31 @@ class FishingWindowCalculator {
         break;
       }
 
-      // Gap detection: gap > 15 mins between lastEnd and intervalStart
       if (intervalStart.difference(lastEnd) > const Duration(minutes: 15)) {
         hasGap = true;
       }
 
       final hRisk = _assessHour(h);
-
       if (hRisk.level == RiskLevel.caution || hRisk.level == RiskLevel.danger) {
-        deteriorationTime = intervalStart;
+        final isWaveOnly = hRisk.reason == DeteriorationReason.highWaves &&
+            !(h.gustKph != null &&
+                h.gustKph! >=
+                    (hRisk.level == RiskLevel.danger
+                        ? AqOneConfig.dangerGustKph
+                        : AqOneConfig.cautionGustKph)) &&
+            !(h.condition == WeatherCondition.severeThunderstorm ||
+                h.condition == WeatherCondition.thunderstorm ||
+                h.condition == WeatherCondition.heavyRain ||
+                h.condition == WeatherCondition.rainy ||
+                h.condition == WeatherCondition.showers ||
+                h.condition == WeatherCondition.foggy);
+
+        final onset = isWaveOnly ? h.time : intervalStart;
+        deteriorationTime = onset;
         upcomingRisk = hRisk.level;
         upcomingReason = hRisk.reason;
-        if (!hasGap) {
-          durationUntilDeterioration = deteriorationTime.difference(now);
+        if (!hasGap && !onset.isBefore(now)) {
+          durationUntilDeterioration = onset.difference(now);
         }
         break;
       }
@@ -439,32 +477,9 @@ class FishingWindowCalculator {
       }
 
       lastEnd = h.time;
-
-      // Check daily rain restriction for day enclosing this interval
-      for (final day in forecast.days) {
-        final dayStart = DateTime(day.date.year, day.date.month, day.date.day);
-        final dayEnd = dayStart.add(const Duration(days: 1));
-        if (h.time.isAfter(dayStart) && !h.time.isAfter(dayEnd)) {
-          if (day.precipMm != null &&
-              day.precipMm! >= AqOneConfig.cautionPrecipMm) {
-            final isDanger = day.precipMm! >= AqOneConfig.dangerPrecipMm;
-            deteriorationTime =
-                dayStart.isAfter(now) ? dayStart : intervalStart;
-            upcomingRisk = isDanger ? RiskLevel.danger : RiskLevel.caution;
-            upcomingReason = DeteriorationReason.dailyRain;
-            if (!hasGap) {
-              durationUntilDeterioration = deteriorationTime.difference(now);
-            }
-            break;
-          }
-        }
-      }
-      if (deteriorationTime != null) {
-        break;
-      }
     }
 
-    // Determine availability and return result:
+    // If deterioration occurred from hourly data
     if (deteriorationTime != null) {
       if (hasGap) {
         return FishingWindowResult(
@@ -475,10 +490,6 @@ class FishingWindowCalculator {
           durationUntilDeterioration: null,
           availability: FishingWindowAvailability.earlierDataMissing,
           coverageEnd: lastUsableCoverageEnd,
-          forecastFetchedAt: fetchedAt,
-          forecastSource: forecast.source,
-          forecastLat: forecast.latitude,
-          forecastLon: forecast.longitude,
         );
       }
 
@@ -492,23 +503,38 @@ class FishingWindowCalculator {
             ? FishingWindowAvailability.staleRefreshNeeded
             : FishingWindowAvailability.available,
         coverageEnd: lastUsableCoverageEnd,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
       );
     }
 
+    // If hourly data had a gap
     if (hasGap) {
       return FishingWindowResult(
         currentRisk: RiskLevel.safe,
         availability: FishingWindowAvailability.incompleteData,
         coverageEnd: lastUsableCoverageEnd,
-        forecastFetchedAt: fetchedAt,
-        forecastSource: forecast.source,
-        forecastLat: forecast.latitude,
-        forecastLon: forecast.longitude,
       );
+    }
+
+    // Check future daily rain restrictions (date-level, no invented midnight countdown)
+    for (final day in forecast.days) {
+      final isFutureDay = (day.date.year > now.year) ||
+          (day.date.year == now.year && day.date.month > now.month) ||
+          (day.date.year == now.year &&
+              day.date.month == now.month &&
+              day.date.day > now.day);
+      if (isFutureDay &&
+          day.precipMm != null &&
+          day.precipMm! >= AqOneConfig.cautionPrecipMm) {
+        final isDanger = day.precipMm! >= AqOneConfig.dangerPrecipMm;
+        return FishingWindowResult(
+          currentRisk: RiskLevel.safe,
+          upcomingRisk: isDanger ? RiskLevel.danger : RiskLevel.caution,
+          upcomingReason: DeteriorationReason.dailyRain,
+          firstAdverseDay: day.date,
+          availability: FishingWindowAvailability.missingHourly,
+          coverageEnd: lastUsableCoverageEnd,
+        );
+      }
     }
 
     final effectiveCoverageEnd = lastUsableCoverageEnd.isBefore(horizonEnd)
@@ -521,20 +547,18 @@ class FishingWindowCalculator {
           ? FishingWindowAvailability.staleRefreshNeeded
           : FishingWindowAvailability.noWorseningForecast,
       coverageEnd: effectiveCoverageEnd,
-      forecastFetchedAt: fetchedAt,
-      forecastSource: forecast.source,
-      forecastLat: forecast.latitude,
-      forecastLon: forecast.longitude,
     );
   }
 
   static _HourRisk _assessHour(HourlyInterval h) {
-    final double? gust = h.gustKph ?? h.windKph;
+    final double? gust = h.gustKph;
+    final double? wind = h.windKph;
     final double? wave = h.waveM;
     final WeatherCondition? condition = h.condition;
 
-    // Check Danger first
-    if (gust != null && gust >= AqOneConfig.dangerGustKph) {
+    // Check Danger first (known adverse evidence elevates risk even if other fields are missing)
+    if ((gust != null && gust >= AqOneConfig.dangerGustKph) ||
+        (wind != null && wind >= AqOneConfig.dangerGustKph)) {
       return const _HourRisk(RiskLevel.danger, DeteriorationReason.strongWinds);
     }
     if (wave != null && wave >= AqOneConfig.dangerWaveM) {
@@ -546,7 +570,8 @@ class FishingWindowCalculator {
     }
 
     // Check Caution next
-    if (gust != null && gust >= AqOneConfig.cautionGustKph) {
+    if ((gust != null && gust >= AqOneConfig.cautionGustKph) ||
+        (wind != null && wind >= AqOneConfig.cautionGustKph)) {
       return const _HourRisk(RiskLevel.caution, DeteriorationReason.strongWinds);
     }
     if (wave != null && wave >= AqOneConfig.cautionWaveM) {
@@ -561,7 +586,7 @@ class FishingWindowCalculator {
       return const _HourRisk(RiskLevel.caution, DeteriorationReason.poorVisibility);
     }
 
-    // If no danger or caution triggered, check data completeness:
+    // Completeness check: gust is required for green (never replace missing gust with mean wind)
     if (gust == null || wave == null || condition == null) {
       return const _HourRisk(RiskLevel.unknown, null, isIncomplete: true);
     }

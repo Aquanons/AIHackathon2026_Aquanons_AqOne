@@ -21,17 +21,6 @@ class _FakeProvider implements ForecastProvider {
   bool called = false;
 
   @override
-  Future<List<DailyOutlook>?> daily({
-    required double lat,
-    required double lon,
-    String? municipality,
-    int days = 7,
-  }) async {
-    called = true;
-    return result;
-  }
-
-  @override
   Future<ForecastOutlook?> outlook({
     required double lat,
     required double lon,
@@ -78,18 +67,13 @@ void main() {
       );
       final provider = AqOneForecastProvider(backend: backend, fallback: fallback);
 
-      final result = await provider.daily(lat: 11.68, lon: 122.41, days: 7);
-
-      expect(result, isNotNull);
-      expect(result!.single.weatherCode, 95);
-      expect(fallback.called, isFalse);
-
       final outlook = await provider.outlook(lat: 11.68, lon: 122.41, days: 7);
       expect(outlook, isNotNull);
       expect(outlook!.days.single.weatherCode, 95);
       expect(outlook.hours.single.windKph, 25.0);
       expect(outlook.hours.single.waveM, 1.8);
       expect(outlook.source, 'backend');
+      expect(fallback.called, isFalse);
     });
 
     test('fuses fallback hourly intervals when backend omits hours', () async {
@@ -103,14 +87,15 @@ void main() {
         ],
         hours: <HourlyInterval>[
           HourlyInterval(
-            time: DateTime.parse('2026-08-16T04:00:00Z'),
+            time: DateTime.utc(2026, 8, 16, 4),
             weatherCode: 95,
             windKph: 20.0,
+            gustKph: 35.0,
             waveM: 1.5,
           ),
         ],
         fetchedAt: DateTime(2026, 8, 16),
-        source: 'open-meteo-fallback',
+        source: 'fallback',
       );
       final fallback = _FakeProvider(null, outlookResult: fallbackOutlook);
       final backend = BackendClient(
@@ -121,7 +106,6 @@ void main() {
                 'days': <Object?>[
                   <String, Object?>{'date': '2026-08-16', 'weather_code': 95},
                 ],
-                // hours is empty or missing (older backend deployment)
               }),
               200,
             )),
@@ -130,13 +114,12 @@ void main() {
 
       final outlook = await provider.outlook(lat: 11.68, lon: 122.41, days: 7);
       expect(outlook, isNotNull);
-      expect(outlook!.days.single.weatherCode, 95);
+      expect(outlook!.hours.length, 1);
+      expect(outlook.hours.single.gustKph, 35.0);
       expect(fallback.called, isTrue);
-      expect(outlook.hours.single.windKph, 20.0);
-      expect(outlook.source, 'backend+open-meteo-fallback');
     });
 
-    test('falls back to Open-Meteo when the backend forecast is unavailable', () async {
+    test('falls back when the backend returns a non-200 status', () async {
       final fallback = _FakeProvider(<DailyOutlook>[
         DailyOutlook(
           date: DateTime(2026, 8, 16),
@@ -149,11 +132,11 @@ void main() {
       );
       final provider = AqOneForecastProvider(backend: backend, fallback: fallback);
 
-      final result = await provider.daily(lat: 11.68, lon: 122.41, days: 7);
+      final result = await provider.outlook(lat: 11.68, lon: 122.41, days: 7);
 
       expect(fallback.called, isTrue);
       expect(result, isNotNull);
-      expect(result!.single.weatherCode, 3);
+      expect(result!.days.single.weatherCode, 3);
     });
 
     test('falls back when the backend returns an empty days list', () async {
@@ -170,7 +153,7 @@ void main() {
       );
       final provider = AqOneForecastProvider(backend: backend, fallback: fallback);
 
-      await provider.daily(lat: 11.68, lon: 122.41, days: 7);
+      await provider.outlook(lat: 11.68, lon: 122.41, days: 7);
 
       expect(fallback.called, isTrue);
     });
@@ -182,7 +165,7 @@ void main() {
       );
       final provider = AqOneForecastProvider(backend: backend, fallback: fallback);
 
-      await provider.daily(lat: 11.68, lon: 122.41, days: 7);
+      await provider.outlook(lat: 11.68, lon: 122.41, days: 7);
 
       expect(fallback.called, isTrue);
     });

@@ -855,6 +855,276 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not showing a squall status right now.'**
   String get squallStaleBodyNoAge;
+
+  /// Section title for the fishing weather window summary card.
+  ///
+  /// In en, this message translates to:
+  /// **'Fishing weather window'**
+  String get weatherWindowTitle;
+
+  /// SAFETY CRITICAL. Status badge when current forecast conditions are below caution thresholds.
+  ///
+  /// In en, this message translates to:
+  /// **'Lower forecast risk'**
+  String get weatherWindowLowerRisk;
+
+  /// SAFETY CRITICAL. Headline when current conditions or active advisories require caution.
+  ///
+  /// In en, this message translates to:
+  /// **'Conditions need caution now'**
+  String get weatherWindowCautionNow;
+
+  /// SAFETY CRITICAL. Subtitle under caution headline. Must remind fishers to check advisories.
+  ///
+  /// In en, this message translates to:
+  /// **'Prepare and check advisories.'**
+  String get weatherWindowCautionSubtitle;
+
+  /// SAFETY CRITICAL. Headline when current conditions or official warnings are dangerous.
+  ///
+  /// In en, this message translates to:
+  /// **'High-risk conditions now'**
+  String get weatherWindowDangerNow;
+
+  /// SAFETY CRITICAL. Subtitle under high-risk headline. Keep MDRRMO untranslated.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow MDRRMO guidance.'**
+  String get weatherWindowDangerSubtitle;
+
+  /// SAFETY CRITICAL. Main countdown line for positive fishing weather window. {duration} is formatted duration.
+  ///
+  /// In en, this message translates to:
+  /// **'Conditions may worsen in about {duration}'**
+  String weatherWindowWorsenPrefix(String duration);
+
+  /// Used when forecast deterioration is expected in less than one hour.
+  ///
+  /// In en, this message translates to:
+  /// **'within an hour'**
+  String get weatherWindowWithinHour;
+
+  /// Formatted duration with days and hours.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{1 day} other{{days} days}} {hours, plural, =1{1 hour} other{{hours} hours}}'**
+  String weatherWindowDurationDaysHours(int days, int hours);
+
+  /// Formatted duration with days only.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{1 day} other{{days} days}}'**
+  String weatherWindowDurationDaysOnly(int days);
+
+  /// Formatted duration with hours only.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours, plural, =1{1 hour} other{{hours} hours}}'**
+  String weatherWindowDurationHoursOnly(int hours);
+
+  /// Upcoming deterioration details with time and cause. {time} is formatted time, {cause} is localized reason.
+  ///
+  /// In en, this message translates to:
+  /// **'From {time}: {cause}'**
+  String weatherWindowUpcoming(String time, String cause);
+
+  /// SAFETY CRITICAL. Reminder that the forecast window ends when conditions worsen and does not include travel back to shore.
+  ///
+  /// In en, this message translates to:
+  /// **'Does not include return travel or preparation time.'**
+  String get weatherWindowReturnTravelDisclaimer;
+
+  /// Headline when no caution/danger thresholds are crossed within the near-term forecast horizon.
+  ///
+  /// In en, this message translates to:
+  /// **'No worsening forecast through {time}'**
+  String weatherWindowNoWorsening(String time);
+
+  /// Subtitle when no deterioration is forecast in the confident horizon.
+  ///
+  /// In en, this message translates to:
+  /// **'Near-term forecast remains low risk.'**
+  String get weatherWindowNoWorseningSubtitle;
+
+  /// Shown when future hazard is known but earlier hourly intervals have gaps.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier conditions unavailable'**
+  String get weatherWindowEarlierMissing;
+
+  /// Subtitle explaining why countdown is not shown when data gaps exist.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier hourly conditions unavailable — continuous window cannot be calculated.'**
+  String get weatherWindowEarlierMissingSubtitle;
+
+  /// Shown when only daily forecast is available without hourly data.
+  ///
+  /// In en, this message translates to:
+  /// **'Hourly estimate unavailable from daily forecast'**
+  String get weatherWindowDailyOnly;
+
+  /// Shown when daily forecast indicates higher risk on a specific day but hourly breakdown is missing.
+  ///
+  /// In en, this message translates to:
+  /// **'Higher risk forecast on {day}; hourly estimate unavailable'**
+  String weatherWindowDailyAdverse(String day);
+
+  /// Shown when hourly wave, wind, or condition data is missing during scan.
+  ///
+  /// In en, this message translates to:
+  /// **'Forecast estimate incomplete'**
+  String get weatherWindowIncomplete;
+
+  /// Subtitle explaining missing data with refresh prompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Missing hourly wave or wind data. Tap to refresh.'**
+  String get weatherWindowIncompleteSubtitle;
+
+  /// Headline when forecast is older than 30 minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Forecast refresh needed'**
+  String get weatherWindowRefreshNeeded;
+
+  /// Subtitle for stale forecast beyond refresh threshold.
+  ///
+  /// In en, this message translates to:
+  /// **'Forecast is over 30 minutes old. Tap to refresh.'**
+  String get weatherWindowRefreshNeededSubtitle;
+
+  /// Headline when forecast is older than 12 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Forecast expired'**
+  String get weatherWindowExpired;
+
+  /// Subtitle when cache has expired.
+  ///
+  /// In en, this message translates to:
+  /// **'Cached forecast is over 12 hours old. Refresh needed.'**
+  String get weatherWindowExpiredSubtitle;
+
+  /// Headline when forecast timestamp is in the future or clock is skewed.
+  ///
+  /// In en, this message translates to:
+  /// **'Forecast timestamp unavailable'**
+  String get weatherWindowClockSkew;
+
+  /// Subtitle for clock skew issue.
+  ///
+  /// In en, this message translates to:
+  /// **'Device clock or forecast timestamp is out of sync.'**
+  String get weatherWindowClockSkewSubtitle;
+
+  /// Headline when no forecast data is available.
+  ///
+  /// In en, this message translates to:
+  /// **'Weather window unavailable'**
+  String get weatherWindowNoForecast;
+
+  /// Subtitle when forecast is null or empty.
+  ///
+  /// In en, this message translates to:
+  /// **'No forecast data available. Tap to load.'**
+  String get weatherWindowNoForecastSubtitle;
+
+  /// Metadata line showing the forecast location.
+  ///
+  /// In en, this message translates to:
+  /// **'Forecast location: {location}'**
+  String weatherWindowLocationLabel(String location);
+
+  /// Reason: wind gusts meeting caution or danger threshold.
+  ///
+  /// In en, this message translates to:
+  /// **'stronger winds'**
+  String get deteriorationReasonStrongWinds;
+
+  /// Reason: wave height meeting caution or danger threshold.
+  ///
+  /// In en, this message translates to:
+  /// **'higher waves'**
+  String get deteriorationReasonHighWaves;
+
+  /// Reason: thunderstorm condition.
+  ///
+  /// In en, this message translates to:
+  /// **'thunderstorms'**
+  String get deteriorationReasonThunderstorm;
+
+  /// Reason: heavy rain condition.
+  ///
+  /// In en, this message translates to:
+  /// **'heavy rain'**
+  String get deteriorationReasonHeavyRain;
+
+  /// Reason: fog or poor visibility.
+  ///
+  /// In en, this message translates to:
+  /// **'poor visibility'**
+  String get deteriorationReasonPoorVisibility;
+
+  /// Reason: daily rainfall threshold exceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'heavy daily rain'**
+  String get deteriorationReasonDailyRain;
+
+  /// Reason: MDRRMO sea condition set to caution.
+  ///
+  /// In en, this message translates to:
+  /// **'official caution'**
+  String get deteriorationReasonOfficialCaution;
+
+  /// Reason: MDRRMO sea condition set to not advised.
+  ///
+  /// In en, this message translates to:
+  /// **'official warning: not advised'**
+  String get deteriorationReasonOfficialDanger;
+
+  /// Reason: squall watch alert active.
+  ///
+  /// In en, this message translates to:
+  /// **'squall watch'**
+  String get deteriorationReasonSquallWatch;
+
+  /// Reason: squall return now alert active.
+  ///
+  /// In en, this message translates to:
+  /// **'squall danger: return now'**
+  String get deteriorationReasonSquallDanger;
+
+  /// Loading indicator text on weather card.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading weather…'**
+  String get weatherLoading;
+
+  /// Shown when weather reading is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Weather unavailable'**
+  String get weatherUnavailable;
+
+  /// Button label to retry fetching weather.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get weatherRetry;
+
+  /// Shown when forecast is using current device position.
+  ///
+  /// In en, this message translates to:
+  /// **'your position'**
+  String get weatherLocationYourPosition;
+
+  /// Shown when forecast is using default municipal coordinates.
+  ///
+  /// In en, this message translates to:
+  /// **'Aklan (default)'**
+  String get weatherLocationDefault;
 }
 
 class _AppLocalizationsDelegate

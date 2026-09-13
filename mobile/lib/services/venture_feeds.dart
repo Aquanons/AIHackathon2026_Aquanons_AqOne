@@ -8,8 +8,6 @@ import '../data/map_snapshot_store.dart';
 import '../data/welcome_advisory.dart';
 import '../models/advisory.dart';
 import '../models/buoy_marker.dart';
-import '../models/community_spot.dart';
-import '../models/daily_outlook.dart';
 import '../models/forecast_outlook.dart';
 import '../models/hazard_alert.dart';
 import '../models/hotspot_cell.dart';
@@ -116,24 +114,6 @@ class VentureFeeds {
     );
   }
 
-  /// Seven-day outlook with a per-day risk verdict.
-  ///
-  /// Delegates to the configured [ForecastProvider], which tries the fused
-  /// AqOne endpoint before falling back to Open-Meteo. Null on failure, same
-  /// contract as everything else here: keep the last good strip on screen.
-  Future<List<DailyOutlook>?> forecast({
-    required double lat,
-    required double lon,
-    String? municipality,
-  }) async {
-    final outlook = await forecastOutlook(
-      lat: lat,
-      lon: lon,
-      municipality: municipality,
-    );
-    return outlook?.days;
-  }
-
   Future<List<BuoyMarker>?> buoys() async {
     final decoded = await _cachedJson(
       MapSnapshotStore.feedBuoys,
@@ -158,20 +138,6 @@ class VentureFeeds {
       return null;
     }
     return HotspotCell.parse(decoded);
-  }
-
-  /// DEPRECATED, and no longer called from anywhere.
-  ///
-  /// Manual spot reporting was removed from Venture - see [AqOneConfig.spotsPath]
-  /// for why. Kept only so the endpoint has a client-side reader if the
-  /// dashboard ever wants one; delete it with the endpoint.
-  @Deprecated('Manual fishing spots were removed; hotspots come from the model')
-  Future<List<CommunitySpot>?> spots() async {
-    final decoded = await _backend.getJson(AqOneConfig.spotsPath);
-    if (decoded == null) {
-      return null;
-    }
-    return CommunitySpot.parseList(decoded);
   }
 
   Future<List<HazardAlert>?> hazards(HazardKind kind) async {

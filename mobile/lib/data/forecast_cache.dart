@@ -29,33 +29,10 @@ class ForecastCache {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyRecordV2, jsonEncode(outlook.toCacheJson()));
-      await prefs.setString(
-        _keyDays,
-        jsonEncode(
-          outlook.days
-              .map((DailyOutlook d) => d.toCacheJson())
-              .toList(growable: false),
-        ),
-      );
-      await prefs.setString(_keyFetchedAt, outlook.fetchedAt.toIso8601String());
     } catch (_) {
       // Cache write failure is non-fatal.
     }
   }
-
-  Future<void> save(List<DailyOutlook> days, DateTime fetchedAt) async {
-    await saveOutlook(
-      ForecastOutlook(
-        days: days,
-        hours: const <HourlyInterval>[],
-        fetchedAt: fetchedAt,
-        source: 'cache_v1',
-      ),
-    );
-  }
-
-  /// Loads the stored outlook, or null if missing, stale, or corrupt.
-  Future<ForecastOutlook?> loadOutlook() async => (await load())?.outlook;
 
   /// Returns null when there is nothing usable stored.
   Future<CachedForecast?> load() async {

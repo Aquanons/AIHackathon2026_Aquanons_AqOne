@@ -45,11 +45,19 @@ class HourlyInterval {
       time: time,
       weatherCode: _int(raw['weather_code']),
       tempC: _double(raw['temp_c']),
-      windKph: _double(raw['wind_kph']),
-      gustKph: _double(raw['gust_kph']),
-      precipMm: _double(raw['precip_mm']),
-      waveM: _double(raw['wave_m']),
+      windKph: _nonnegativeDouble(raw['wind_kph']),
+      gustKph: _nonnegativeDouble(raw['gust_kph']),
+      precipMm: _nonnegativeDouble(raw['precip_mm']),
+      waveM: _nonnegativeDouble(raw['wave_m']),
     );
+  }
+
+  static double? _nonnegativeDouble(Object? value) {
+    if (value is num) {
+      final double d = value.toDouble();
+      return (d.isFinite && d >= 0) ? d : null;
+    }
+    return null;
   }
 
   static double? _double(Object? value) {
@@ -164,13 +172,14 @@ class ForecastOutlook {
     }
 
     final hoursRaw = raw['hours'];
-    final List<HourlyInterval> hours = <HourlyInterval>[];
+    final Map<DateTime, HourlyInterval> hoursMap = <DateTime, HourlyInterval>{};
     if (hoursRaw is List) {
       for (final item in hoursRaw) {
         final h = HourlyInterval.fromCacheJson(item);
-        if (h != null) hours.add(h);
+        if (h != null) _mergeInterval(hoursMap, h);
       }
     }
+    final hours = hoursMap.values.toList()..sort((a, b) => a.time.compareTo(b.time));
 
     final unitsRaw = raw['units'];
     final Map<String, String> units = <String, String>{};
@@ -214,24 +223,26 @@ class ForecastOutlook {
     final days = DailyOutlook.parseAqOneList(decoded);
     if (days == null) return null;
 
-    final hours = <HourlyInterval>[];
+    final offset = _int(decoded['utc_offset_seconds']);
+    final Map<DateTime, HourlyInterval> hoursMap = <DateTime, HourlyInterval>{};
     final rawHours = decoded['hours'];
     if (rawHours is List) {
       for (final item in rawHours) {
         if (item is Map) {
           final timeStr = item['time'];
           if (timeStr is String) {
-            final time = DateTime.tryParse(timeStr);
+            final time = parseForecastTime(timeStr, offset);
             if (time != null) {
-              hours.add(
+              _mergeInterval(
+                hoursMap,
                 HourlyInterval(
                   time: time,
                   weatherCode: _int(item['weather_code']),
                   tempC: _double(item['temp_c']),
-                  windKph: _double(item['wind_kph']),
-                  gustKph: _double(item['gust_kph']),
-                  precipMm: _double(item['precip_mm']),
-                  waveM: _double(item['wave_m']),
+                  windKph: _nonnegativeDouble(item['wind_kph']),
+                  gustKph: _nonnegativeDouble(item['gust_kph']),
+                  precipMm: _nonnegativeDouble(item['precip_mm']),
+                  waveM: _nonnegativeDouble(item['wave_m']),
                 ),
               );
             }
@@ -239,6 +250,7 @@ class ForecastOutlook {
         }
       }
     }
+    final hours = hoursMap.values.toList()..sort((a, b) => a.time.compareTo(b.time));
 
     final rawUnits = decoded['units'];
     final units = <String, String>{};
@@ -265,7 +277,7 @@ class ForecastOutlook {
       timezoneAbbreviation: decoded['timezone_abbreviation'] is String
           ? decoded['timezone_abbreviation'] as String
           : null,
-      utcOffsetSeconds: _int(decoded['utc_offset_seconds']),
+      utcOffsetSeconds: offset,
       source: backendSource,
       units: units,
     );
@@ -295,8 +307,10 @@ class ForecastOutlook {
       return wave == null ? day : day.copyWith(waveM: wave);
     }).toList(growable: false);
 
-    // Parse hourly marine wave heights by ISO timestamp string
-    final marineWavesByTime = <String, double>{};
+    final offset = _int(atmo['utc_offset_seconds']);
+
+    // Parse hourly marine wave heights by parsed timestamp
+    final marineWavesByTime = <DateTime, double>{};
     if (marine is Map) {
       final hourly = marine['hourly'];
       if (hourly is Map) {
@@ -305,19 +319,23 @@ class ForecastOutlook {
         if (mTimes is List && mWaves is List) {
           final count =
               mTimes.length < mWaves.length ? mTimes.length : mWaves.length;
+          final marineOffset = _int(marine['utc_offset_seconds']) ?? offset;
           for (int i = 0; i < count; i++) {
-            final t = mTimes[i];
-            final w = _double(mWaves[i]);
-            if (t is String && w != null && w >= 0) {
-              marineWavesByTime[t] = w;
+            final tStr = mTimes[i];
+            final w = _nonnegativeDouble(mWaves[i]);
+            if (tStr is String && w != null) {
+              final t = parseForecastTime(tStr, marineOffset);
+              if (t != null) {
+                marineWavesByTime[t] = maxNullable(marineWavesByTime[t], w)!;
+              }
             }
           }
         }
       }
     }
 
-    // Parse hourly atmospheric series and join with marine
-    final hours = <HourlyInterval>[];
+    // Parse hourly atmospheric series and join with marine conservatively
+    final Map<DateTime, HourlyInterval> hoursMap = <DateTime, HourlyInterval>{};
     final hourly = atmo['hourly'];
     if (hourly is Map) {
       final aTimes = hourly['time'];
@@ -331,24 +349,26 @@ class ForecastOutlook {
         for (int i = 0; i < aTimes.length; i++) {
           final tStr = aTimes[i];
           if (tStr is! String) continue;
-          final time = DateTime.tryParse(tStr);
+          final time = parseForecastTime(tStr, offset);
           if (time == null) continue;
 
-          final wave = marineWavesByTime[tStr];
-          hours.add(
+          final wave = marineWavesByTime[time];
+          _mergeInterval(
+            hoursMap,
             HourlyInterval(
               time: time,
               weatherCode: _int(_at(codes, i)),
               tempC: _double(_at(temps, i)),
-              windKph: _double(_at(winds, i)),
-              gustKph: _double(_at(gusts, i)),
-              precipMm: _double(_at(precips, i)),
+              windKph: _nonnegativeDouble(_at(winds, i)),
+              gustKph: _nonnegativeDouble(_at(gusts, i)),
+              precipMm: _nonnegativeDouble(_at(precips, i)),
               waveM: wave,
             ),
           );
         }
       }
     }
+    final hours = hoursMap.values.toList()..sort((a, b) => a.time.compareTo(b.time));
 
     return ForecastOutlook(
       days: days,
@@ -361,16 +381,84 @@ class ForecastOutlook {
       timezoneAbbreviation: atmo['timezone_abbreviation'] is String
           ? atmo['timezone_abbreviation'] as String
           : null,
-      utcOffsetSeconds: _int(atmo['utc_offset_seconds']),
+      utcOffsetSeconds: offset,
       source: source,
       marineSampleLat: marineLat,
       marineSampleLon: marineLon,
     );
   }
 
+  /// Parses a timestamp string using declared utcOffsetSeconds if no zone offset is present.
+  static DateTime? parseForecastTime(String timeStr, int? utcOffsetSeconds) {
+    if (timeStr.endsWith('Z') ||
+        timeStr.contains('+') ||
+        (timeStr.length > 10 && timeStr.substring(10).contains('-'))) {
+      return DateTime.tryParse(timeStr)?.toUtc();
+    }
+    final normalized = timeStr.replaceFirst(' ', 'T');
+    final dtUtc = DateTime.tryParse('${normalized}Z');
+    if (dtUtc == null) return null;
+    if (utcOffsetSeconds != null) {
+      return dtUtc.subtract(Duration(seconds: utcOffsetSeconds));
+    }
+    return dtUtc;
+  }
+
+  static double? maxNullable(double? a, double? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a > b ? a : b;
+  }
+
+  static int? moreSevereWeatherCode(int? a, int? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    if (a == b) return a;
+    final condA = WeatherCondition.tryFromCode(a);
+    final condB = WeatherCondition.tryFromCode(b);
+    int rank(WeatherCondition? c) => switch (c) {
+          WeatherCondition.severeThunderstorm => 6,
+          WeatherCondition.thunderstorm => 5,
+          WeatherCondition.heavyRain => 4,
+          WeatherCondition.showers || WeatherCondition.rainy => 3,
+          WeatherCondition.foggy => 2,
+          _ => 1,
+        };
+    return rank(condA) >= rank(condB) ? a : b;
+  }
+
+  static void _mergeInterval(
+    Map<DateTime, HourlyInterval> map,
+    HourlyInterval next,
+  ) {
+    final existing = map[next.time];
+    if (existing == null) {
+      map[next.time] = next;
+    } else {
+      map[next.time] = HourlyInterval(
+        time: next.time,
+        weatherCode:
+            moreSevereWeatherCode(existing.weatherCode, next.weatherCode),
+        tempC: existing.tempC ?? next.tempC,
+        windKph: maxNullable(existing.windKph, next.windKph),
+        gustKph: maxNullable(existing.gustKph, next.gustKph),
+        precipMm: maxNullable(existing.precipMm, next.precipMm),
+        waveM: maxNullable(existing.waveM, next.waveM),
+      );
+    }
+  }
+
   static Object? _at(Object? list, int index) {
     if (list is List && index < list.length) {
       return list[index];
+    }
+    return null;
+  }
+
+  static double? _nonnegativeDouble(Object? value) {
+    if (value is num) {
+      final double d = value.toDouble();
+      return (d.isFinite && d >= 0) ? d : null;
     }
     return null;
   }

@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
 import '../core/endpoint_guard.dart';
-import '../models/daily_outlook.dart';
 import '../models/forecast_outlook.dart';
 import 'backend_client.dart';
 import 'safety_score.dart';
@@ -23,15 +22,6 @@ import 'safety_score.dart';
 ///  * [AqOneForecastProvider] - the real target. Backend fuses buoy sensor
 ///    telemetry with a weather provider and scores the risk server-side.
 abstract class ForecastProvider {
-  /// Returns null on any failure. Callers keep showing the last good data
-  /// rather than clearing the strip - a dropped poll at sea is normal.
-  Future<List<DailyOutlook>?> daily({
-    required double lat,
-    required double lon,
-    String? municipality,
-    int days,
-  });
-
   /// Complete outlook with both daily strips and hourly intervals,
   /// plus source provenance.
   Future<ForecastOutlook?> outlook({
@@ -56,22 +46,6 @@ class OpenMeteoForecastProvider implements ForecastProvider {
   final http.Client _client;
 
   @override
-  Future<List<DailyOutlook>?> daily({
-    required double lat,
-    required double lon,
-    String? municipality,
-    int days = AqOneConfig.forecastDays,
-  }) async {
-    final res = await outlook(
-      lat: lat,
-      lon: lon,
-      municipality: municipality,
-      days: days,
-    );
-    return res?.days;
-  }
-
-  @override
   Future<ForecastOutlook?> outlook({
     required double lat,
     required double lon,
@@ -83,7 +57,7 @@ class OpenMeteoForecastProvider implements ForecastProvider {
       return null;
     }
 
-    final Object? marineRaw = await _marineRaw(days);
+    final Object? marineRaw = await _marineRaw(lat, lon, days);
 
     final parsed = ForecastOutlook.parseOpenMeteo(
       atmo: atmoRaw,
@@ -91,8 +65,8 @@ class OpenMeteoForecastProvider implements ForecastProvider {
       fetchedAt: DateTime.now(),
       lat: lat,
       lon: lon,
-      marineLat: AqOneConfig.marineSampleLat,
-      marineLon: AqOneConfig.marineSampleLon,
+      marineLat: lat,
+      marineLon: lon,
     );
     if (parsed == null) {
       return null;
@@ -138,15 +112,15 @@ class OpenMeteoForecastProvider implements ForecastProvider {
   /// Wave heights are sampled at a fixed offshore point rather than at the
   /// municipal centre: the marine grid only covers water, and asking it about
   /// a point on Panay returns nothing at all.
-  Future<Object?> _marineRaw(int days) async {
+  Future<Object?> _marineRaw(double lat, double lon, int days) async {
     try {
       final Uri uri = EndpointGuard.requireHttpsAbsolute(
         AqOneConfig.openMeteoMarineBase,
         label: 'AqOneConfig.openMeteoMarineBase',
       ).replace(
         queryParameters: <String, String>{
-          'latitude': '${AqOneConfig.marineSampleLat}',
-          'longitude': '${AqOneConfig.marineSampleLon}',
+          'latitude': '$lat',
+          'longitude': '$lon',
           'hourly': 'wave_height',
           'forecast_days': '$days',
           'timezone': 'auto',
@@ -184,22 +158,6 @@ class AqOneForecastProvider implements ForecastProvider {
 
   final BackendClient _backend;
   final ForecastProvider _fallback;
-
-  @override
-  Future<List<DailyOutlook>?> daily({
-    required double lat,
-    required double lon,
-    String? municipality,
-    int days = AqOneConfig.forecastDays,
-  }) async {
-    final res = await outlook(
-      lat: lat,
-      lon: lon,
-      municipality: municipality,
-      days: days,
-    );
-    return res?.days;
-  }
 
   @override
   Future<ForecastOutlook?> outlook({

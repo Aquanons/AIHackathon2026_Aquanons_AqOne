@@ -96,13 +96,6 @@ class _LifecycleFeeds extends VentureFeeds {
   Future<List<Advisory>?> advisories() async => const <Advisory>[];
   @override
   Future<WeatherSnapshot?> weather({required double lat, required double lon}) async => null;
-  @override
-  Future<List<DailyOutlook>?> forecast({
-    required double lat,
-    required double lon,
-    String? municipality,
-  }) async =>
-      const <DailyOutlook>[];
 }
 
 const VesselIdentity _testIdentity = VesselIdentity(
@@ -746,5 +739,73 @@ void main() {
 
     // Pump empty widget to dispose HomePage and cancel minute timer
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Finding 1 (UI): displays window summary when forecast is null but official notAdvised is present', (WidgetTester tester) async {
+    final now = DateTime(2026, 9, 13, 10, 0);
+    await tester.pumpWidget(
+      wrap(
+        WeatherCard(
+          snapshot: const WeatherSnapshot(temperature: 30, windSpeed: 8, weatherCode: 0),
+          isLoading: false,
+          onRetry: () {},
+          forecastOutlook: null,
+          seaCondition: const SeaCondition(status: SeaStatus.notAdvised),
+          now: now,
+        ),
+      ),
+    );
+
+    expect(find.text('Fishing weather window'), findsOneWidget);
+    expect(find.text('High-risk conditions now'), findsOneWidget);
+    expect(find.textContaining('official warning: not advised'), findsOneWidget);
+  });
+
+  testWidgets('Finding 6 (UI): displays forecast coordinates in footer', (WidgetTester tester) async {
+    final now = DateTime(2026, 9, 13, 10, 0);
+    final outlook = createOutlook(now: now);
+    await tester.pumpWidget(
+      wrap(
+        WeatherCard(
+          snapshot: const WeatherSnapshot(temperature: 30, windSpeed: 8, weatherCode: 0),
+          isLoading: false,
+          onRetry: () {},
+          forecastOutlook: outlook,
+          now: now,
+          locationLabel: 'Panay Offshore',
+        ),
+      ),
+    );
+
+    expect(find.textContaining('11.50°N, 122.50°E'), findsOneWidget);
+  });
+
+  testWidgets('Finding 8 (UI): renders upcoming risk tier in subtitle alongside onset', (WidgetTester tester) async {
+    final now = DateTime(2026, 9, 13, 10, 0);
+    final hours = List<HourlyInterval>.generate(12, (int i) {
+      final t = now.add(Duration(hours: i + 1));
+      final isDeteriorated = i + 1 == 5;
+      return HourlyInterval(
+        time: t,
+        weatherCode: isDeteriorated ? 95 : 0,
+        gustKph: isDeteriorated ? 55.0 : 15.0,
+        waveM: isDeteriorated ? 2.6 : 0.5,
+      );
+    });
+    final outlook = createOutlook(now: now, hours: hours);
+    await tester.pumpWidget(
+      wrap(
+        WeatherCard(
+          snapshot: const WeatherSnapshot(temperature: 30, windSpeed: 8, weatherCode: 0),
+          isLoading: false,
+          onRetry: () {},
+          forecastOutlook: outlook,
+          now: now,
+        ),
+      ),
+    );
+
+    expect(find.text('Fishing weather window'), findsOneWidget);
+    expect(find.textContaining('(Dangerous)'), findsOneWidget);
   });
 }

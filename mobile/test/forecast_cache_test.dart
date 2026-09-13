@@ -67,7 +67,7 @@ void main() {
       expect(loaded.outlook!.hours.single.waveM, 0.8);
       expect(loaded.outlook!.source, 'backend');
 
-      final loadedOutlook = await cache.loadOutlook();
+      final loadedOutlook = (await cache.load())?.outlook;
       expect(loadedOutlook, isNotNull);
       expect(loadedOutlook!.hours.length, 1);
     });

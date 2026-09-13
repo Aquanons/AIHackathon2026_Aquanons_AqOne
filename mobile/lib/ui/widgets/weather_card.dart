@@ -67,7 +67,14 @@ class WeatherCard extends StatelessWidget {
         ? forecast
         : (forecastOutlook?.days ?? const <DailyOutlook>[]);
 
-    final FishingWindowResult? windowResult = forecastOutlook != null
+    final bool shouldCalculateWindow = forecastOutlook != null ||
+        seaCondition?.status == SeaStatus.notAdvised ||
+        seaCondition?.status == SeaStatus.caution ||
+        squall?.level == SquallLevel.returnNow ||
+        squall?.level == SquallLevel.watch ||
+        squall?.returnNow == true;
+
+    final FishingWindowResult? windowResult = shouldCalculateWindow
         ? FishingWindowCalculator.calculate(
             forecast: forecastOutlook,
             seaCondition: seaCondition,
@@ -92,6 +99,7 @@ class WeatherCard extends StatelessWidget {
           if (windowResult != null) ...<Widget>[
             _FishingWindowSummary(
               result: windowResult,
+              forecast: forecastOutlook,
               isDark: isDark,
               locationLabel: locationLabel,
               onRetry: onRetry,
@@ -251,12 +259,14 @@ class WeatherCard extends StatelessWidget {
 class _FishingWindowSummary extends StatelessWidget {
   const _FishingWindowSummary({
     required this.result,
+    this.forecast,
     required this.isDark,
     required this.locationLabel,
     required this.onRetry,
   });
 
   final FishingWindowResult result;
+  final ForecastOutlook? forecast;
   final bool isDark;
   final String locationLabel;
   final VoidCallback onRetry;
@@ -335,14 +345,31 @@ class _FishingWindowSummary extends StatelessWidget {
             ),
             if (subtitle != null && subtitle.isNotEmpty) ...<Widget>[
               const SizedBox(height: 3),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.35,
-                  fontWeight: FontWeight.w500,
-                  color: style.subtitleColor,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (result.hasPositiveWindow && result.upcomingRisk != null) ...<Widget>[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, right: 5),
+                      child: Icon(
+                        result.upcomingRisk!.icon,
+                        size: 13,
+                        color: result.upcomingRisk!.color,
+                      ),
+                    ),
+                  ],
+                  Expanded(
+                    child: Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        fontWeight: FontWeight.w500,
+                        color: style.subtitleColor,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
             if (result.hasPositiveWindow) ...<Widget>[
@@ -392,10 +419,21 @@ class _FishingWindowSummary extends StatelessWidget {
 
   String _footerProvenance(AppLocalizations t) {
     final StringBuffer sb = StringBuffer();
-    sb.write(t.weatherWindowLocationLabel(locationLabel));
-    if (result.forecastFetchedAt != null) {
+    final String targetLoc;
+    if (forecast?.latitude != null && forecast?.longitude != null) {
+      final lat = forecast!.latitude!;
+      final lon = forecast!.longitude!;
+      final latStr = '${lat.abs().toStringAsFixed(2)}°${lat >= 0 ? 'N' : 'S'}';
+      final lonStr = '${lon.abs().toStringAsFixed(2)}°${lon >= 0 ? 'E' : 'W'}';
+      targetLoc = '$locationLabel ($latStr, $lonStr)';
+    } else {
+      targetLoc = locationLabel;
+    }
+    sb.write(t.weatherWindowLocationLabel(targetLoc));
+    final fetchedAt = forecast?.fetchedAt;
+    if (fetchedAt != null) {
       sb.write(' · ');
-      sb.write(t.forecastAsOf(_clock(result.forecastFetchedAt!)));
+      sb.write(t.forecastAsOf(_clock(fetchedAt)));
     }
     return sb.toString();
   }
@@ -445,10 +483,10 @@ class _FishingWindowSummary extends StatelessWidget {
         t.weatherWindowNoWorsening(_formatDateTime(context, result.coverageEnd ?? DateTime.now())),
       FishingWindowAvailability.earlierDataMissing =>
         result.deteriorationTime != null && result.upcomingReason != null
-            ? t.weatherWindowUpcoming(
+            ? '${t.weatherWindowUpcoming(
                 _formatDateTime(context, result.deteriorationTime!),
                 result.upcomingReason!.label(t),
-              )
+              )}${result.upcomingRisk != null ? ' (${result.upcomingRisk!.label(t)})' : ''}'
             : t.weatherWindowEarlierMissing,
       FishingWindowAvailability.missingHourly =>
         result.firstAdverseDay != null
@@ -470,10 +508,14 @@ class _FishingWindowSummary extends StatelessWidget {
   ) {
     if (result.hasPositiveWindow) {
       if (result.deteriorationTime != null && result.upcomingReason != null) {
-        return t.weatherWindowUpcoming(
+        final String base = t.weatherWindowUpcoming(
           _formatDateTime(context, result.deteriorationTime!),
           result.upcomingReason!.label(t),
         );
+        if (result.upcomingRisk != null) {
+          return '$base (${result.upcomingRisk!.label(t)})';
+        }
+        return base;
       }
       return null;
     }
