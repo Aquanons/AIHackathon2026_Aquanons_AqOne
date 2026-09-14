@@ -348,7 +348,7 @@ Do not deploy or declare physical SOS readiness from local acceptance; deploymen
 | 3 | Completed | 5878b40145be0e579b323a64ccdadb18d89134f8 | 106/106 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; safety data freshness, numerical validation, and demo provenance confirmed |
 | 4 | Completed | 4408f4ab641326d1301b11ad65c532eb05993b64 | 114/114 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; SOS ordering, drawer retirement, modal target lock, editable shortcuts, and audit snapshot confirmed |
 | 5 | Completed | 931a31f41a63746f63f5a2031c9b2d949949f1c7 | 114/114 node --test passed; node --check clean; test_dashboard_coords.py 2/2 passed; 18 files changed (-1,079 net lines); dead code removed, coords test repaired, audit closure recorded |
-| Re-audit (R1–R5) | Completed | Working Tree (Pending commit) | 132/132 node --test passed (incl. 18/18 reaudit tests); 300 pytest passed (5 skipped, 1 xfailed); python -m ruff check backend clean; R1–R5 defects remediated; Ponytail cuts applied |
+| Re-audit & Verification (R1–R5, V1–V4, C1–C2) | Completed | ebb3476 + Working Tree | 141/141 node --test passed (incl. 27/27 reaudit tests); node --check clean; git diff --check clean; R1–R5, V1–V4, C1–C2 remediated; Ponytail native abort signals applied |
 
 Check off tasks only after the relevant behavior has been verified.
 A source-level fix, a passing helper suite, and a successful browser/operator flow are different evidence levels and must be reported separately.

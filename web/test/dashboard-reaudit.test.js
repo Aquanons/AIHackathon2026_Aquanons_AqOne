@@ -269,6 +269,7 @@ function createDOMContext(elements = {}, ns = {}) {
     isNaN: isNaN,
     URLSearchParams: URLSearchParams,
     AbortController: globalThis.AbortController,
+    AbortSignal: globalThis.AbortSignal,
     fetch: globalThis.fetch || (async () => ({ ok: true, json: async () => ({}) })),
     URL: {
       createObjectURL: () => 'blob:dummylink',
@@ -1043,5 +1044,185 @@ test('R5: Synchronized Audit Search Filter Promotion', async (t) => {
     await new Promise(r => setTimeout(r, 10));
     assert.ok(capturedFetches[0].includes('actor_email=bob%40example.com'), 'Pagination cursor fetch uses Snapshot B');
     assert.ok(capturedFetches[0].includes('cursor=cursor-bob-2'));
+  });
+});
+
+test('C1: Squall Freshness Viewport and Drawing State Preservation', async (t) => {
+  await t.test('freshness ticks preserve viewport with populated squall polygon, including while operator is drawing', async () => {
+    let fitBoundsCalls = 0;
+    const fakeBounds = {
+      isValid: () => true,
+      pad: () => fakeBounds
+    };
+    const squallFeatureGroup = {
+      addTo: () => squallFeatureGroup,
+      clearLayers: () => {},
+      addLayer: () => {},
+      getLayers: () => [{}],
+      getBounds: () => fakeBounds
+    };
+    const fakeMap = {
+      fitBounds: () => { fitBoundsCalls++; },
+      createPane: () => ({ style: {} }),
+      getPane: () => ({ style: {} }),
+      on: () => {},
+      setView: () => {}
+    };
+    const fakeL = {
+      layerGroup: () => ({
+        addTo: () => ({
+          clearLayers: () => {},
+          addLayer: () => {},
+          getLayers: () => []
+        })
+      }),
+      featureGroup: () => squallFeatureGroup,
+      geoJSON: () => ({ addTo: () => {} }),
+      polyline: () => ({ addTo: () => {} })
+    };
+
+    const squallStatusEl = createStubElement('div', 'ai-squall-status');
+    const squallSummaryEl = createStubElement('div', 'ai-squall-summary');
+    const statsSquallEl = createStubElement('span', 'stats-squall-status');
+    const elements = {
+      'ai-squall-status': squallStatusEl,
+      'ai-squall-summary': squallSummaryEl,
+      'stats-squall-status': statsSquallEl,
+      'ai-panel': createStubElement('div', 'ai-panel'),
+      'ai-drift-select': createStubElement('select', 'ai-drift-select'),
+      'ai-trace-chart': createStubElement('div', 'ai-trace-chart'),
+      'ai-trace-legend': createStubElement('div', 'ai-trace-legend')
+    };
+
+    let fetchCount = 0;
+    let registeredFreshnessTimer = null;
+    const ns = {
+      ready: true,
+      escapeHtml,
+      squallStatusHtml,
+      formatDataAge,
+      alertBadge,
+      map: fakeMap,
+      squallLayer: squallFeatureGroup,
+      authFetch: async (url) => {
+        if (url.includes('/squall/current')) {
+          fetchCount++;
+          if (fetchCount === 1) {
+            return {
+              ok: true,
+              json: async () => ({
+                source: 'live',
+                level: 'return_now',
+                data_age_seconds: 60,
+                calibration: 'calibrated model',
+                detections: [{
+                  id: 'sq-populated-1',
+                  affected_polygon: {
+                    type: 'Feature',
+                    geometry: { type: 'Polygon', coordinates: [[[122, 11], [122.1, 11], [122.1, 11.1], [122, 11]]] }
+                  },
+                  arrival_by_buoy: []
+                }]
+              })
+            };
+          }
+          throw new Error('Squall feed connection lost');
+        }
+        return { ok: true, json: async () => [] };
+      }
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    window.setInterval = (fn, ms) => {
+      if (ms === 15000) registeredFreshnessTimer = fn;
+      return 1;
+    };
+
+    const aiOpsCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-ai-ops.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(aiOpsCode, context);
+
+    await new Promise(r => setTimeout(r, 10));
+
+    assert.equal(fitBoundsCalls, 1, 'Initial data load centers the map on squall polygon');
+    assert.equal(typeof registeredFreshnessTimer, 'function', 'Registers 15-second freshness timer callback');
+
+    const originalDateNow = Date.now;
+    try {
+      let simulatedTime = Date.now() + 600000;
+      Date.now = () => simulatedTime;
+
+      ns.sectorDraw.active = true;
+
+      registeredFreshnessTimer();
+      registeredFreshnessTimer();
+      await new Promise(r => setTimeout(r, 10));
+
+      assert.equal(fitBoundsCalls, 1, 'Freshness ticks preserve viewport and do not repeatedly call fitBounds');
+
+      const statusHtml = squallStatusEl.innerHTML;
+      assert.ok(!statusHtml.includes('>LIVE<'), 'Offline squall does not display LIVE badge');
+      assert.ok(statusHtml.includes('LAST KNOWN'), 'Labels squall as LAST KNOWN');
+      assert.ok(statusHtml.includes('FEED OFFLINE'), 'Labels feed as FEED OFFLINE');
+      assert.ok(statusHtml.includes('Service offline (showing last-known detection)'), 'Shows offline warning reason');
+      assert.equal(statsSquallEl.textContent, 'RETURN NOW', 'Preserves active RETURN NOW warning banner');
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
+});
+
+test('C2: Request Deadlines Cancel Underlying Stalled Requests', async (t) => {
+  await t.test('aiFetchJson passes native AbortSignal and cancels timed-out requests', async () => {
+    let capturedSignal = null;
+    const ns = {
+      ready: true,
+      authFetch: async (url, opts) => {
+        if (opts && opts.signal) {
+          capturedSignal = opts.signal;
+        }
+        return new Promise(() => {});
+      }
+    };
+
+    const elements = {
+      'ai-panel': createStubElement('div', 'ai-panel')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const aiOpsCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-ai-ops.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(aiOpsCode, context);
+
+    assert.ok(capturedSignal, 'authFetch received a cancellation signal');
+    assert.ok(capturedSignal instanceof AbortSignal, 'Signal is an AbortSignal instance');
+    assert.equal(capturedSignal.aborted, false, 'Signal is not aborted initially');
+  });
+
+  await t.test('loadOpenCases passes native AbortSignal and cancels timed-out trip checks requests', async () => {
+    let capturedSignal = null;
+    const ns = {
+      ready: true,
+      authFetch: async (url, opts) => {
+        if (opts && opts.signal) {
+          capturedSignal = opts.signal;
+        }
+        return new Promise(() => {});
+      }
+    };
+
+    const elements = {
+      'trip-checks-list': createStubElement('div', 'trip-checks-list'),
+      'badge-tripchecks': createStubElement('span', 'badge-tripchecks')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const tripCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-trip-checks.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(tripCode, context);
+
+    assert.ok(capturedSignal, 'trip checks authFetch received a cancellation signal');
+    assert.ok(capturedSignal instanceof AbortSignal, 'Trip checks signal is an AbortSignal instance');
+    assert.equal(capturedSignal.aborted, false, 'Trip checks signal is not aborted initially');
   });
 });

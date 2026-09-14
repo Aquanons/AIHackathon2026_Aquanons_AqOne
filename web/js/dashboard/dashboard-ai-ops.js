@@ -13,6 +13,7 @@
     ? ns.squallLayer
     : (typeof L !== 'undefined' && typeof L.featureGroup === 'function' ? L.featureGroup().addTo(map) : (typeof L !== 'undefined' && typeof L.layerGroup === 'function' ? L.layerGroup().addTo(map) : null));
   var aiRefreshTimer = null;
+  var aiFreshnessTimer = null;
 
   // Responder-approved detection-method presets (docs/40 Phase 3 item 2,
   // docs/05_PUBLIC_API.md). Mirrors app/api/drift.py DETECTION_METHOD_LABELS
@@ -43,20 +44,16 @@
 
   var AI_FETCH_TIMEOUT_MS = 25000;
 
-  function aiFetchJson(path) {
-    var fetchPromise = authFetch(path)
+  function aiFetchJson(path, options) {
+    var opts = options || {};
+    var signal = opts.signal || (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(AI_FETCH_TIMEOUT_MS)
+      : undefined);
+    return authFetch(path, Object.assign({}, opts, signal ? { signal: signal } : {}))
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       });
-
-    var timeoutPromise = new Promise(function (_, reject) {
-      setTimeout(function () {
-        reject(new Error('AI fetch timed out: ' + path));
-      }, AI_FETCH_TIMEOUT_MS);
-    });
-
-    return Promise.race([fetchPromise, timeoutPromise]);
   }
 
   function aiStatusClass(status) {
@@ -443,7 +440,9 @@
     map.off('click', onFirstCorner);
     map.off('click', onSecondCorner);
     aiDrawLayer.clearLayers();
-    sectorDraw = { active: false, corner1: null, bounds: null };
+    sectorDraw.active = false;
+    sectorDraw.corner1 = null;
+    sectorDraw.bounds = null;
     var driftSelect = document.getElementById('ai-drift-select');
     if (driftSelect) driftSelect.disabled = false;
     renderSearchControls(currentDriftPayload);
@@ -455,7 +454,9 @@
     if (!eligibility.ok) return;
 
     aiDrawLayer.clearLayers();
-    sectorDraw = { active: true, corner1: null, bounds: null };
+    sectorDraw.active = true;
+    sectorDraw.corner1 = null;
+    sectorDraw.bounds = null;
     var driftSelect = document.getElementById('ai-drift-select');
     if (driftSelect) driftSelect.disabled = true;
 
@@ -760,11 +761,11 @@
     legend.style.display = hasContent ? '' : 'none';
   }
 
-  function renderSquallWatch(payload, traceSeries) {
+  function renderSquallWatch(payload, traceSeries, options) {
+    var opts = options || {};
     var summary = document.getElementById('ai-squall-summary');
     var statusHost = document.getElementById('ai-squall-status');
     if (!summary) return;
-    clearAiSquallLayers();
 
     var p = payload || {};
     var detections = Array.isArray(p.detections) ? p.detections : [];
@@ -775,6 +776,7 @@
     // deliberately distinct from "no active detections": an alarm that
     // cannot be evaluated must never look the same as "all clear".
     if (p.level === 'unknown') {
+      clearAiSquallLayers();
       summary.innerHTML = '<div class="ai-empty-state">Squall status cannot be confirmed right now.</div>';
       renderSquallChart([]);
       updateAiMapKey();
@@ -782,6 +784,7 @@
     }
 
     if (!detections.length) {
+      clearAiSquallLayers();
       summary.innerHTML = '<div class="ai-empty-state">No active squall detections at the moment.</div>';
       renderSquallChart([]);
       updateAiMapKey();
@@ -790,8 +793,24 @@
 
     var detection = detections[0];
     var arrival = Array.isArray(detection.arrival_by_buoy) ? detection.arrival_by_buoy : [];
-    var polygon = detection.affected_polygon;
+    var asOf = detection.as_of ? new Date(detection.as_of).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+    summary.innerHTML =
+      '<div class="ai-squall-meta-row"><span>Probability</span><strong>' + (Number(detection.probability || 0) * 100).toFixed(0) + '%</strong></div>' +
+      '<div class="ai-squall-meta-row"><span>Confidence</span><strong>' + (Number(detection.confidence || 0) * 100).toFixed(0) + '%</strong></div>' +
+      '<div class="ai-squall-meta-row"><span>Bearing</span><strong>' + Number((detection.propagation && detection.propagation.bearing_deg) || 0).toFixed(0) + '°</strong></div>' +
+      '<div class="ai-squall-meta-row"><span>As of</span><strong>' + ns.escapeHtml(asOf) + '</strong></div>' +
+      '<div class="ai-squall-meta-row"><span>Arrival window</span><strong>' + (arrival.length ? ns.escapeHtml(String(arrival[0].arrival_minutes)) + ' min first arrival' : 'n/a') + '</strong></div>';
 
+    renderSquallChart(traceSeries);
+    updateAiMapKey();
+
+    if (opts.freshnessOnly) {
+      return;
+    }
+
+    clearAiSquallLayers();
+
+    var polygon = detection.affected_polygon;
     if (polygon && polygon.geometry) {
       L.geoJSON(polygon, {
         pane: 'aiSquallPane',
@@ -815,20 +834,9 @@
     }
 
     var bounds = aiSquallLayer.getBounds();
-    if (!aiContoursLayer.getLayers().length && bounds.isValid()) {
+    if (!sectorDraw.active && !sectorDraw.bounds && !aiContoursLayer.getLayers().length && bounds.isValid()) {
       map.fitBounds(bounds.pad(0.15), { animate: true, duration: 0.9, maxZoom: 14 });
     }
-
-    var asOf = detection.as_of ? new Date(detection.as_of).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
-    summary.innerHTML =
-      '<div class="ai-squall-meta-row"><span>Probability</span><strong>' + (Number(detection.probability || 0) * 100).toFixed(0) + '%</strong></div>' +
-      '<div class="ai-squall-meta-row"><span>Confidence</span><strong>' + (Number(detection.confidence || 0) * 100).toFixed(0) + '%</strong></div>' +
-      '<div class="ai-squall-meta-row"><span>Bearing</span><strong>' + Number((detection.propagation && detection.propagation.bearing_deg) || 0).toFixed(0) + '°</strong></div>' +
-      '<div class="ai-squall-meta-row"><span>As of</span><strong>' + ns.escapeHtml(asOf) + '</strong></div>' +
-      '<div class="ai-squall-meta-row"><span>Arrival window</span><strong>' + (arrival.length ? ns.escapeHtml(String(arrival[0].arrival_minutes)) + ' min first arrival' : 'n/a') + '</strong></div>';
-
-    renderSquallChart(traceSeries);
-    updateAiMapKey();
   }
 
   function loadDriftIncidentDetail(incidentId) {
@@ -916,7 +924,7 @@
           detections: [],
           freshness: squallFreshness,
           status_reason: 'Squall service unavailable · connection lost'
-        }, []);
+        }, [], { freshnessOnly: true });
         updateSquallLegendVisibility();
       } else {
         var elapsedSec = Math.max(0, Math.floor((now - (lastSquallSuccessMs || now)) / 1000));
@@ -925,7 +933,7 @@
           freshness: squallFreshness,
           status_reason: (lastKnownSquallPayload.status_reason ? lastKnownSquallPayload.status_reason + ' · ' : '') + (squallFreshness === 'offline' ? 'Service offline (showing last-known detection)' : 'Feed stale (showing last-known detection)')
         });
-        renderSquallWatch(agedPayload, lastKnownSquallTrace || []);
+        renderSquallWatch(agedPayload, lastKnownSquallTrace || [], { freshnessOnly: true });
       }
     }
   }
@@ -1032,7 +1040,8 @@
     if (aiRefreshTimer && typeof aiRefreshTimer.unref === 'function') {
       aiRefreshTimer.unref();
     }
-    var aiFreshnessTimer = setInterval(updateAIFreshness, 15000);
+    if (aiFreshnessTimer) clearInterval(aiFreshnessTimer);
+    aiFreshnessTimer = setInterval(updateAIFreshness, 15000);
     if (aiFreshnessTimer && typeof aiFreshnessTimer.unref === 'function') {
       aiFreshnessTimer.unref();
     }
@@ -1059,6 +1068,7 @@
   ns.escapeHtml = escapeHtml;
   ns._escHtml = escapeHtml;
   ns.aiRefreshTimer = aiRefreshTimer;
+  ns.aiFreshnessTimer = aiFreshnessTimer;
   ns.aiColors = aiColors;
   ns.aiFetchJson = aiFetchJson;
   ns.aiStatusClass = aiStatusClass;
@@ -1078,5 +1088,6 @@
   ns.pollAIOperations = pollAIOperations;
   ns.updateAIFreshness = updateAIFreshness;
   ns.initAIOperations = initAIOperations;
+  ns.sectorDraw = sectorDraw;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

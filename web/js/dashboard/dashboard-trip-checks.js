@@ -67,19 +67,15 @@
   function loadOpenCases() {
     updateTripChecksFreshness();
 
-    var fetchPromise = authFetch('/api/ai/anomaly/cases/open')
+    var signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(TRIP_CHECK_TIMEOUT_MS)
+      : undefined;
+
+    return authFetch('/api/ai/anomaly/cases/open', signal ? { signal: signal } : undefined)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
-      });
-
-    var timeoutPromise = new Promise(function (_, reject) {
-      setTimeout(function () {
-        reject(new Error('Trip checks request timed out'));
-      }, TRIP_CHECK_TIMEOUT_MS);
-    });
-
-    return Promise.race([fetchPromise, timeoutPromise])
+      })
       .then(function (cases) {
         loadedOnce = true;
         lastTripChecksSuccessMs = Date.now();

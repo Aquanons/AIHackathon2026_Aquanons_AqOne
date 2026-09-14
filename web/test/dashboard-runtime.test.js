@@ -182,6 +182,7 @@ function createDOMContext(elements = {}, ns = { ready: true }) {
     parseFloat: parseFloat,
     parseInt: parseInt,
     AbortController: global.AbortController || AbortController,
+    AbortSignal: global.AbortSignal || AbortSignal,
     URLSearchParams: global.URLSearchParams || URLSearchParams,
     fetch: global.fetch || (() => new Promise(() => {}))
   };
