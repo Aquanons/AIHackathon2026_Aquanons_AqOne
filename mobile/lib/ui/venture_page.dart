@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:aqone/l10n/app_localizations.dart';
@@ -10,14 +10,12 @@ import '../core/config.dart';
 import '../data/checklist_store.dart';
 import '../data/identity_store.dart';
 import '../models/buoy_marker.dart';
-import '../models/catch_record.dart';
 import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
 import '../models/hotspot_cell.dart';
 import '../models/sos_record.dart';
 import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
-import '../services/catch_service.dart';
 import '../services/compass_service.dart';
 import '../services/location_service.dart';
 import '../services/mbtiles_provider.dart';
@@ -25,7 +23,6 @@ import '../services/sos_alarm.dart';
 import '../services/sos_service.dart';
 import '../services/tile_cache.dart';
 import '../services/venture_feeds.dart';
-import 'catch_history_page.dart';
 import 'chathubb.dart';
 import 'checklist_page.dart';
 import 'widgets/compass_dial.dart';
@@ -84,7 +81,6 @@ class VenturePage extends StatefulWidget {
     super.key,
     required this.identity,
     required this.sos,
-    required this.catches,
     required this.checklist,
     required this.feeds,
     required this.location,
@@ -96,7 +92,6 @@ class VenturePage extends StatefulWidget {
 
   final VesselIdentity identity;
   final SosService sos;
-  final CatchService catches;
   final ChecklistStore checklist;
   final VentureFeeds feeds;
   final LocationService location;
@@ -176,12 +171,6 @@ class _VenturePageState extends State<VenturePage> {
   bool _isSendingSos = false;
   final SosAlarm _sosAlarm = SosAlarm();
 
-  int _pendingCatches = 0;
-  CatchRecord? _lastCatch;
-  bool _repeatingCatch = false;
-  StreamSubscription<void>? _catchSub;
-
-
   /// True while a hazard dialog is on screen, so a second alert arriving from
   /// the same poll cannot stack a dialog on top of the first.
   bool _hazardDialogOpen = false;
@@ -191,9 +180,6 @@ class _VenturePageState extends State<VenturePage> {
   void initState() {
     super.initState();
     _sosSub = widget.sos.changes.listen((_) => _refreshSosStatus());
-    if (!AqOneConfig.pitchMode) {
-      _catchSub = widget.catches.changes.listen((_) => _refreshCatchCount());
-    }
     _initTileProvider();
     _compassSub = _compass.readings.listen((CompassReading reading) {
       if (!mounted) {
@@ -213,7 +199,6 @@ class _VenturePageState extends State<VenturePage> {
       }
       _refreshSosStatus();
       if (!AqOneConfig.pitchMode) {
-        _refreshCatchCount();
         _hotspotTimer = Timer.periodic(
           AqOneConfig.hotspotRefreshInterval,
           (_) => _loadHotspots(),
@@ -235,7 +220,6 @@ class _VenturePageState extends State<VenturePage> {
     _pollTimer?.cancel();
     _hotspotTimer?.cancel();
     _sosSub?.cancel();
-    _catchSub?.cancel();
     // The magnetometer keeps the SoC awake while subscribed, so it must go
     // down with the screen.
     _compassSub?.cancel();
@@ -244,21 +228,6 @@ class _VenturePageState extends State<VenturePage> {
     _mapController.dispose();
     unawaited(_sosAlarm.dispose());
     super.dispose();
-  }
-
-  Future<void> _refreshCatchCount() async {
-    if (AqOneConfig.pitchMode) {
-      return;
-    }
-    final count = await widget.catches.pendingCount();
-    final last = await widget.catches.mostRecent();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _pendingCatches = count;
-      _lastCatch = last;
-    });
   }
 
   Future<void> _refreshSosStatus() async {
@@ -568,8 +537,8 @@ class _VenturePageState extends State<VenturePage> {
             Text(
               weather == null
                   ? 'Weather could not be loaded, so this cannot be assessed.'
-                  : '${weather.condition.label} · '
-                      '${weather.temperature.toStringAsFixed(1)}°C · '
+                  : '${weather.condition.label} Â· '
+                      '${weather.temperature.toStringAsFixed(1)}Â°C Â· '
                       'wind ${weather.windSpeed.toStringAsFixed(0)} km/h',
               style: const TextStyle(fontSize: 14, height: 1.4),
             ),
@@ -581,7 +550,7 @@ class _VenturePageState extends State<VenturePage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Source: Open-Meteo · threshold '
+                'Source: Open-Meteo Â· threshold '
                     '${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h. '
                     'This is not a PAGASA warning. '
                     'Always follow the official sea condition and advisories.',
@@ -725,7 +694,7 @@ class _VenturePageState extends State<VenturePage> {
     // goes to the sheet behind the tap.
     final String summary = demo
         ? 'Demo'
-        : '${t.hotspotLegendTitle} · $cells areas';
+        : '${t.hotspotLegendTitle} Â· $cells areas';
 
     return Semantics(
       button: true,
@@ -875,10 +844,10 @@ class _VenturePageState extends State<VenturePage> {
                 ),
               ] else ...<Widget>[
                 Text(
-                  '$cells areas · $observations catch reports'
-                  '${age == null ? '' : ' · $age'}'
-                  '${minReporters == null ? '' : ' · min $minReporters reporters'}'
-                  '${windowDays == null ? '' : ' · last $windowDays days'}',
+                  '$cells areas Â· $observations catch reports'
+                  '${age == null ? '' : ' Â· $age'}'
+                  '${minReporters == null ? '' : ' Â· min $minReporters reporters'}'
+                  '${windowDays == null ? '' : ' Â· last $windowDays days'}',
                   style: TextStyle(fontSize: 13, height: 1.35, color: fg),
                 ),
                 const SizedBox(height: 4),
@@ -914,7 +883,7 @@ class _VenturePageState extends State<VenturePage> {
     final hotspots = _hotspots;
     final circles = <CircleMarker>[
       // Drawn first so buoy coverage and every safety overlay paint on top.
-      // §6.2: safety warnings override and visually supersede hotspot
+      // Â§6.2: safety warnings override and visually supersede hotspot
       // guidance, which is a paint-order property before it is a policy.
       if (!AqOneConfig.pitchMode && hotspots != null)
         for (final cell in hotspots.cells)
@@ -1018,7 +987,7 @@ class _VenturePageState extends State<VenturePage> {
     final weather = _weather;
     final label = _weatherFailed
         ? 'Weather unavailable'
-        : weather?.condition.label ?? 'Loading…';
+        : weather?.condition.label ?? 'Loadingâ€¦';
     final icon = weather?.condition.icon ?? Icons.wb_sunny_rounded;
 
     return GestureDetector(
@@ -1064,7 +1033,7 @@ class _VenturePageState extends State<VenturePage> {
             ),
             const SizedBox(width: 10),
             Text(
-              '${weather?.temperature.toStringAsFixed(1) ?? '--'}°C',
+              '${weather?.temperature.toStringAsFixed(1) ?? '--'}Â°C',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
@@ -1082,10 +1051,8 @@ class _VenturePageState extends State<VenturePage> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
         Expanded(
-          // Bottom-anchored: the rail grew when Log Catch joined it, and a
-          // vertically centred column that tall reads as floating in the middle
-          // of the map. The enclosing Positioned already stops 16px + the dock
-          // inset short of the screen edge, so this sits just above the dock.
+          // Bottom-anchored so the actions sit just above the dock, clear of
+          // the screen edge.
           child: Align(
             alignment: Alignment.bottomRight,
             child: _buildActionRail(isDark),
@@ -1128,78 +1095,6 @@ class _VenturePageState extends State<VenturePage> {
                 Chathubb(identity: widget.identity)),
           ),
         ),
-        if (!AqOneConfig.pitchMode) ...<Widget>[
-          const SizedBox(height: 10),
-          _RoundButton(
-            icon: Icons.receipt_long_rounded,
-            tooltip: "Today's catches",
-            isActive: false,
-            isDark: isDark,
-            onTap: _openCatchHistory,
-          ),
-          const SizedBox(height: 10),
-          // The three pills are deliberately identical in size. At sea, with wet
-          // hands and a moving deck, a button is found by where it is and what
-          // colour it is, not by reading it - so shape carries no meaning here
-          // and colour carries all of it: teal repeat, blue log, red SOS.
-          if (_lastCatch != null) ...<Widget>[
-            _ActionPill(
-              icon: Icons.replay_rounded,
-              label: 'Repeat',
-              color: const Color(0xFF0EA5A4),
-              isDark: isDark,
-              tooltip: 'Repeat: ${_lastCatchLabel(_lastCatch!)}',
-              onTap: _repeatingCatch ? null : _repeatLastCatch,
-            ),
-            // The species/weight the repeat button would log, kept off the
-            // button itself so the pill width never depends on a fish name.
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: SizedBox(
-                width: _kActionPillWidth,
-                child: Text(
-                  _lastCatchLabel(_lastCatch!),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: isDark ? Colors.white70 : const Color(0xFF475569),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          _ActionPill(
-            icon: Icons.edit_note_rounded,
-            label: 'Log Catch',
-            color: const Color(0xFF0284C7),
-            isDark: isDark,
-            onTap: _showCatchSheet,
-          ),
-          if (_pendingCatches > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: GestureDetector(
-                onTap: _openCatchHistory,
-                child: SizedBox(
-                  width: _kActionPillWidth,
-                  child: Text(
-                    '$_pendingCatches waiting to upload',
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      decoration: TextDecoration.underline,
-                      color: isDark ? Colors.white70 : const Color(0xFF475569),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
         const SizedBox(height: 14),
         _ActionPill(
           icon: Icons.warning_rounded,
@@ -1210,70 +1105,6 @@ class _VenturePageState extends State<VenturePage> {
         ),
       ],
     );
-  }
-
-  // --- Catch log ------------------------------------------------------------
-
-  Future<void> _showCatchSheet() async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _CatchLogSheet(catches: widget.catches),
-    );
-    if (saved == true && mounted) {
-      await _refreshCatchCount();
-      _snack('Catch saved. It uploads when you have signal.');
-    }
-  }
-
-  /// One tap, no sheet at all: logs another of whatever was just logged,
-  /// same species and the same weight preset. The fast path for the common
-  /// case of pulling in several of the same fish in a row.
-  Future<void> _repeatLastCatch() async {
-    final last = _lastCatch;
-    if (last == null || _repeatingCatch) {
-      return;
-    }
-    setState(() => _repeatingCatch = true);
-    try {
-      await widget.catches.logCatch(
-        speciesName: last.speciesName,
-        estimatedQuantityKg: last.estimatedQuantityKg,
-        shareForHotspots: last.shareForHotspots,
-      );
-      if (!mounted) {
-        return;
-      }
-      await _refreshCatchCount();
-      _snack('Logged another ${_lastCatchLabel(last)}.');
-    } catch (_) {
-      if (mounted) {
-        _snack('Could not repeat that catch.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _repeatingCatch = false);
-      }
-    }
-  }
-
-  String _lastCatchLabel(CatchRecord record) {
-    final species = record.speciesName?.trim();
-    final name = species == null || species.isEmpty ? 'catch' : species;
-    final weight = record.estimatedQuantityKg;
-    final weightLabel =
-        weight == weight.roundToDouble() ? '${weight.toInt()}' : '$weight';
-    return '$name ~${weightLabel}kg';
-  }
-
-  Future<void> _openCatchHistory() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CatchHistoryPage(catches: widget.catches),
-      ),
-    );
-    await _refreshCatchCount();
   }
 
   Future<void> _openChecklist() async {
@@ -1383,7 +1214,7 @@ class _VenturePageState extends State<VenturePage> {
     return Semantics(
       button: true,
       // Screen-reader label reuses the tooltip strings rather than adding two
-      // more keys to translate: a blind user hearing "Heading 142°" is served
+      // more keys to translate: a blind user hearing "Heading 142Â°" is served
       // as well as one reading it, and every extra safety string is another
       // thing to get reviewed.
       label: sensorHeading == null
@@ -1434,7 +1265,7 @@ class _VenturePageState extends State<VenturePage> {
           ),
           const SizedBox(width: 8),
           Text(
-            'Locating…',
+            'Locatingâ€¦',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -1516,7 +1347,7 @@ class _RoundButton extends StatelessWidget {
 
 /// Fixed footprint for every primary action pill on the venture map.
 ///
-/// Repeat, Log Catch and SOS are all this wide and this tall. Uniform size is
+/// All primary actions are this wide and this tall. Uniform size is
 /// the point: it makes the rail a predictable set of targets rather than a
 /// ragged column whose widths shift as soon as someone lands a fish with a
 /// long name, and it leaves colour as the one thing that tells them apart.
@@ -1530,7 +1361,6 @@ class _ActionPill extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
-    this.tooltip,
   });
 
   final IconData icon;
@@ -1539,16 +1369,13 @@ class _ActionPill extends StatelessWidget {
   final bool isDark;
   final VoidCallback? onTap;
 
-  /// Longer wording for the label that no longer fits on a fixed-width pill.
-  final String? tooltip;
-
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     final display = enabled
         ? color
         : (isDark ? const Color(0xFF334155) : const Color(0xFF94A3B8));
-    final Widget pill = SizedBox(
+    return SizedBox(
       width: _kActionPillWidth,
       height: _kActionPillHeight,
       child: DecoratedBox(
@@ -1591,12 +1418,10 @@ class _ActionPill extends StatelessWidget {
         ),
       ),
     );
-    final String? message = tooltip;
-    return message == null ? pill : Tooltip(message: message, child: pill);
   }
 }
 
-/// Full-screen "sending SOS in N…" countdown with a slide-to-cancel bar.
+/// Full-screen "sending SOS in Nâ€¦" countdown with a slide-to-cancel bar.
 ///
 /// Deliberately not a plain [AlertDialog]: this has to be impossible to
 /// dismiss by accident (no tap-outside, no back-gesture - see [PopScope]
@@ -1927,7 +1752,7 @@ class _EmergencyDetailsSheetState extends State<_EmergencyDetailsSheet> {
               ),
               const SizedBox(height: 8),
               _SlideToAction(
-                label: _standingDown ? 'Standing down…' : 'Slide to stand down',
+                label: _standingDown ? 'Standing downâ€¦' : 'Slide to stand down',
                 icon: Icons.undo_rounded,
                 accentColor: _danger,
                 onConfirmed: _submitting || _standingDown ? null : _standDown,
@@ -2070,352 +1895,6 @@ class _SlideToActionState extends State<_SlideToAction> {
           ),
         );
       },
-    );
-  }
-}
-
-/// Bottom sheet for recording a catch.
-///
-/// Never gates on connectivity - [CatchService.logCatch] saves locally first
-/// and uploads whenever the phone next has signal, so this can be filled in
-/// and closed even mid-trip with no bars.
-/// Two taps in the common case: species chip, then a weight preset chip.
-///
-/// Deliberately not a form. A form is filled out; this is tapped through.
-/// No exact weight is ever asked for here - see [CatchRecord]'s doc comment
-/// for why a preset guess, confirmed later, beats typing a number at the
-/// moment of catching. Method/notes exist but stay behind an explicit
-/// toggle, off the fast path, because most catches need neither.
-class _CatchLogSheet extends StatefulWidget {
-  const _CatchLogSheet({required this.catches});
-
-  final CatchService catches;
-
-  @override
-  State<_CatchLogSheet> createState() => _CatchLogSheetState();
-}
-
-class _CatchLogSheetState extends State<_CatchLogSheet> {
-  static const List<String> _species = <String>[
-    'Bangus',
-    'Galunggong',
-    'Tulingan',
-    'Hasa-hasa',
-    'Bisugo',
-  ];
-  static const String _other = 'Other';
-
-  /// Common small-catch weights for municipal fishing. "Custom" covers
-  /// anything else without blocking on it being in this list.
-  static const List<double> _weightPresets = <double>[0.5, 1, 2, 5, 10];
-
-  final TextEditingController _otherSpecies = TextEditingController();
-  final TextEditingController _customWeight = TextEditingController();
-  final TextEditingController _method = TextEditingController();
-  final TextEditingController _notes = TextEditingController();
-
-  String? _selectedSpecies;
-  bool _enteringCustomWeight = false;
-  bool _detailsOpen = false;
-  bool _shareForHotspots = false;
-  bool _saving = false;
-  String? _speciesError;
-  String? _weightError;
-
-  @override
-  void dispose() {
-    _otherSpecies.dispose();
-    _customWeight.dispose();
-    _method.dispose();
-    _notes.dispose();
-    super.dispose();
-  }
-
-  void _selectSpecies(String name) {
-    setState(() {
-      _selectedSpecies = name;
-      _speciesError = null;
-    });
-  }
-
-  Future<void> _selectWeight(double kg) async {
-    if (_selectedSpecies == null) {
-      setState(() => _speciesError = 'Pick a species first');
-      return;
-    }
-    if (_selectedSpecies == _other && _otherSpecies.text.trim().isEmpty) {
-      setState(() => _speciesError = 'Name the species, or pick one above');
-      return;
-    }
-    await _save(kg);
-  }
-
-  void _submitCustomWeight() {
-    final parsed = double.tryParse(_customWeight.text.trim());
-    if (parsed == null || parsed <= 0 || !parsed.isFinite || parsed > 100000) {
-      setState(() => _weightError = 'Enter a weight in kg');
-      return;
-    }
-    _selectWeight(parsed);
-  }
-
-  Future<void> _save(double estimatedKg) async {
-    if (_saving) {
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      await widget.catches.logCatch(
-        // "Other" with a typed name keeps the species instead of discarding
-        // it.
-        speciesName: _selectedSpecies == _other
-            ? _otherSpecies.text.trim()
-            : _selectedSpecies,
-        estimatedQuantityKg: estimatedKg,
-        method: _method.text,
-        notes: _notes.text,
-        shareForHotspots: _shareForHotspots,
-      );
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save this catch.')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? _canvasDark : Colors.white;
-    final fg = isDark ? Colors.white : const Color(0xFF0F172A);
-    final dim = isDark ? Colors.white60 : const Color(0xFF64748B);
-    final fieldFill = isDark ? _surfaceDark : Colors.white;
-    const Color accent = Color(0xFF0284C7);
-    final inset = MediaQuery.of(context).viewInsets.bottom;
-
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(
-        color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
-      ),
-    );
-
-    InputDecoration decoration(String label) => InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: dim),
-          border: border,
-          enabledBorder: border,
-          filled: true,
-          fillColor: fieldFill,
-        );
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: inset),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: dim.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Log a catch',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: fg,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Tap a species, then a rough weight. Reweigh and confirm the '
-                'exact figure later from Catch history.',
-                style: TextStyle(fontSize: 12, color: dim, height: 1.3),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final name in <String>[..._species, _other])
-                    ChoiceChip(
-                      label: Text(name),
-                      selected: _selectedSpecies == name,
-                      onSelected: _saving ? null : (_) => _selectSpecies(name),
-                    ),
-                ],
-              ),
-              if (_speciesError != null) ...<Widget>[
-                const SizedBox(height: 6),
-                Text(
-                  _speciesError!,
-                  style: const TextStyle(fontSize: 11.5, color: Colors.redAccent),
-                ),
-              ],
-              if (_selectedSpecies == _other) ...<Widget>[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _otherSpecies,
-                  textCapitalization: TextCapitalization.words,
-                  style: TextStyle(color: fg),
-                  enabled: !_saving,
-                  decoration: decoration('Species name'),
-                ),
-              ],
-              const SizedBox(height: 18),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                value: _shareForHotspots,
-                onChanged: _saving
-                    ? null
-                    : (value) => setState(() => _shareForHotspots = value),
-                title: Text(
-                  'Share anonymously with the heatmap',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: fg,
-                  ),
-                ),
-                subtitle: Text(
-                  'Your exact location and vessel are never shown. Only '
-                  'coarse areas backed by several fishers can appear.',
-                  style: TextStyle(fontSize: 11.5, color: dim, height: 1.3),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Tap a weight to log the catch',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final kg in _weightPresets)
-                    ActionChip(
-                      label: Text(kg == kg.roundToDouble()
-                          ? '${kg.toInt()} kg'
-                          : '$kg kg'),
-                      backgroundColor: accent.withValues(alpha: 0.12),
-                      labelStyle: const TextStyle(
-                        color: accent,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      onPressed: _saving ? null : () => _selectWeight(kg),
-                    ),
-                  ActionChip(
-                    label: Text(_enteringCustomWeight ? 'Custom…' : 'Custom'),
-                    onPressed: _saving
-                        ? null
-                        : () => setState(
-                              () => _enteringCustomWeight = true,
-                            ),
-                  ),
-                ],
-              ),
-              if (_enteringCustomWeight) ...<Widget>[
-                const SizedBox(height: 12),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: TextField(
-                        controller: _customWeight,
-                        autofocus: true,
-                        enabled: !_saving,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        style: TextStyle(color: fg),
-                        decoration: decoration('Weight (kg)'),
-                        onSubmitted: (_) => _submitCustomWeight(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _saving ? null : _submitCustomWeight,
-                      style: FilledButton.styleFrom(backgroundColor: accent),
-                      child: const Text('Log'),
-                    ),
-                  ],
-                ),
-                if (_weightError != null) ...<Widget>[
-                  const SizedBox(height: 4),
-                  Text(
-                    _weightError!,
-                    style: const TextStyle(fontSize: 11.5, color: Colors.redAccent),
-                  ),
-                ],
-              ],
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () => setState(() => _detailsOpen = !_detailsOpen),
-                icon: Icon(
-                  _detailsOpen ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                  size: 18,
-                ),
-                label: Text(
-                  _detailsOpen ? 'Hide method/notes' : 'Add method or notes',
-                  style: const TextStyle(fontSize: 12.5),
-                ),
-              ),
-              if (_detailsOpen) ...<Widget>[
-                TextField(
-                  controller: _method,
-                  enabled: !_saving,
-                  style: TextStyle(color: fg),
-                  decoration: decoration('Method (optional)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notes,
-                  maxLines: 2,
-                  maxLength: AqOneConfig.maxCatchNoteLength,
-                  enabled: !_saving,
-                  style: TextStyle(color: fg),
-                  decoration: decoration('Notes (optional)'),
-                ),
-              ],
-              if (_saving) ...<Widget>[
-                const SizedBox(height: 8),
-                const Center(
-                  child: SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

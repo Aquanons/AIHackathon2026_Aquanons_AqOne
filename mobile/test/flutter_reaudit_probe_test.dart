@@ -3,11 +3,9 @@ import 'dart:convert';
 import 'package:aqone/core/field_cipher.dart';
 import 'package:aqone/main.dart';
 import 'package:aqone/data/app_database.dart';
-import 'package:aqone/data/catch_store.dart';
 import 'package:aqone/data/identity_store.dart';
 import 'package:aqone/data/outbox_store.dart';
 import 'package:aqone/data/secure_credential_store.dart';
-import 'package:aqone/models/catch_record.dart';
 import 'package:aqone/models/daily_outlook.dart';
 import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/forecast_outlook.dart';
@@ -33,20 +31,6 @@ class HeldOutbox extends OutboxStore {
   @override
   Future<SosRecord> save(SosRecord record) async {
     if (record.state == DeliveryState.relayed) {
-      entered.complete();
-      await release.future;
-    }
-    return super.save(record);
-  }
-}
-
-class HeldCatchStore extends CatchStore {
-  HeldCatchStore(super.db);
-  final entered = Completer<void>();
-  final release = Completer<void>();
-  @override
-  Future<CatchRecord> save(CatchRecord record) async {
-    if (record.state == SyncState.synced && record.quantityKg == null) {
       entered.complete();
       await release.future;
     }
@@ -93,18 +77,6 @@ void main() {
     outbox.release.complete();
     await earlier;
     expect((await outbox.byLocalId('race'))!.state, DeliveryState.delivered);
-  });
-
-  test('upload completion preserves a weight confirmed while upload is saving', () async {
-    final catches = HeldCatchStore(db);
-    await catches.insert(const CatchRecord(localId: 'catch', vesselId: 'v1', speciesName: 'Tuna', estimatedQuantityKg: 5,
-      catchDate: '2026-09-13', clientTs: 1, state: SyncState.pending));
-    final upload = catches.markSynced('catch', serverId: '42');
-    await catches.entered.future;
-    await catches.confirmWeight('catch', 7);
-    catches.release.complete();
-    await upload;
-    expect((await catches.byLocalId('catch'))!.quantityKg, 7);
   });
 
   test('transient secure-store read failure preserves existing encryption key', () async {
@@ -183,7 +155,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  test('emergency and catch UI strings resolve in en, fil, and akl', () async {
+  test('emergency UI strings resolve in en, fil, and akl', () async {
     final en = await AppLocalizations.delegate.load(const Locale('en'));
     final fil = await AppLocalizations.delegate.load(const Locale('fil'));
     final akl = await AppLocalizations.delegate.load(const Locale('akl'));
@@ -201,24 +173,5 @@ void main() {
     expect(en.responderDelayedStillOnWay, 'Delayed — still on the way');
     expect(fil.responderDelayedStillOnWay, 'Naantala — papunta pa rin');
     expect(akl.responderDelayedStillOnWay, 'Naulang — nagapakadto pa gihapon');
-
-    // SyncState enum localized extension
-    for (final loc in [en, fil, akl]) {
-      for (final state in SyncState.values) {
-        expect(state.title(loc).isNotEmpty, isTrue);
-        expect(state.description(loc).isNotEmpty, isTrue);
-      }
-    }
-    expect(SyncState.pending.title(fil), isNot(SyncState.pending.title(en)));
-    expect(SyncState.pending.title(akl), isNot(SyncState.pending.title(en)));
-
-    // Catch history strings
-    expect(en.catchConfirmWeightTitle, 'Confirm actual weight');
-    expect(fil.catchConfirmWeightTitle, 'Kumpirmahin ang totoong timbang');
-    expect(akl.catchConfirmWeightTitle, 'Kumpirmahon ro matuod nga kabug-aton');
-
-    expect(en.catchTodayCatchesTitle, "Today's catches");
-    expect(fil.catchTodayCatchesTitle, contains('huli'));
-    expect(akl.catchTodayCatchesTitle, contains('dakop'));
   });
 }

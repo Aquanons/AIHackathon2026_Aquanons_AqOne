@@ -43,19 +43,6 @@ void main() {
     expect(client.calls, 0);
   });
 
-  test('catch uploads report authRequired without a vessel credential', () async {
-    final client = _FakeClient((_) => _jsonResponse(200, const <String, Object?>{}));
-    final backend = BackendClient(client: client);
-
-    final result = await backend.postCatchLog(<String, Object?>{
-      'vessel_id': 'V001',
-      'local_id': 'catch-1',
-    });
-
-    expect(result.kind, CatchUploadKind.authRequired);
-    expect(client.calls, 0);
-  });
-
   test('vessel SOS sends the bearer token when present', () async {
     final client = _FakeClient(
       (_) => _jsonResponse(

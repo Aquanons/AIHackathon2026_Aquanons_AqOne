@@ -167,7 +167,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hotspotLegendDisclaimer =>
-      'Estimate from catch logs. Not a promise of fish, and not a safe-to-go-out signal.';
+      'Based on environmental data. Not a promise of fish, and not a safe-to-go-out signal.';
 
   @override
   String get onboardingWelcomeBack => 'Welcome back';
@@ -621,57 +621,4 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get responderDelayedStillOnWay => 'Delayed — still on the way';
-
-  @override
-  String get syncStatePendingTitle => 'Saved on this phone';
-
-  @override
-  String get syncStatePendingDescription => 'Will upload when you have signal.';
-
-  @override
-  String get syncStateSyncedTitle => 'Uploaded';
-
-  @override
-  String get syncStateSyncedDescription => 'Recorded on the AqOne backend.';
-
-  @override
-  String get syncStateRejectedTitle => 'Rejected';
-
-  @override
-  String get syncStateRejectedDescription =>
-      'The server would not accept this entry.';
-
-  @override
-  String get catchConfirmWeightTitle => 'Confirm actual weight';
-
-  @override
-  String catchEstimatedAtSeaLabel(String weight, String species) {
-    return 'Estimated at sea: $weight kg$species';
-  }
-
-  @override
-  String get catchActualWeightLabel => 'Actual weight (kg)';
-
-  @override
-  String get catchDialogConfirm => 'Confirm';
-
-  @override
-  String get catchWeightConfirmedSnackbar => 'Weight confirmed.';
-
-  @override
-  String get catchWeightSaveFailedSnackbar => 'Could not save that weight.';
-
-  @override
-  String get catchTodayCatchesTitle => 'Today\'s catches';
-
-  @override
-  String get catchNoCatchesToday => 'No catches logged today yet.';
-
-  @override
-  String get catchSpeciesUnspecified => 'Unspecified';
-
-  @override
-  String catchEstimatedSummary(String weight, String time) {
-    return '~$weight kg estimated · $time';
-  }
 }

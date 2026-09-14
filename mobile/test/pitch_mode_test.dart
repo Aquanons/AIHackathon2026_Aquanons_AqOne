@@ -1,7 +1,6 @@
 import 'package:aqone/core/config.dart';
 import 'package:aqone/core/l10n_fallback.dart';
 import 'package:aqone/data/app_database.dart';
-import 'package:aqone/data/catch_store.dart';
 import 'package:aqone/data/checklist_store.dart';
 import 'package:aqone/data/identity_store.dart';
 import 'package:aqone/data/map_snapshot_store.dart';
@@ -10,7 +9,6 @@ import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/models/advisory.dart';
 import 'package:aqone/models/buoy_contact.dart';
 import 'package:aqone/models/buoy_marker.dart';
-import 'package:aqone/models/catch_record.dart';
 import 'package:aqone/models/forecast_outlook.dart';
 import 'package:aqone/models/delivery_state.dart';
 import 'package:aqone/models/hotspot_cell.dart';
@@ -20,7 +18,6 @@ import 'package:aqone/models/squall_watch.dart';
 import 'package:aqone/models/weather_snapshot.dart';
 import 'package:aqone/services/backend_client.dart';
 import 'package:aqone/services/buoy_client.dart';
-import 'package:aqone/services/catch_service.dart';
 import 'package:aqone/services/location_service.dart';
 import 'package:aqone/services/sos_service.dart';
 import 'package:aqone/services/venture_feeds.dart';
@@ -59,28 +56,6 @@ class _FakeSosService extends SosService {
     sentReplies.add(reply);
     return true;
   }
-}
-
-class _FakeCatchService extends CatchService {
-  _FakeCatchService()
-      : super(
-          store: CatchStore(AppDatabase()),
-          identity: IdentityStore(AppDatabase()),
-          backend: BackendClient(),
-          location: LocationService(),
-        );
-
-  @override
-  void start() {}
-
-  @override
-  Future<int> pendingCount() async => 0;
-
-  @override
-  Future<CatchRecord?> mostRecent() async => null;
-
-  @override
-  Future<List<CatchRecord>> history() async => const <CatchRecord>[];
 }
 
 class _FakeLocationService extends LocationService {
@@ -189,7 +164,6 @@ void main() {
         _host(
           HomePage(
             service: _FakeSosService(),
-            catches: _FakeCatchService(),
             identity: _testIdentity,
             feeds: _FakeVentureFeeds(),
             location: _FakeLocationService(),
@@ -197,14 +171,13 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('Catch analysis'), findsOneWidget);
+      expect(find.text('No SOS sent yet.'), findsOneWidget);
 
       await tester.pumpWidget(
         _host(
           VenturePage(
             identity: _testIdentity,
             sos: _FakeSosService(),
-            catches: _FakeCatchService(),
             checklist: ChecklistStore(AppDatabase()),
             feeds: _FakeVentureFeeds(),
             location: _FakeLocationService(),
@@ -213,8 +186,6 @@ void main() {
       );
       await tester.pump();
       expect(find.text('SOS'), findsOneWidget);
-      expect(find.text('Log Catch'), findsOneWidget);
-      expect(find.byTooltip("Today's catches"), findsOneWidget);
 
       // Clean up widget tree
       await tester.pumpWidget(const SizedBox());
@@ -223,18 +194,17 @@ void main() {
 
   group('Pitch mode verification (PITCH_MODE=true)', () {
     testWidgets(
-      'manual SOS is present while catch, hotspot and squall UI are absent',
+      'manual SOS is present while hotspot and squall UI are absent',
       (WidgetTester tester) async {
         if (!AqOneConfig.pitchMode) {
           return;
         }
 
-        // 1. Home page in pitch mode: Catch analysis is absent
+        // 1. Home page in pitch mode: squall banner is absent
         await tester.pumpWidget(
           _host(
             HomePage(
               service: _FakeSosService(),
-              catches: _FakeCatchService(),
               identity: _testIdentity,
               feeds: _FakeVentureFeeds(),
               location: _FakeLocationService(),
@@ -242,16 +212,14 @@ void main() {
           ),
         );
         await tester.pump();
-        expect(find.text('Catch analysis'), findsNothing);
         expect(find.byType(SquallBanner), findsNothing);
 
-        // 2. Venture page in pitch mode: SOS present, catch and squall absent
+        // 2. Venture page in pitch mode: SOS present, squall and hotspot absent
         await tester.pumpWidget(
           _host(
             VenturePage(
               identity: _testIdentity,
               sos: _FakeSosService(),
-              catches: _FakeCatchService(),
               checklist: ChecklistStore(AppDatabase()),
               feeds: _FakeVentureFeeds(),
               location: _FakeLocationService(),
@@ -260,12 +228,7 @@ void main() {
         );
         await tester.pump();
         expect(find.text('SOS'), findsOneWidget);
-        expect(find.text('Log Catch'), findsNothing);
-        expect(find.byTooltip("Today's catches"), findsNothing);
-        expect(find.text('Repeat'), findsNothing);
-        expect(find.textContaining('waiting to upload'), findsNothing);
         expect(find.byType(SquallBanner), findsNothing);
-        expect(find.textContaining('catch reports'), findsNothing);
 
         // Clean up widget tree
         await tester.pumpWidget(const SizedBox());
@@ -298,7 +261,6 @@ void main() {
               VenturePage(
                 identity: _testIdentity,
                 sos: sosService,
-                catches: _FakeCatchService(),
                 checklist: ChecklistStore(AppDatabase()),
                 feeds: _FakeVentureFeeds(),
                 location: _FakeLocationService(),

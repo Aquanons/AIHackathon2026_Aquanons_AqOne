@@ -2,10 +2,9 @@ import '../core/config.dart';
 
 /// Where a queued fishing-spot report has got to.
 ///
-/// Mirrors [SyncState] in catch_record.dart in shape, kept as a separate
-/// type rather than shared: a fishing spot has no LoRa path and no weight-
-/// confirm step, and coupling the two enums would make catch logging's
-/// state machine sensitive to changes made for spots, and vice versa.
+/// A fishing spot has no LoRa path and no weight-confirm step; its state
+/// machine is deliberately its own type so it can evolve independently of
+/// the SOS outbox's.
 enum SpotSyncState {
   pending('pending', 'Saved on this phone', 'Will upload when you have signal.'),
   synced('synced', 'Uploaded', 'Visible to other fishermen with the app.'),
@@ -28,7 +27,7 @@ enum SpotSyncState {
 }
 
 /// A fishing spot reported by the fisherman, queued locally until it can be
-/// uploaded - same offline-first shape as [CatchRecord].
+/// uploaded - offline-first, the same shape as the SOS outbox.
 ///
 /// Deliberately carries no prediction/trend/health/reporter-count fields.
 /// The reference dashboard this was ported from shows those for six
@@ -59,7 +58,7 @@ class FishingSpot {
   final String localId;
   final String vesselId;
 
-  /// Unlike a catch log's GPS fix (which may be missing), a spot report has
+  /// Unlike an SOS's GPS fix (which may be missing), a spot report has
   /// no purpose without a position, so both are required rather than
   /// nullable.
   final double latitude;

@@ -1,13 +1,11 @@
 import 'package:aqone/core/l10n_fallback.dart';
 import 'package:aqone/data/app_database.dart';
-import 'package:aqone/data/catch_store.dart';
 import 'package:aqone/data/identity_store.dart';
 import 'package:aqone/data/map_snapshot_store.dart';
 import 'package:aqone/data/outbox_store.dart';
 import 'package:aqone/l10n/app_localizations.dart';
 import 'package:aqone/models/advisory.dart';
 import 'package:aqone/models/buoy_contact.dart';
-import 'package:aqone/models/catch_record.dart';
 import 'package:aqone/models/daily_outlook.dart';
 import 'package:aqone/models/forecast_outlook.dart';
 import 'package:aqone/models/sea_condition.dart';
@@ -16,7 +14,6 @@ import 'package:aqone/models/squall_watch.dart';
 import 'package:aqone/models/weather_snapshot.dart';
 import 'package:aqone/services/backend_client.dart';
 import 'package:aqone/services/buoy_client.dart';
-import 'package:aqone/services/catch_service.dart';
 import 'package:aqone/services/location_service.dart';
 import 'package:aqone/services/sos_service.dart';
 import 'package:aqone/services/venture_feeds.dart';
@@ -42,21 +39,6 @@ class _TestSosService extends SosService {
   Future<List<SosRecord>> history() async => const <SosRecord>[];
   @override
   Future<BuoyStatus?> pollBuoy() async => null;
-}
-
-class _TestCatchService extends CatchService {
-  _TestCatchService()
-      : super(
-          store: CatchStore(AppDatabase()),
-          identity: IdentityStore(AppDatabase()),
-          backend: BackendClient(),
-          location: LocationService(),
-        );
-
-  @override
-  void start() {}
-  @override
-  Future<List<CatchRecord>> history() async => const <CatchRecord>[];
 }
 
 class _TestLocationService extends LocationService {
@@ -710,14 +692,12 @@ void main() {
   testWidgets('HomePage minute timer and app resume re-renders without fetching weather every minute', (WidgetTester tester) async {
     final feeds = _LifecycleFeeds();
     final sosService = _TestSosService();
-    final catchService = _TestCatchService();
     final locationService = _TestLocationService();
 
     await tester.pumpWidget(
       wrap(
         HomePage(
           service: sosService,
-          catches: catchService,
           identity: _testIdentity,
           feeds: feeds,
           location: locationService,

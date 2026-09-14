@@ -4,9 +4,9 @@ import '../core/tokens.dart';
 import '../data/checklist_store.dart';
 import '../models/checklist_item.dart';
 
-/// Trip gear checklist as its own page, mirroring [CatchHistoryPage]'s shape:
-/// a list, a way to add/remove rows, and nothing hidden behind a popover
-/// that a map gesture could dismiss by accident.
+/// Trip gear checklist as its own page: a list, a way to add/remove rows,
+/// and nothing hidden behind a popover that a map gesture could dismiss by
+/// accident.
 class ChecklistPage extends StatefulWidget {
   const ChecklistPage({super.key, required this.checklist});
 

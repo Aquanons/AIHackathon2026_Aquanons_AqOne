@@ -10,7 +10,6 @@ import '../data/identity_store.dart';
 import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
 import '../models/squall_watch.dart';
-import '../services/catch_service.dart';
 import '../services/location_service.dart';
 import '../services/sos_service.dart';
 import '../services/squall_alarm.dart';
@@ -40,7 +39,6 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.identity,
     required this.sos,
-    required this.catches,
     required this.checklist,
     required this.feeds,
     required this.location,
@@ -54,7 +52,6 @@ class AppShell extends StatefulWidget {
 
   final VesselIdentity identity;
   final SosService sos;
-  final CatchService catches;
   final ChecklistStore checklist;
   final VentureFeeds feeds;
   final LocationService location;
@@ -275,7 +272,6 @@ class _AppShellState extends State<AppShell> {
       onAcknowledgeSquall: _acknowledgeSquall,
       identity: widget.identity,
       sos: widget.sos,
-      catches: widget.catches,
       checklist: widget.checklist,
       feeds: widget.feeds,
       location: widget.location,
@@ -308,9 +304,8 @@ class _AppShellState extends State<AppShell> {
     final body = IndexedStack(
       index: _index,
       children: <Widget>[
-        HomePage(
+HomePage(
           service: widget.sos,
-          catches: widget.catches,
           identity: widget.identity,
           feeds: widget.feeds,
           location: widget.location,

@@ -8,9 +8,8 @@ import '../models/fishing_spot.dart';
 import 'backend_client.dart';
 
 /// Queues fishing-spot reports locally and uploads them when the phone has
-/// signal. Mirrors [CatchService] in shape, minus the weight-confirmation
-/// half - a spot report has nothing that arrives later the way a reweighed
-/// catch does, so the sync loop here is a single pass, not two.
+/// signal. A single sync pass - nothing arrives later to amend a spot, so
+/// there is no second confirmation loop the way other features have.
 class FishingSpotService {
   FishingSpotService({
     required FishingSpotStore store,

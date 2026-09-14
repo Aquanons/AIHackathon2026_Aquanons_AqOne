@@ -10,7 +10,6 @@ import 'core/l10n_fallback.dart';
 import 'core/locale_controller.dart';
 import 'core/tokens.dart';
 import 'data/app_database.dart';
-import 'data/catch_store.dart';
 import 'data/checklist_store.dart';
 import 'data/fishing_spot_store.dart';
 import 'core/field_cipher.dart';
@@ -20,7 +19,6 @@ import 'data/map_snapshot_store.dart';
 import 'data/outbox_store.dart';
 import 'services/backend_client.dart';
 import 'services/buoy_client.dart';
-import 'services/catch_service.dart';
 import 'services/fishing_spot_service.dart';
 import 'services/location_service.dart';
 import 'services/sos_service.dart';
@@ -125,7 +123,6 @@ class _AqOneAppState extends State<AqOneApp> {
   final SecureCredentialStore _secureStore = SecureCredentialStore();
   late final IdentityStore _identityStore;
   late final SosService _service;
-  late final CatchService _catches;
   late final ChecklistStore _checklist;
   late final FishingSpotService _spots;
   late final VentureFeeds _feeds;
@@ -155,19 +152,12 @@ class _AqOneAppState extends State<AqOneApp> {
       backend: _backend,
       location: _location,
     );
-    _catches = CatchService(
-      store: CatchStore(_db),
-      identity: _identityStore,
-      backend: _backend,
-      location: _location,
-    );
     _checklist = ChecklistStore(_db);
     // Manual fishing-spot reporting was removed from Venture: hotspots are
-    // meant to come from a model over consented catch logs, not from
-    // fishers publishing exact productive coordinates to each other. The
-    // service is still constructed and started so anything a handset had
-    // already queued before the feature went away still uploads instead of
-    // being silently discarded. Nothing writes new spots.
+    // meant to come from a model, not from fishers publishing exact productive
+    // coordinates to each other. The service is still constructed and started
+    // so anything a handset had already queued before the feature went away
+    // still uploads instead of being silently discarded. Nothing writes new spots.
     _spots = FishingSpotService(
       store: FishingSpotStore(_db),
       identity: _identityStore,
@@ -198,7 +188,6 @@ class _AqOneAppState extends State<AqOneApp> {
   void dispose() {
     _locale?.removeListener(_onLocaleChanged);
     _service.dispose();
-    _catches.dispose();
     _spots.dispose();
     _feeds.close();
     _backend.close();
@@ -263,7 +252,6 @@ class _AqOneAppState extends State<AqOneApp> {
       if (remembered) {
         _service.start();
         if (!AqOneConfig.pitchMode) {
-          _catches.start();
           _spots.start();
         }
       }
@@ -356,7 +344,6 @@ class _AqOneAppState extends State<AqOneApp> {
     // half-finished registration never puts traffic on the wire.
     _service.start();
     if (!AqOneConfig.pitchMode) {
-      _catches.start();
       _spots.start();
     }
     setState(() {
@@ -385,7 +372,6 @@ class _AqOneAppState extends State<AqOneApp> {
     return AppShell(
       identity: identity,
       sos: _service,
-      catches: _catches,
       checklist: _checklist,
       feeds: _feeds,
       location: _location,

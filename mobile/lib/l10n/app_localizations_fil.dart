@@ -168,7 +168,7 @@ class AppLocalizationsFil extends AppLocalizations {
 
   @override
   String get hotspotLegendDisclaimer =>
-      'Estimate from catch logs. Not a promise of fish, and not a safe-to-go-out signal.';
+      'Batay sa datos ng kapaligiran. Hindi ito pangako ng huli, at hindi rin ito hudyat ng ligtas na paglabas.';
 
   @override
   String get onboardingWelcomeBack => 'Maligayang pagbabalik';
@@ -632,58 +632,4 @@ class AppLocalizationsFil extends AppLocalizations {
 
   @override
   String get responderDelayedStillOnWay => 'Naantala — papunta pa rin';
-
-  @override
-  String get syncStatePendingTitle => 'Naka-save sa teleponong ito';
-
-  @override
-  String get syncStatePendingDescription => 'Ia-upload kapag may signal ka na.';
-
-  @override
-  String get syncStateSyncedTitle => 'Na-upload na';
-
-  @override
-  String get syncStateSyncedDescription => 'Naitala na sa backend ng AqOne.';
-
-  @override
-  String get syncStateRejectedTitle => 'Tinanggihan';
-
-  @override
-  String get syncStateRejectedDescription =>
-      'Hindi tinanggap ng server ang talaang ito.';
-
-  @override
-  String get catchConfirmWeightTitle => 'Kumpirmahin ang totoong timbang';
-
-  @override
-  String catchEstimatedAtSeaLabel(String weight, String species) {
-    return 'Tantiya sa dagat: $weight kg$species';
-  }
-
-  @override
-  String get catchActualWeightLabel => 'Totoong timbang (kg)';
-
-  @override
-  String get catchDialogConfirm => 'Kumpirmahin';
-
-  @override
-  String get catchWeightConfirmedSnackbar => 'Nakumpirma na ang timbang.';
-
-  @override
-  String get catchWeightSaveFailedSnackbar =>
-      'Hindi ma-save ang timbang na iyon.';
-
-  @override
-  String get catchTodayCatchesTitle => 'Mga huli ngayong araw';
-
-  @override
-  String get catchNoCatchesToday => 'Wala pang naitalang huli ngayong araw.';
-
-  @override
-  String get catchSpeciesUnspecified => 'Hindi tinukoy';
-
-  @override
-  String catchEstimatedSummary(String weight, String time) {
-    return '~$weight kg tantiya · $time';
-  }
 }

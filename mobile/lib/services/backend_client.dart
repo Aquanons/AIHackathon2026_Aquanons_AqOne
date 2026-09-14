@@ -416,105 +416,12 @@ class BackendClient {
     }
   }
 
-  /// Uploads one queued catch log.
-  ///
-  /// Distinguishes "try again later" from "the server said no": a network
-  /// failure or 5xx should be retried, but a 4xx means the entry itself is
-  /// unacceptable and retrying forever would just burn battery.
-  Future<CatchUploadResult> postCatchLog(Map<String, Object?> payload) async {
-    if (!hasVesselCredential) {
-      return const CatchUploadResult.authRequired();
-    }
-    try {
-      final response = await _send(
-        _request(
-          'POST',
-          EndpointGuard.backend(_baseUrl, AqOneConfig.catchLogsPath),
-          headers: _withVesselAuth(const <String, String>{
-            'Content-Type': 'application/json',
-          }),
-          body: jsonEncode(payload),
-        ),
-      )
-          .timeout(AqOneConfig.backendTimeout);
-
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        clearVesselBearerToken();
-        return const CatchUploadResult.authRequired();
-      }
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        String? serverId;
-        try {
-          final decoded = jsonDecode(response.body);
-          if (decoded is Map) {
-            final log = decoded['catch_log'];
-            final source = log is Map ? log : decoded;
-            serverId = source['id']?.toString();
-          }
-        } catch (_) {
-          // A 2xx with an unreadable body still means it was accepted.
-        }
-        return CatchUploadResult.success(serverId);
-      }
-
-      if (response.statusCode >= 400 && response.statusCode < 500) {
-        return CatchUploadResult.rejected(
-          _catchErrorMessage(response.body, response.statusCode),
-        );
-      }
-      return CatchUploadResult.retry('Server error ${response.statusCode}');
-    } catch (_) {
-      return const CatchUploadResult.retry('No connection');
-    }
-  }
-
-  /// Pushes a reweighed, confirmed figure for a catch already on the
-  /// backend. Separate from [postCatchLog] on purpose - see
-  /// [CatchRecord.toConfirmWeightPayload] - and best-effort in the same way:
-  /// a failure here just leaves the confirmation queued for the next sync
-  /// tick, so it returns a bare bool rather than the retry/reject
-  /// distinction [postCatchLog] needs (there is nothing here the server
-  /// could reject on its merits; the only failure mode is connectivity).
-  Future<bool> confirmCatchWeight(
-    String catchLogId,
-    Map<String, Object?> payload,
-  ) async {
-    if (!hasVesselCredential) {
-      return false;
-    }
-    try {
-      final response = await _send(
-        _request(
-          'POST',
-          EndpointGuard.backend(
-            _baseUrl,
-            '${AqOneConfig.catchLogsPath}/$catchLogId/confirm-weight',
-          ),
-          headers: _withVesselAuth(const <String, String>{
-            'Content-Type': 'application/json',
-          }),
-          body: jsonEncode(payload),
-        ),
-      )
-          .timeout(AqOneConfig.backendTimeout);
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        clearVesselBearerToken();
-        return false;
-      }
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
   /// A clean `{"detail": "..."}` body (FastAPI's own validation-error shape)
   /// is readable as-is and used verbatim. Anything else - an HTML error
   /// page, a stack trace, a body that doesn't parse - falls back to a plain
   /// "Rejected (4xx)" rather than dumping raw server output onto the
   /// fisher's phone.
-  /// Uploads one queued fishing-spot report. Mirrors [postCatchLog]'s
-  /// retry/reject distinction and idempotency-on-local_id behaviour.
+  /// Uploads one queued fishing-spot report.
   Future<SpotUploadResult> postFishingSpot(Map<String, Object?> payload) async {
     try {
       final response = await _send(
@@ -612,31 +519,7 @@ class BackendClient {
   void close() => _client.close();
 }
 
-/// Outcome of a single catch-log upload attempt.
-class CatchUploadResult {
-  const CatchUploadResult._(this.kind, {this.serverId, this.message});
-
-  const CatchUploadResult.success(String? id)
-      : this._(CatchUploadKind.success, serverId: id);
-
-  const CatchUploadResult.retry(String reason)
-      : this._(CatchUploadKind.retry, message: reason);
-
-  const CatchUploadResult.rejected(String reason)
-      : this._(CatchUploadKind.rejected, message: reason);
-
-  const CatchUploadResult.authRequired()
-      : this._(CatchUploadKind.authRequired);
-
-  final CatchUploadKind kind;
-  final String? serverId;
-  final String? message;
-}
-
-enum CatchUploadKind { success, retry, rejected, authRequired }
-
-/// Outcome of a single fishing-spot upload attempt. Mirrors
-/// [CatchUploadResult] in shape.
+/// Outcome of a single fishing-spot upload attempt.
 class SpotUploadResult {
   const SpotUploadResult._(this.kind, {this.serverId, this.message});
 

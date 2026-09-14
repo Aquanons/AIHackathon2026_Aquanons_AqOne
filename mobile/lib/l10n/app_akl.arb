@@ -111,20 +111,5 @@
   "sosCancelledNothingSent": "Ginkansela ro SOS. Waeay it napadaea.",
   "sosSetupBoatRequired": "Tapuson ro pagrehistro it imong baroto bag-o magpadaea it SOS.",
   "responderDelayedStillOnWay": "Naulang — nagapakadto pa gihapon",
-  "syncStatePendingTitle": "Nasave sa telepono nga raya",
-  "syncStatePendingDescription": "I-upload kon may signal ka eon.",
-  "syncStateSyncedTitle": "Na-upload eon",
-  "syncStateSyncedDescription": "Narekord eon sa backend it AqOne.",
-  "syncStateRejectedTitle": "Ginpamalibaran",
-  "syncStateRejectedDescription": "Owa ginbaton it server ining rekord.",
-  "catchConfirmWeightTitle": "Kumpirmahon ro matuod nga kabug-aton",
-  "catchEstimatedAtSeaLabel": "Tantiya sa dagat: {weight} kg{species}",
-  "catchActualWeightLabel": "Matuod nga kabug-aton (kg)",
-  "catchDialogConfirm": "Kumpirmahon",
-  "catchWeightConfirmedSnackbar": "Nakumpirma eon ro kabug-aton.",
-  "catchWeightSaveFailedSnackbar": "Indi ma-save ro kabug-aton nga ato.",
-  "catchTodayCatchesTitle": "Mga dakop makaron nga adlaw",
-  "catchNoCatchesToday": "Owa pa it nailista nga dakop makaron nga adlaw.",
-  "catchSpeciesUnspecified": "Waeay gintumod",
-  "catchEstimatedSummary": "~{weight} kg tantiya · {time}"
+  "hotspotLegendDisclaimer": "Base sa datos it kapalibutan. Indi ini saad it isda, kag indi man ini timailhan nga ligaw eon magguwa."
 }

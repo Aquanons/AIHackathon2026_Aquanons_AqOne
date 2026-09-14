@@ -111,20 +111,5 @@
   "sosCancelledNothingSent": "Kinansela ang SOS. Walang naipadala.",
   "sosSetupBoatRequired": "Tapusin ang pagrehistro ng iyong bangka bago magpadala ng SOS.",
   "responderDelayedStillOnWay": "Naantala — papunta pa rin",
-  "syncStatePendingTitle": "Naka-save sa teleponong ito",
-  "syncStatePendingDescription": "Ia-upload kapag may signal ka na.",
-  "syncStateSyncedTitle": "Na-upload na",
-  "syncStateSyncedDescription": "Naitala na sa backend ng AqOne.",
-  "syncStateRejectedTitle": "Tinanggihan",
-  "syncStateRejectedDescription": "Hindi tinanggap ng server ang talaang ito.",
-  "catchConfirmWeightTitle": "Kumpirmahin ang totoong timbang",
-  "catchEstimatedAtSeaLabel": "Tantiya sa dagat: {weight} kg{species}",
-  "catchActualWeightLabel": "Totoong timbang (kg)",
-  "catchDialogConfirm": "Kumpirmahin",
-  "catchWeightConfirmedSnackbar": "Nakumpirma na ang timbang.",
-  "catchWeightSaveFailedSnackbar": "Hindi ma-save ang timbang na iyon.",
-  "catchTodayCatchesTitle": "Mga huli ngayong araw",
-  "catchNoCatchesToday": "Wala pang naitalang huli ngayong araw.",
-  "catchSpeciesUnspecified": "Hindi tinukoy",
-  "catchEstimatedSummary": "~{weight} kg tantiya · {time}"
+  "hotspotLegendDisclaimer": "Batay sa datos ng kapaligiran. Hindi ito pangako ng huli, at hindi rin ito hudyat ng ligtas na paglabas."
 }

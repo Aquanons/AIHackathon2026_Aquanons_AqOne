@@ -204,7 +204,7 @@
   "@hotspotLegendTitle": {
     "description": "Title of the map legend for the modelled hotspot layer. Avoid wording that promises fish."
   },
-  "hotspotLegendDisclaimer": "Estimate from catch logs. Not a promise of fish, and not a safe-to-go-out signal.",
+  "hotspotLegendDisclaimer": "Based on environmental data. Not a promise of fish, and not a safe-to-go-out signal.",
   "@hotspotLegendDisclaimer": {
     "description": "SAFETY CRITICAL. Sits under the hotspot legend. Both denials must survive translation: no guaranteed catch, and this is not a safety call."
   },
@@ -819,89 +819,5 @@
   "responderDelayedStillOnWay": "Delayed — still on the way",
   "@responderDelayedStillOnWay": {
     "description": "SAFETY CRITICAL. Shown in the responder countdown when the estimated arrival time has passed but rescue is still en route."
-  },
-  "syncStatePendingTitle": "Saved on this phone",
-  "@syncStatePendingTitle": {
-    "description": "Title for catch sync state: pending upload."
-  },
-  "syncStatePendingDescription": "Will upload when you have signal.",
-  "@syncStatePendingDescription": {
-    "description": "Description for catch sync state: pending upload."
-  },
-  "syncStateSyncedTitle": "Uploaded",
-  "@syncStateSyncedTitle": {
-    "description": "Title for catch sync state: synced."
-  },
-  "syncStateSyncedDescription": "Recorded on the AqOne backend.",
-  "@syncStateSyncedDescription": {
-    "description": "Description for catch sync state: synced."
-  },
-  "syncStateRejectedTitle": "Rejected",
-  "@syncStateRejectedTitle": {
-    "description": "Title for catch sync state: rejected."
-  },
-  "syncStateRejectedDescription": "The server would not accept this entry.",
-  "@syncStateRejectedDescription": {
-    "description": "Description for catch sync state: rejected."
-  },
-  "catchConfirmWeightTitle": "Confirm actual weight",
-  "@catchConfirmWeightTitle": {
-    "description": "Title of dialog to confirm actual catch weight."
-  },
-  "catchEstimatedAtSeaLabel": "Estimated at sea: {weight} kg{species}",
-  "@catchEstimatedAtSeaLabel": {
-    "description": "Subtitle in weight confirmation dialog showing the original sea estimate and species.",
-    "placeholders": {
-      "weight": {
-        "type": "String",
-        "example": "5"
-      },
-      "species": {
-        "type": "String",
-        "example": " · Tamban"
-      }
-    }
-  },
-  "catchActualWeightLabel": "Actual weight (kg)",
-  "@catchActualWeightLabel": {
-    "description": "Input label for confirmed weight in kg."
-  },
-  "catchDialogConfirm": "Confirm",
-  "@catchDialogConfirm": {
-    "description": "Action button to confirm catch weight."
-  },
-  "catchWeightConfirmedSnackbar": "Weight confirmed.",
-  "@catchWeightConfirmedSnackbar": {
-    "description": "Snackbar shown after successfully confirming catch weight."
-  },
-  "catchWeightSaveFailedSnackbar": "Could not save that weight.",
-  "@catchWeightSaveFailedSnackbar": {
-    "description": "Snackbar shown when confirming catch weight fails."
-  },
-  "catchTodayCatchesTitle": "Today's catches",
-  "@catchTodayCatchesTitle": {
-    "description": "AppBar title for today's catches screen."
-  },
-  "catchNoCatchesToday": "No catches logged today yet.",
-  "@catchNoCatchesToday": {
-    "description": "Placeholder message when no catches are logged today."
-  },
-  "catchSpeciesUnspecified": "Unspecified",
-  "@catchSpeciesUnspecified": {
-    "description": "Label when catch species is unspecified or empty."
-  },
-  "catchEstimatedSummary": "~{weight} kg estimated · {time}",
-  "@catchEstimatedSummary": {
-    "description": "Summary line on catch tile showing estimated weight and time.",
-    "placeholders": {
-      "weight": {
-        "type": "String",
-        "example": "5"
-      },
-      "time": {
-        "type": "String",
-        "example": "10:30 AM"
-      }
-    }
   }
 }

@@ -6,7 +6,7 @@ import 'app_database.dart';
 /// Local, unsynced store for the trip gear checklist.
 ///
 /// Never leaves the phone - this is a personal packing list, not dispatcher
-/// data, so unlike [CatchStore] there is no upload queue or sync state here.
+/// data, so there is no upload queue or sync state here.
 class ChecklistStore {
   ChecklistStore(this._db);
 

@@ -175,11 +175,6 @@ class AqOneConfig {
   static const String advisoriesPath = '/api/advisories?status=Published';
   static const String publicAdvisoriesPath = '/api/public/advisories';
 
-  /// Unauthenticated like /api/sos - a fisherman logging a catch at sea has
-  /// no account either. Not "public" (that prefix is for dashboard read
-  /// feeds); this is a write endpoint, same family as sos.py.
-  static const String catchLogsPath = '/api/catch-logs';
-
   /// DEPRECATED - manually reported fishing spots. Nothing calls this.
   ///
   /// Two claims in the comment this replaces were wrong or became wrong. The
@@ -200,7 +195,7 @@ class AqOneConfig {
   static const String spotsPath = '/api/spots';
 
   /// Fish-hotspot surface (§6.2): binned cells scored by a model over
-  /// consented catch logs joined with environmental data.
+  /// environmental data.
   ///
   /// Not implemented yet - Phase 3 in the delivery plan. The client renders
   /// the layer only when this answers, so switching the model on is a backend
@@ -232,9 +227,6 @@ class AqOneConfig {
   static const int maxBoatLength = 32;
   static const int maxNoteLength = 64;
 
-  /// Catch notes are stored locally and uploaded over HTTP, never squeezed
-  /// into a LoRa frame, so they can be far more generous than SOS notes.
-  static const int maxCatchNoteLength = 240;
   static const int maxSpotNoteLength = 240;
   static const int maxNameLength = 64;
   static const int maxPhoneLength = 20;

@@ -38,10 +38,12 @@ class AppDatabase {
           } catch (_) {}
         }
         if (oldVersion < 3) {
-          await _createLegacyOutbox(db);
+          // v3 once created the legacy catch_outbox table. Catch logging was
+          // removed from the product; nothing runs for this step anymore.
         }
         if (oldVersion < 4) {
-          await db.execute('DROP TABLE IF EXISTS catch_outbox');
+          // v4 once dropped catch_outbox. Catch logging was removed from the
+          // product; a handset still holding rows simply keeps them, unused.
         }
         if (oldVersion < 5) {
           // v5 stores what the responder sent back, so the ETA survives the
@@ -60,26 +62,13 @@ class AppDatabase {
           // assume buoy_id is still numeric.
         }
         if (oldVersion < 7) {
-          // v7 brings catch logging back. It was queued in v3, dropped in
-          // v4 during a hackathon rescope (see docs/07_SCOPE_OUT.md), and is
-          // now back in scope. Recreated fresh rather than reusing the old
-          // v3 step, which a handset that already passed through v4 will
-          // never run again.
-          await _createCatchOutbox(db);
+          // v7 once re-created catch_outbox for catch logging, a feature that
+          // has since been removed from the product. No work is done here.
         }
         if (oldVersion < 8) {
-          // v8 splits catch weight into a quick estimate (always set, from a
-          // preset tap) and a real, reweighed figure that is confirmed
-          // separately and may arrive much later - see CatchRecord's doc
-          // comment. quantity_kg moves from NOT NULL to nullable, which
-          // SQLite cannot do with a plain ALTER TABLE, so the table is
-          // recreated. Catch logging only shipped in v7, in this same round
-          // of work, so there is no real fleet with rows to preserve here -
-          // any not-yet-synced catch is dropped rather than migrated. A
-          // later breaking change to this table will not have that luxury
-          // and must migrate data properly.
-          await db.execute('DROP TABLE IF EXISTS catch_outbox');
-          await _createCatchOutbox(db);
+          // v8 once recreated catch_outbox to split catch weight into an
+          // estimate and a confirmed figure. Catch logging has since been
+          // removed from the product. No work is done here.
         }
         if (oldVersion < 9) {
           // v9: the trip checklist moves from in-memory state (reset on
@@ -90,7 +79,7 @@ class AppDatabase {
         }
         if (oldVersion < 10) {
           // v10: fish hotspots. Community-reported fishing spots, queued and
-          // synced the same way catch logs are - see FishingSpot's doc
+          // synced offline-first - see FishingSpot's doc
           // comment for why this carries no prediction/trend/health columns.
           await _createFishingSpotOutbox(db);
         }
@@ -102,11 +91,9 @@ class AppDatabase {
           // no signal at all.
           await _createMapSnapshot(db);
         }
-        if (oldVersion < 12) {
-          await db.execute(
-            'ALTER TABLE catch_outbox ADD COLUMN '
-            'share_for_hotspots INTEGER NOT NULL DEFAULT 0',
-          );
+if (oldVersion < 12) {
+          // v12 once added share_for_hotspots to catch_outbox. Catch logging
+          // has since been removed from the product. No work is done here.
         }
       },
       onCreate: (db, version) async {
@@ -154,7 +141,6 @@ class AppDatabase {
         await db.execute(
           'CREATE INDEX idx_outbox_seq ON outbox (vessel_id, seq)',
         );
-        await _createCatchOutbox(db);
         await _createChecklistItems(db);
         await _createFishingSpotOutbox(db);
         await _createMapSnapshot(db);
@@ -162,7 +148,7 @@ class AppDatabase {
     );
   }
 
-  /// Legacy outbox rows get their own table rather than sharing [outbox].
+/// Legacy outbox rows get their own table rather than sharing [outbox].
   ///
   /// They travel a different route - straight to the backend over HTTP when
   /// signal returns, never over LoRa - and carry entirely different columns.
@@ -190,73 +176,6 @@ class AppDatabase {
     }
   }
 
-  static Future<void> _createLegacyOutbox(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS catch_outbox (
-        local_id     TEXT PRIMARY KEY,
-        vessel_id    TEXT NOT NULL,
-        species_name TEXT,
-        quantity_kg  REAL NOT NULL,
-        catch_date   TEXT NOT NULL,
-        client_ts    INTEGER NOT NULL,
-        state        TEXT NOT NULL,
-        lat          REAL,
-        lon          REAL,
-        method       TEXT,
-        notes        TEXT,
-        attempts     INTEGER NOT NULL DEFAULT 0,
-        last_error   TEXT,
-        server_id    TEXT,
-        synced_at    INTEGER
-      )
-    ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_catch_state '
-      'ON catch_outbox (state, client_ts DESC)',
-    );
-  }
-
-  /// Recreates `catch_outbox` for v8 (estimate/confirm weight split) and for
-  /// fresh installs.
-  ///
-  /// Deliberately a separate method from [_createLegacyOutbox] above rather
-  /// than reusing it: that method is dead code kept only so the ancient
-  /// v2->v3 upgrade step still runs correctly on a handset frozen at v2, and
-  /// changing what it does would change what that historical step means.
-  static Future<void> _createCatchOutbox(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS catch_outbox (
-        local_id              TEXT PRIMARY KEY,
-        vessel_id             TEXT NOT NULL,
-        species_name          TEXT,
-        -- Quick preset tapped at the moment of catching. Always set - see
-        -- CatchRecord's doc comment for why weight is split in two.
-        estimated_quantity_kg REAL NOT NULL,
-        -- The real, reweighed figure. Null until deliberately confirmed,
-        -- which may happen long after the estimate above already synced.
-        quantity_kg           REAL,
-        quantity_confirmed_at INTEGER,
-        quantity_synced_at    INTEGER,
-        catch_date            TEXT NOT NULL,
-        client_ts             INTEGER NOT NULL,
-        state                 TEXT NOT NULL,
-        share_for_hotspots    INTEGER NOT NULL DEFAULT 0,
-        lat                   REAL,
-        lon                   REAL,
-        method                TEXT,
-        notes                 TEXT,
-        attempts              INTEGER NOT NULL DEFAULT 0,
-        last_error            TEXT,
-        server_id             TEXT,
-        synced_at             INTEGER
-      )
-    ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_catch_state2 '
-      'ON catch_outbox (state, client_ts DESC)',
-    );
-  }
-
   /// The trip checklist. `is_done` resets to 0 for every row when a
   /// fisherman taps "New trip" - deliberately not row deletion, so the gear
   /// list itself (and any custom items he's added) survives across trips
@@ -274,8 +193,8 @@ class AppDatabase {
     ''');
   }
 
-  /// Community-reported fishing spots, queued locally the same way catch
-  /// logs are. No prediction/trend/health/reporter-count columns exist here
+  /// Community-reported fishing spots, queued locally until they can be
+  /// uploaded. No prediction/trend/health/reporter-count columns exist here
   /// - see FishingSpot's doc comment for why fabricating those would be
   /// dishonest about a model that doesn't exist.
   /// One row per feed, holding the raw JSON exactly as the backend sent it.

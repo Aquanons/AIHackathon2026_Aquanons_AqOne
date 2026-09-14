@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/fishing_spot.dart';
 import 'app_database.dart';
 
-/// Local queue of fishing-spot reports. Mirrors [CatchStore] in shape.
+/// Local queue of fishing-spot reports.
 class FishingSpotStore {
   FishingSpotStore(this._db);
 

@@ -3,7 +3,7 @@ import '../models/hotspot_cell.dart';
 /// Illustrative hotspot cells, shipped so the layer can be seen and explained
 /// before the model exists.
 ///
-/// These are invented. No catch log, no environmental data and no model
+/// These are invented. No data and no model
 /// produced them - the coordinates were chosen to sit plausibly in New
 /// Washington's municipal waters and nothing more. They exist to answer
 /// "what will this look like?" for a fisherman being shown the app, and to
