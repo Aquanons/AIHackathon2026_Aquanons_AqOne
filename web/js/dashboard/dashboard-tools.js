@@ -137,6 +137,9 @@
   const MEASURE_PREVIEW = 'rgba(46,204,113,0.55)';
 
   function haversineKm(a, b) {
+    if (map && typeof map.distance === 'function') {
+      return map.distance(a, b) / 1000;
+    }
     const R = 6371;
     const dLat = (b.lat - a.lat) * Math.PI / 180;
     const dLng = (b.lng - a.lng) * Math.PI / 180;
@@ -542,61 +545,14 @@
     measureActive: { get: function () { return measureActive; } },
     activePanel: { get: function () { return activePanel; } }
   });
-  ns.pinBtn = pinBtn;
-  ns.panBtn = panBtn;
-  ns.mapEl = mapEl;
-  ns.pinMarkers = pinMarkers;
-  ns.createPinIcon = createPinIcon;
-  ns.dropLocalPin = dropLocalPin;
   ns.activatePinMode = activatePinMode;
   ns.deactivatePinMode = deactivatePinMode;
   ns.activatePanMode = activatePanMode;
   ns.deactivatePanMode = deactivatePanMode;
-  ns.MEASURE_COLOR = MEASURE_COLOR;
-  ns.MEASURE_PREVIEW = MEASURE_PREVIEW;
-  ns.haversineKm = haversineKm;
-  ns.fmtKm = fmtKm;
-  ns.measureFinished = measureFinished;
-  ns.measurePts = measurePts;
-  ns.measureLayer = measureLayer;
-  ns.mPolyline = mPolyline;
-  ns.mPreview = mPreview;
-  ns.mTooltips = mTooltips;
-  ns.mVertices = mVertices;
-  ns.measureBtn = measureBtn;
-  ns.measureHud = measureHud;
-  ns.hudTotal = hudTotal;
-  ns.panelTotal = panelTotal;
-  ns.panelCount = panelCount;
-  ns.btnFinish = btnFinish;
-  ns.btnClear = btnClear;
-  ns.mDblClickGuard = mDblClickGuard;
-  ns.measureUpdateUI = measureUpdateUI;
-  ns.measureAddVertexMarker = measureAddVertexMarker;
-  ns.measureAddSegmentLabel = measureAddSegmentLabel;
-  ns.measureRedrawPolyline = measureRedrawPolyline;
-  ns.measureClearLabels = measureClearLabels;
-  ns.measureClearVertices = measureClearVertices;
-  ns.measureRebuildLabels = measureRebuildLabels;
-  ns.measureAddPoint = measureAddPoint;
-  ns.measureClearPreview = measureClearPreview;
-  ns.measureUpdatePreview = measureUpdatePreview;
-  ns.measureClearAll = measureClearAll;
-  ns.measureFinish = measureFinish;
   ns.activateMeasureMode = activateMeasureMode;
   ns.deactivateMeasureMode = deactivateMeasureMode;
-  ns.onMeasureMouseMove = onMeasureMouseMove;
-  ns.switchLayer = switchLayer;
-  ns.toolPanelCard = toolPanelCard;
-  ns.toolPanelTitle = toolPanelTitle;
-  ns.railBtns = railBtns;
-  ns.panelContents = panelContents;
-  ns.panelCloseBtns = panelCloseBtns;
-  ns.PANEL_TITLES = PANEL_TITLES;
+  ns.measureClearAll = measureClearAll;
   ns.openPanel = openPanel;
   ns.closePanel = closePanel;
-  ns.toggleLayer = toggleLayer;
-  ns.dangerZoneRefresh = dangerZoneRefresh;
-  ns.dropLocalPin = dropLocalPin;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

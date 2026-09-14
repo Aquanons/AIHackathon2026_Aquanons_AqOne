@@ -8,10 +8,6 @@
   var statusText = document.getElementById('hotspot-status-text');
   var HOTSPOT_POLL_MS = 300000;
 
-  function escaped(value) {
-    return escapeHtml(String(value == null ? '' : value));
-  }
-
   function formatGeneratedAt(value) {
     var date = new Date(value);
     return Number.isNaN(date.getTime()) ? String(value == null ? '' : value) : date.toLocaleString();
@@ -31,15 +27,15 @@
     var lon = Number(cell.center_lon);
     var size = Number(cell.cell_size_degrees);
     var rows = [
-      '<div class="popup-row"><span>Relative activity</span><span>' + escaped(Math.round(score * 100) + '%') + '</span></div>',
-      '<div class="popup-row"><span>Catch reports</span><span>' + escaped(observations) + '</span></div>',
-      '<div class="popup-row"><span>Cell centre</span><span>' + escaped(lat.toFixed(3) + '\u00b0, ' + lon.toFixed(3) + '\u00b0') + '</span></div>',
-      '<div class="popup-row"><span>Cell size</span><span>' + escaped((size * 111).toFixed(1) + ' km') + '</span></div>'
+      '<div class="popup-row"><span>Relative activity</span><span>' + escapeHtml(Math.round(score * 100) + '%') + '</span></div>',
+      '<div class="popup-row"><span>Catch reports</span><span>' + escapeHtml(observations) + '</span></div>',
+      '<div class="popup-row"><span>Cell centre</span><span>' + escapeHtml(lat.toFixed(3) + '\u00b0, ' + lon.toFixed(3) + '\u00b0') + '</span></div>',
+      '<div class="popup-row"><span>Cell size</span><span>' + escapeHtml((size * 111).toFixed(1) + ' km') + '</span></div>'
     ].join('');
-    var provenance = escaped(payload.model_version) + ' · ' +
-      escaped(payload.window_days) + '-day window · min ' +
-      escaped(payload.min_reporters) + ' reporters · generated ' +
-      escaped(formatGeneratedAt(payload.generated_at));
+    var provenance = escapeHtml(payload.model_version) + ' · ' +
+      escapeHtml(payload.window_days) + '-day window · min ' +
+      escapeHtml(payload.min_reporters) + ' reporters · generated ' +
+      escapeHtml(formatGeneratedAt(payload.generated_at));
     return rows +
       '<div class="popup-divider"></div>' +
       '<div style="font-size:10px;line-height:1.45;color:#9ca3af;">' + provenance + '</div>' +

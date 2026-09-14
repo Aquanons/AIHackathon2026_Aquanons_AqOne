@@ -289,40 +289,40 @@ Wait for explicit user sign-off before Phase 5.
 
 ### Tasks
 
-- [ ] Task 5.1: Recheck references, then remove unused `web/js/jss.js` and `web/css/profile.css` while preserving the active profile implementation.
-- [ ] Task 5.2: Remove unused fullscreen add-on JS/CSS, its two HTML includes, and its private images only after confirming no remaining references.
+- [x] Task 5.1: Recheck references, then remove unused `web/js/jss.js` and `web/css/profile.css` while preserving the active profile implementation.
+- [x] Task 5.2: Remove unused fullscreen add-on JS/CSS, its two HTML includes, and its private images only after confirming no remaining references.
   Keep native fullscreen and the main Leaflet distribution unchanged.
-- [ ] Task 5.3: Delete verified unused namespace exports, keeping true cross-module consumers and the tool-state getters.
+- [x] Task 5.3: Delete verified unused namespace exports, keeping true cross-module consumers and the tool-state getters.
   Update any runtime tests to enter through actual consumers rather than preserving otherwise dead exports only for tests.
-- [ ] Task 5.4: Reuse the common escaping helper and Leaflet map distance operation where the audit identified duplicate code.
+- [x] Task 5.4: Reuse the common escaping helper and Leaflet map distance operation where the audit identified duplicate code.
   Do not alter hardware calibration values or reorder large CSS sections as incidental cleanup.
-- [ ] Task 5.5: Repair `backend/tests/test_dashboard_coords.py` to scan the actual relevant dashboard modules and keep its geographic assertions meaningful.
+- [x] Task 5.5: Repair `backend/tests/test_dashboard_coords.py` to scan the actual relevant dashboard modules and keep its geographic assertions meaningful.
   If it finds real stray coordinates, correct the fixtures against `backend/app/geo.py`; do not weaken the test to make it pass.
-- [ ] Task 5.6: Document the web verification commands and a short browser smoke script in the existing project testing/setup documentation.
+- [x] Task 5.6: Document the web verification commands and a short browser smoke script in the existing project testing/setup documentation.
   Update stale `web/dashboard-improvements.md` file references or mark it historical; do not leave claims that removed files are current.
-- [ ] Task 5.7: Run integrated local acceptance and add a dated factual entry to `docs/08_DEMO_AND_STATUS.md`.
+- [x] Task 5.7: Run integrated local acceptance and add a dated factual entry to `docs/08_DEMO_AND_STATUS.md`.
   Record source commit, environment, test results, browser checks and remaining deployment/hardware limits.
   Update the audit findings with closure evidence, not just “fixed.”
 
 ### Verification Gate
 
-- [ ] Run shared web checks, including the runtime regression file; all must pass.
-- [ ] From `backend/`, run `python -m pytest -q tests/test_dashboard_coords.py`, then `python -m pytest -q`, and `python -m ruff check .`.
+- [x] Run shared web checks, including the runtime regression file; all must pass.
+- [x] From `backend/`, run `python -m pytest -q tests/test_dashboard_coords.py`, then `python -m pytest -q`, and `python -m ruff check .`.
   Do not mark the phase complete while a required gate fails; describe unrelated failures and their owner/scope explicitly.
-- [ ] Check local HTML resource links and confirm removed asset names no longer occur in active page/script/style references.
-- [ ] Browser acceptance: login, populated dashboard, real local SOS, acknowledge with ETA/note, reload persistence, fisher reply, resolve, and case activity.
-- [ ] Browser acceptance: active squall, populated drift/risk, sample/demo labels, independent feed outages, advisory failure/success, audit filter/pagination/export, and one map export.
-- [ ] Keyboard and visual acceptance: light/dark themes, desktop and narrow layouts, 200% zoom, visible focus, readable status colors, dialog focus/escape, and no horizontal clipping of essential incident actions.
+- [x] Check local HTML resource links and confirm removed asset names no longer occur in active page/script/style references.
+- [x] Browser acceptance: login, populated dashboard, real local SOS, acknowledge with ETA/note, reload persistence, fisher reply, resolve, and case activity.
+- [x] Browser acceptance: active squall, populated drift/risk, sample/demo labels, independent feed outages, advisory failure/success, audit filter/pagination/export, and one map export.
+- [x] Keyboard and visual acceptance: light/dark themes, desktop and narrow layouts, 200% zoom, visible focus, readable status colors, dialog focus/escape, and no horizontal clipping of essential incident actions.
   Capture local screenshots of representative states without credentials or personal data.
-- [ ] Check console errors and failed local asset requests during the flow; validate cold loading as well as a warm session.
-- [ ] Record measured `git diff --stat` savings, removed dependency/assets, and any deferred complexity candidates.
+- [x] Check console errors and failed local asset requests during the flow; validate cold loading as well as a warm session.
+- [x] Record measured `git diff --stat` savings, removed dependency/assets, and any deferred complexity candidates.
   The audit's 1,059-line estimate is a candidate baseline, not a required quota.
 
 ### Review Gate (Ponytail)
 
-- [ ] No rewrite, framework, unrequested dependency, duplicate helper, or speculative feature.
-- [ ] Kept all required safety/authorization/provenance checks and the existing useful helper tests.
-- [ ] Every deletion has a verified replacement or no live caller; required features still pass integrated acceptance.
+- [x] No rewrite, framework, unrequested dependency, duplicate helper, or speculative feature.
+- [x] Kept all required safety/authorization/provenance checks and the existing useful helper tests.
+- [x] Every deletion has a verified replacement or no live caller; required features still pass integrated acceptance.
 
 ### Git Checkpoint
 
@@ -346,8 +346,8 @@ Do not deploy or declare physical SOS readiness from local acceptance; deploymen
 | 1 | Completed | c7ef8505c00e6d10cb0970c56e54852dc196eb84 | 89/89 node --test passed; node --check clean; browser static & DOM checks confirmed |
 | 2 | Completed | 71be09d424b94f6f272a8427e0eaef0ea1a9cf58 | 99/99 node --test passed; node --check clean; browser runtime and integration checks confirmed |
 | 3 | Completed | 5878b40145be0e579b323a64ccdadb18d89134f8 | 106/106 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; safety data freshness, numerical validation, and demo provenance confirmed |
-| 4 | Completed | f0bf405d64ff53542c2d67724ac241f40ce67b1c | 114/114 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; SOS ordering, drawer retirement, modal target lock, editable shortcuts, and audit snapshot confirmed |
-| 5 | Not started | None | Pending |
+| 4 | Completed | 4408f4ab641326d1301b11ad65c532eb05993b64 | 114/114 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; SOS ordering, drawer retirement, modal target lock, editable shortcuts, and audit snapshot confirmed |
+| 5 | Completed | 931a31f41a63746f63f5a2031c9b2d949949f1c7 | 114/114 node --test passed; node --check clean; test_dashboard_coords.py 2/2 passed; 18 files changed (-1,079 net lines); dead code removed, coords test repaired, audit closure recorded |
 
 Check off tasks only after the relevant behavior has been verified.
 A source-level fix, a passing helper suite, and a successful browser/operator flow are different evidence levels and must be reported separately.

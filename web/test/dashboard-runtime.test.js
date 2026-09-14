@@ -273,6 +273,7 @@ test('Phase 1 - F01: Secure rendering prevents unescaped HTML injection', async 
 
   await t.test('dropLocalPin in dashboard-tools.js escapes CURRENT_USER.name in popup', () => {
     let capturedPopupHtml = null;
+    let mapClickHandler = null;
     const fakeL = {
       divIcon: (opts) => opts,
       marker: () => ({
@@ -294,7 +295,11 @@ test('Phase 1 - F01: Secure rendering prevents unescaped HTML injection', async 
       ready: true,
       CURRENT_USER: maliciousUser,
       CURRENT_USER_COLOR: '#0284c7',
-      map: { on() {}, addLayer() {}, removeLayer() {} },
+      map: {
+        on(ev, fn) { if (ev === 'click') mapClickHandler = fn; },
+        addLayer() {},
+        removeLayer() {}
+      },
       tileLayers: {},
       currentBase: {},
       gatewayLayer: {},
@@ -319,8 +324,11 @@ test('Phase 1 - F01: Secure rendering prevents unescaped HTML injection', async 
     const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
     vm.runInContext(code, context);
 
-    assert.equal(typeof ns.dropLocalPin, 'function', 'dropLocalPin should be exported on ns');
-    ns.dropLocalPin({ lat: 11.71, lng: 122.45 });
+    assert.equal(typeof ns.activatePinMode, 'function', 'activatePinMode should be exported on ns');
+    ns.activatePinMode();
+    assert.equal(ns.pinModeActive, true, 'pinModeActive should be active');
+    assert.ok(typeof mapClickHandler === 'function', 'map click handler should be registered');
+    mapClickHandler({ latlng: { lat: 11.71, lng: 122.45 } });
 
     assert.ok(capturedPopupHtml, 'popup html was generated');
     assert.ok(!capturedPopupHtml.includes('<img src=x'), 'user name must not inject raw <img> tag');

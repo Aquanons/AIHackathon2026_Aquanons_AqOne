@@ -137,7 +137,38 @@ Do not run `python -m app.simulation.generator` against a database containing va
 
 `VESSEL_DEVICE_JWT_EXPIRY_HOURS` controls the vessel-device credential lifetime and defaults to 24 hours.
 
-## Mobile checks
+## Web and operations console checks
+
+Requirements: Node.js 18 or newer (uses built-in test runner; no npm dependencies required).
+
+Run the automated web checks:
+
+```bash
+# Run helper and component runtime regression suites
+node --test web/test/*.test.js
+
+# Verify syntax across all web scripts (PowerShell)
+Get-ChildItem web/js, web/test -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
+```
+
+### Browser smoke test workflow
+
+1. **Authentication & Session:**
+   - Open `web/html/login.html`.
+   - Log in with valid credentials (or inspect the demo badge if bypass is active).
+   - Ensure the operator profile page (`web/html/Systemprofile.html`) accurately renders authenticated identity without cross-account cache bleed.
+2. **Operations Console (`web/html/dashboard.html`):**
+   - **Freshness & Provenance:** Verify header connectivity pill indicates accurate freshness (`LIVE` after successful poll; `STALE` or `OFFLINE` after missed intervals; `DEMO` on synthetic items).
+   - **Live Incident & Responder Loop:**
+     - Click an incident in the feed or on the map to open the SOS drawer.
+     - Click `Acknowledge`: verify modal target is locked, focus traps within modal, and submitting ETA/notes records acknowledgment.
+     - Click `Resolve Case`: verify drawer retires upon case completion without clobbering other incidents.
+   - **Audit & Timeline:**
+     - Open the Audit panel (`web/html/dashboard.html`).
+     - Submit a query; page through results or click `Export CSV/JSON` $\rightarrow$ confirm export and pagination strictly retain the submitted filter snapshot.
+   - **Accessibility & Shortcuts:**
+     - Focus an editable field (`#txt-note`, search input) $\rightarrow$ verify typing single letters (`D`, `S`, `H`) does not activate map tools.
+     - Press `Escape` $\rightarrow$ verify top-level modals close first, followed by side drawers, then tool panels.
 
 The Android platform files are already tracked.
 The current source accepts the buoy HTTP endpoint `http://192.168.4.1` and requires an absolute HTTPS backend URL.

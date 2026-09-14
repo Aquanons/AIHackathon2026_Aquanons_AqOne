@@ -1,10 +1,10 @@
 """Scan the dashboard's hardcoded coordinates against the service area.
 
-The demo markers in web/js/dashboard.js are maintained by hand, and stray
+The demo markers in web/js/dashboard/*.js are maintained by hand, and stray
 positions kept reappearing - Boracay 50 km west, vessels inland over Panay -
 because nothing checked them. This walks every `lat: x, lng: y` literal in the
-file and classifies it, so an out-of-area marker fails here rather than being
-spotted on a projector.
+dashboard modules and classifies it, so an out-of-area marker fails here rather
+than being spotted on a projector.
 
 Shore stations must be on land; buoys, vessels, incidents and alerts must be in
 the water polygon.
@@ -17,7 +17,7 @@ import pytest
 
 from app import geo
 
-DASHBOARD_JS = Path(__file__).resolve().parents[2] / 'web' / 'js' / 'dashboard.js'
+DASHBOARD_DIR = Path(__file__).resolve().parents[2] / 'web' / 'js' / 'dashboard'
 
 COORD_RE = re.compile(r'lat:\s*(-?\d+\.\d+)\s*,\s*lng:\s*(-?\d+\.\d+)')
 
@@ -33,13 +33,16 @@ def _line_context(source: str, index: int) -> str:
 
 @pytest.fixture(scope='module')
 def coordinates():
-    assert DASHBOARD_JS.exists(), f'dashboard not found at {DASHBOARD_JS}'
-    source = DASHBOARD_JS.read_text(encoding='utf-8', errors='replace')
+    assert DASHBOARD_DIR.is_dir(), f'dashboard directory not found at {DASHBOARD_DIR}'
+    files = sorted(DASHBOARD_DIR.glob('*.js'))
+    assert files, f'no dashboard js files found at {DASHBOARD_DIR}'
     found = []
-    for match in COORD_RE.finditer(source):
-        found.append(
-            (float(match.group(1)), float(match.group(2)), _line_context(source, match.start()))
-        )
+    for js_path in files:
+        source = js_path.read_text(encoding='utf-8', errors='replace')
+        for match in COORD_RE.finditer(source):
+            found.append(
+                (float(match.group(1)), float(match.group(2)), _line_context(source, match.start()))
+            )
     assert found, 'no coordinate literals found - has the format changed?'
     return found
 
