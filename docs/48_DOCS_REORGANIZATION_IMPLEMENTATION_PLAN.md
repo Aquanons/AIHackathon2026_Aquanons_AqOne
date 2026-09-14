@@ -99,9 +99,23 @@ Wait for explicit approval before final verification.
 
 **Goal:** Confirm the new layout is navigable and no active consumer points at an old path.
 
-- [ ] Verify `GEMINI.md`, `AGENTS.md`, root `README.md`, code comments, tests, and all moved documents.
-- [ ] Run `git diff --check` and the final repository reference scan.
-- [ ] Record the final moved-file list and any intentionally retained root records.
+- [x] Verify `GEMINI.md`, `AGENTS.md`, root `README.md`, code comments, tests, and all moved documents.
+- [x] Run `git diff --check` and the final repository reference scan.
+- [x] Record the final moved-file list and any intentionally retained root records.
+
+### Verification Results
+
+- No active repository consumer points to either pre-archive path; the final moved-file ledger below is the only intentional historical mention.
+- `GEMINI.md`, `AGENTS.md`, root `README.md`, `docs/README.md`, and `docs/SPEC_INDEX.md` point to the current navigation paths.
+- Stable contracts `00`–`08`, `21`, and `22` remain at their required root paths.
+- The two archived plans have `COMPLETE` headers and no live consumers of their former paths.
+- Root records intentionally retained: `09`, `11`–`43`, `46`–`48`, `WEB_REMEDIATION_IMPLEMENTATION_PLAN.md`, the canonical PRD, and foundation/reference records.
+- `git diff --check` passes and the working tree is clean before this checkpoint.
+
+### Final Moved Files
+
+- `docs/44_DASHBOARD_LAYOUT_REDESIGN_IMPLEMENTATION_PLAN.md` → `docs/archive/plans/44_DASHBOARD_LAYOUT_REDESIGN_IMPLEMENTATION_PLAN.md`
+- `docs/45_DASHBOARD_LOGIN_BYPASS_IMPLEMENTATION_PLAN.md` → `docs/archive/plans/45_DASHBOARD_LOGIN_BYPASS_IMPLEMENTATION_PLAN.md`
 
 ### Git Checkpoint
 
