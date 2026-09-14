@@ -33,7 +33,7 @@ The detailed naming, status, and authoring rules live in [`README.md`](README.md
 |---|---|
 | Active work | [`README.md#current-register`](README.md#current-register) |
 | Audits and verification | [`audits/`](audits/) |
-| Completed plans | Numbered records whose header says `COMPLETE`; Phase 2 will move only records with no live path references to `archive/plans/` |
+| Completed plans | [`archive/plans/`](archive/plans/) — only records whose header says `COMPLETE` and have no live path references |
 | Engineering guides | [`guides/`](guides/) |
 | Design references | [`design-reference/`](design-reference/) |
 | Workshop material | [`dti-workshop/`](dti-workshop/) |

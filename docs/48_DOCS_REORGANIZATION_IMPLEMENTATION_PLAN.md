@@ -1,6 +1,6 @@
 # Implementation Plan: Documentation organization
 
-> **Status:** Phase 2 complete; awaiting sign-off for Phase 3
+> **Status:** Phase 3 complete; awaiting sign-off for Phase 4
 > **Target Branch:** `codex/web-audit-remediation`
 > **Test Command:** repository reference scan plus Markdown link validation
 > **Lint/Check Command:** `git diff --check`
@@ -67,10 +67,21 @@ Wait for explicit approval before archiving completed plans.
 
 **Goal:** Move only completed, unreferenced plans into `docs/archive/plans/`.
 
-- [ ] Check each candidate header and repository reference.
-- [ ] Leave active plans and referenced contract/history documents in place.
-- [ ] Update links and the documentation register.
-- [ ] Run the reference scan and Markdown link checks.
+- [x] Check each candidate header and repository reference.
+- [x] Leave active plans and referenced contract/history documents in place.
+- [x] Update links and the documentation register.
+- [x] Run the reference scan and Markdown link checks.
+
+### Verification Gate
+
+- [x] Confirm the archived plans have `COMPLETE` headers.
+- [x] Confirm no repository path reference points to the old locations.
+- [x] Run `git diff --check`.
+
+### Review Gate (Ponytail)
+
+- [x] Move only the two merged, unreferenced plans; retain unresolved or referenced plans in place.
+- [x] Add no dependency, archive wrapper, or duplicate index.
 
 ### Git Checkpoint
 
@@ -78,6 +89,11 @@ Wait for explicit approval before archiving completed plans.
 git add docs README.md AGENTS.md GEMINI.md
 git commit -m "docs: archive completed plans"
 ```
+
+### Hard Stop
+
+Phase 3 is complete and committed.
+Wait for explicit approval before final verification.
 
 ## Phase 4: Final verification
 

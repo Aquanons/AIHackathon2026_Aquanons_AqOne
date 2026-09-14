@@ -1,5 +1,7 @@
 # Dashboard login bypass — implementation plan for Luna
 
+**Status:** COMPLETE — implementation merged in `18fe61b` and `1a272e3`.
+
 ## Context
 
 Railway is turned off right now to save credits, so the backend (`/api/login`, `/api/...`) is unreachable. Lenard needs to open `dashboard.html` locally to look at the map/UI without a working backend behind it. This is a **demo/dev convenience, not a real auth feature** — it must be obviously a bypass, not something that quietly weakens the real login gate.

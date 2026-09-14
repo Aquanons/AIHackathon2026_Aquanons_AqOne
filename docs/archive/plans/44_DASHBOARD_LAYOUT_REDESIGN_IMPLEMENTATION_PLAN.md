@@ -1,5 +1,7 @@
 # Dashboard layout redesign — integration plan for Luna
 
+**Status:** COMPLETE — implementation merged in `d9c87d5`.
+
 ## Context
 
 Lenard commissioned a Claude Design mockup of a new layout for `dashboard.html` (attached alongside this plan: `aqone-dashboard-redesign-reference.png`, rendered from the file he uploaded). **This is a layout-only redesign — the current light theme, colors, and branding stay exactly as they are.** The mockup file itself (`AqOne_Dashboard.html`, if Lenard also hands you that) is a Claude Design canvas export — a self-contained React/Tailwind bundle, not reusable markup. Do not try to copy/paste anything out of it or load its JS runtime into the site. Treat it purely as a visual reference (the PNG is the easiest way to look at it — open the raw HTML file in an actual browser if you need to check something at pixel level, since it won't render as plain text). The real implementation goes into the existing vanilla-JS + plain-CSS site, same as every other file in `web/`.
