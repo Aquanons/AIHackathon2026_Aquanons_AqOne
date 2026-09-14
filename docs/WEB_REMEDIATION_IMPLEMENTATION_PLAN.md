@@ -1,11 +1,11 @@
 # Implementation Plan: Web audit remediation
 
-> **Status:** Proposed; no implementation phase started.  
-> **Target Branch:** `codex/web-audit-remediation` (create only when implementation is requested).  
-> **Test Command:** `node --test web/test/*.test.js`; backend checks below when applicable.  
-> **Lint/Check Command:** JavaScript syntax checks below; backend `python -m ruff check` for changed Python.  
-> **Prepared:** 2026-09-14, from the [2026-09-13 audit](WEB_AUDIT_2026-09-13.md).  
-> **Owners:** Jade for dashboard implementation, Lenard for backend/contracts, Doreen Kay for UI and wording review.  
+> **Status:** Completed (Phases 1–5 closed; 2026-09-14 Re-audit R1–R5 remediated and verified).
+> **Target Branch:** `codex/web-audit-remediation` (active branch).
+> **Test Command:** `node --test web/test/*.test.js`; backend `python -m pytest backend/tests`.
+> **Lint/Check Command:** JavaScript syntax checks; backend `python -m ruff check backend`.
+> **Prepared:** 2026-09-14, from the [2026-09-13 audit](WEB_AUDIT_2026-09-13.md) and [2026-09-14 re-audit](WEB_GEMINI_REAUDIT_2026-09-14.md).
+> **Owners:** Jade for dashboard implementation, Lenard for backend/contracts, Doreen Kay for UI and wording review.
 > **Execution:** Sequential phases with verification, Ponytail review, atomic commits, and sign-off.
 
 ---
@@ -348,6 +348,7 @@ Do not deploy or declare physical SOS readiness from local acceptance; deploymen
 | 3 | Completed | 5878b40145be0e579b323a64ccdadb18d89134f8 | 106/106 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; safety data freshness, numerical validation, and demo provenance confirmed |
 | 4 | Completed | 4408f4ab641326d1301b11ad65c532eb05993b64 | 114/114 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; SOS ordering, drawer retirement, modal target lock, editable shortcuts, and audit snapshot confirmed |
 | 5 | Completed | 931a31f41a63746f63f5a2031c9b2d949949f1c7 | 114/114 node --test passed; node --check clean; test_dashboard_coords.py 2/2 passed; 18 files changed (-1,079 net lines); dead code removed, coords test repaired, audit closure recorded |
+| Re-audit (R1–R5) | Completed | Working Tree (Pending commit) | 132/132 node --test passed (incl. 18/18 reaudit tests); 300 pytest passed (5 skipped, 1 xfailed); python -m ruff check backend clean; R1–R5 defects remediated; Ponytail cuts applied |
 
 Check off tasks only after the relevant behavior has been verified.
 A source-level fix, a passing helper suite, and a successful browser/operator flow are different evidence levels and must be reported separately.

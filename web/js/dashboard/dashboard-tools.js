@@ -3,11 +3,7 @@
   if (!ns.ready) return;
   var CURRENT_USER = ns.CURRENT_USER;
   var CURRENT_USER_COLOR = ns.CURRENT_USER_COLOR;
-  var escapeHtml = ns.escapeHtml || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.escapeHtml) || function (val) {
-    return String(val == null ? '' : val)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  };
+  var escapeHtml = ns.escapeHtml;
   var map = ns.map;
   var tileLayers = ns.tileLayers;
   var currentBase = ns.currentBase;
@@ -137,19 +133,7 @@
   const MEASURE_PREVIEW = 'rgba(46,204,113,0.55)';
 
   function haversineKm(a, b) {
-    if (map && typeof map.distance === 'function') {
-      return map.distance(a, b) / 1000;
-    }
-    const R = 6371;
-    const dLat = (b.lat - a.lat) * Math.PI / 180;
-    const dLng = (b.lng - a.lng) * Math.PI / 180;
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const c = sinDLat * sinDLat +
-              Math.cos(a.lat * Math.PI / 180) *
-              Math.cos(b.lat * Math.PI / 180) *
-              sinDLng * sinDLng;
-    return R * 2 * Math.atan2(Math.sqrt(c), Math.sqrt(1 - c));
+    return map.distance(a, b) / 1000;
   }
 
   function fmtKm(km) { return km.toFixed(3) + ' km'; }
@@ -395,9 +379,8 @@
     toolPanelTitle.textContent = PANEL_TITLES[panelId] || 'Tool Panel';
     toolPanelCard.classList.remove('collapsed');
     activePanel = panelId;
-    if (panelId === 'advisories') ns.renderAdvisoryList();
-    if (panelId === 'buoys') ns.updateBuoySync();
-    if (panelId === 'audit') ns.renderAuditPanel();
+    if (panelId === 'advisories' && typeof ns.renderAdvisoryList === 'function') ns.renderAdvisoryList();
+    if (panelId === 'audit' && typeof ns.renderAuditPanel === 'function') ns.renderAuditPanel();
   }
 
   function closePanel() {

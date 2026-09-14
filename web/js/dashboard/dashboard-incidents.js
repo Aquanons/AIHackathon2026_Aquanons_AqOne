@@ -13,12 +13,7 @@
   var syncAlertIndicators = ns.syncAlertIndicators;
   var responderStatusHtml = ns.responderStatusHtml;
   var formatEta = ns.formatEta;
-  var confidenceColor = function (c) {
-    if (typeof ns.confidenceColor === 'function') return ns.confidenceColor(c);
-    if (c >= 80) return '#e74c3c';
-    if (c >= 60) return '#e67e22';
-    return '#f1c40f';
-  };
+  var confidenceColor = ns.confidenceColor;
 
   // ===== INCIDENT DRAWER (scored alert / escalation ladder) =====
   const sosDrawer          = document.getElementById('sos-drawer');
@@ -499,16 +494,6 @@
   ns.sosBroadcastMsg = sosBroadcastMsg;
   ns.sosTimerInterval = sosTimerInterval;
   ns.sosAlertStartTime = sosAlertStartTime;
-  Object.defineProperty(ns, 'currentDrawerMarker', {
-    get: function () { return currentDrawerMarker; },
-    set: function (v) { currentDrawerMarker = v; },
-    configurable: true
-  });
-  Object.defineProperty(ns, 'currentDrawerData', {
-    get: function () { return currentDrawerData; },
-    set: function (v) { currentDrawerData = v; },
-    configurable: true
-  });
   ns.openIncidentDrawer = openIncidentDrawer;
   ns.closeSOSDrawer = closeSOSDrawer;
   ns.sosTickTimer = sosTickTimer;

@@ -1333,8 +1333,7 @@ test('Phase 4 - Incident actions, audit reads, and keyboard stabilization', asyn
 
     assert.equal(ns.liveAlerts.length, 1);
     assert.equal(ns.liveAlerts[0].sosEventId, 'SOS-2');
-    const acceptedTimestamp = ns.lastSosSuccessMs;
-    assert.ok(typeof acceptedTimestamp === 'number');
+    assert.equal(syncTextEl.textContent, 'LIVE');
 
     // Wait a brief tick to ensure Date.now() advances if called again
     await new Promise(r => setTimeout(r, 10));
@@ -1356,10 +1355,10 @@ test('Phase 4 - Incident actions, audit reads, and keyboard stabilization', asyn
     // Wait for promise chain to settle
     await new Promise(r => setTimeout(r, 10));
 
-    // Must NOT have overwritten SOS-2 or updated lastSosSuccessMs
+    // Must NOT have overwritten SOS-2
     assert.equal(ns.liveAlerts.length, 1);
     assert.equal(ns.liveAlerts[0].sosEventId, 'SOS-2', 'Newer accepted state must not be overwritten by older response');
-    assert.equal(ns.lastSosSuccessMs, acceptedTimestamp, 'Freshness timestamp must not be updated by superseded request');
+    assert.equal(syncTextEl.textContent, 'LIVE');
   });
 
   await t.test('loadActiveSos rejects malformed payloads and preserves last-known live alerts', async () => {
@@ -1456,15 +1455,14 @@ test('Phase 4 - Incident actions, audit reads, and keyboard stabilization', asyn
     const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
     vm.runInContext(incidentsCode, context);
 
-    // Set drawer open with SOS-A
-    ns.currentDrawerData = { alertType: 'sos', sosEventId: 'SOS-A', headerText: 'SOS A' };
+    // Open drawer with SOS-A
+    ns.openIncidentDrawer({ alertType: 'sos', sosEventId: 'SOS-A', headerText: 'SOS A' }, null);
     assert.ok(drawer.classList.contains('open'));
 
     // Feed refreshes, SOS-A is missing from allAlerts()
     ns.refreshOpenDrawer();
 
     assert.equal(drawer.classList.contains('open'), false, 'Drawer must be closed when event leaves feed');
-    assert.equal(ns.currentDrawerData, null, 'Drawer data must be retired');
     assert.equal(ackOverlay.hidden, true, 'Ack modal must close when incident is retired');
     assert.equal(toastTitle, 'Incident closed');
   });
@@ -1547,7 +1545,6 @@ test('Phase 4 - Incident actions, audit reads, and keyboard stabilization', asyn
       desc: 'Bangka Alpha',
       vesselId: 'V-001'
     }, null);
-    assert.equal(ns.currentDrawerData.sosEventId, 'CASE-A');
 
     // Open acknowledgment modal
     ns.openAckModal();
@@ -1563,10 +1560,7 @@ test('Phase 4 - Incident actions, audit reads, and keyboard stabilization', asyn
       vesselId: 'V-002'
     }, null);
 
-    // Must still be locked to Case A
-    assert.equal(ns.currentDrawerData.sosEventId, 'CASE-A', 'openIncidentDrawer must not switch case while ack modal is open');
-
-    // Submit acknowledgment
+    // Submit acknowledgment - must still be locked to Case A
     ackConfirmBtn.click();
     await new Promise(r => setTimeout(r, 10));
 

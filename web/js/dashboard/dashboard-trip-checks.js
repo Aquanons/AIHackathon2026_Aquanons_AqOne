@@ -19,29 +19,76 @@
   const tripChecksBadgeEl = document.getElementById('badge-tripchecks');
 
   let loadedOnce = false;
+  let lastTripChecksSuccessMs = null;
+  let lastKnownCases = null;
 
-  function renderTripChecks(cases) {
+  function renderTripChecks(cases, freshness) {
+    if (freshness === 'offline' && (!cases || cases.length === 0)) {
+      if (tripChecksListEl) tripChecksListEl.innerHTML = '<div class="trip-checks-empty trip-checks-unavailable"><span class="alert-demo-badge">FEED OFFLINE</span> Trip checks queue unavailable &middot; unable to reach the anomaly detection service.</div>';
+      if (tripChecksBadgeEl) tripChecksBadgeEl.textContent = '--';
+      return;
+    }
+    if (freshness === 'stale' && (!cases || cases.length === 0)) {
+      if (tripChecksListEl) tripChecksListEl.innerHTML = '<div class="trip-checks-empty trip-checks-stale"><span class="alert-demo-badge">FEED STALE</span> Trip checks feed is stale &middot; unable to verify recent trip patterns.</div>';
+      if (tripChecksBadgeEl) tripChecksBadgeEl.textContent = '--';
+      return;
+    }
+
+    if (cases && cases.length > 0 && (freshness === 'stale' || freshness === 'offline')) {
+      var staleNotice = '<div class="trip-checks-stale-banner" style="padding:6px 8px;margin-bottom:6px;background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;font-size:11px;color:var(--text-secondary);">' +
+        '<span class="alert-demo-badge">FEED ' + (freshness === 'offline' ? 'OFFLINE' : 'STALE') + '</span> Showing last-known trip checks &middot; anomaly service unreachable</div>';
+      if (tripChecksListEl) tripChecksListEl.innerHTML = staleNotice + tripChecksListHtml(cases);
+      if (tripChecksBadgeEl) tripChecksBadgeEl.textContent = cases.length;
+      return;
+    }
+
     if (tripChecksListEl) tripChecksListEl.innerHTML = tripChecksListHtml(cases);
     if (tripChecksBadgeEl) tripChecksBadgeEl.textContent = Array.isArray(cases) ? cases.length : '--';
   }
 
+  var TRIP_CHECK_TIMEOUT_MS = 25000;
+
+  function updateTripChecksFreshness() {
+    if (!loadedOnce) {
+      renderTripChecks(null, 'offline');
+      return;
+    }
+    var classify = ns.classifyFreshness || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.classifyFreshness);
+    var freshness = typeof classify === 'function' ? classify(lastTripChecksSuccessMs, Date.now(), {
+      pollIntervalMs: TRIP_CHECKS_POLL_MS,
+      staleAfterMs: 45000,
+      offlineAfterMs: 90000
+    }) : 'offline';
+    if (freshness === 'stale' || freshness === 'offline') {
+      renderTripChecks(lastKnownCases, freshness);
+    }
+  }
+
   function loadOpenCases() {
-    return authFetch('/api/ai/anomaly/cases/open')
+    updateTripChecksFreshness();
+
+    var fetchPromise = authFetch('/api/ai/anomaly/cases/open')
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
-      })
+      });
+
+    var timeoutPromise = new Promise(function (_, reject) {
+      setTimeout(function () {
+        reject(new Error('Trip checks request timed out'));
+      }, TRIP_CHECK_TIMEOUT_MS);
+    });
+
+    return Promise.race([fetchPromise, timeoutPromise])
       .then(function (cases) {
         loadedOnce = true;
-        renderTripChecks(Array.isArray(cases) ? cases : []);
+        lastTripChecksSuccessMs = Date.now();
+        lastKnownCases = Array.isArray(cases) ? cases : [];
+        renderTripChecks(lastKnownCases, 'live');
       })
       .catch(function (err) {
-        // A failed poll must not blank an already-rendered queue - same
-        // fail-safe direction as loadActiveSos() for the SOS feed.
         console.warn('[AqOne] Trip checks poll failed:', err);
-        if (!loadedOnce) {
-          renderTripChecks(null);
-        }
+        updateTripChecksFreshness();
       });
   }
 
@@ -108,7 +155,9 @@
 
   loadOpenCases();
   setInterval(loadOpenCases, TRIP_CHECKS_POLL_MS);
+  setInterval(updateTripChecksFreshness, 10000);
 
   ns.loadOpenCases = loadOpenCases;
+  ns.updateTripChecksFreshness = updateTripChecksFreshness;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

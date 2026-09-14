@@ -5457,6 +5457,19 @@ h3.buoy-drawer-title {
   vertical-align: middle;
 }
 
+.alert-unknown-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #64748b;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
+
 /* Non-SOS rows (demo scaffolding and model-derived forecast alerts) stay
    legible but visibly secondary to a live distress call. */
 .alert-row-secondary { opacity: 0.78; }

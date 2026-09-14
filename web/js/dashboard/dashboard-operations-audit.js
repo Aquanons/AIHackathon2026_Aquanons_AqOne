@@ -131,12 +131,13 @@
   // history into the browser at once (plan item 3). Uses the snapshotted
   // appliedAuditFilters so modifying form inputs without submitting does
   // not corrupt pagination.
-  function fetchAuditPage(cursor) {
+  function fetchAuditPage(cursor, requestedFilters) {
     var seq = ++currentAuditSearchSeq;
     auditIsLoading = true;
     if (auditLoadMoreBtn) auditLoadMoreBtn.disabled = true;
 
-    var filters = appliedAuditFilters || currentAuditFilters();
+    var isNewSearch = !cursor;
+    var filters = isNewSearch ? (requestedFilters || currentAuditFilters()) : (appliedAuditFilters || currentAuditFilters());
     var qs = buildAuditQuery(filters, cursor ? { cursor: cursor } : null);
     if (auditErrorEl) auditErrorEl.hidden = true;
 
@@ -151,10 +152,11 @@
       })
       .then(function (data) {
         if (seq !== currentAuditSearchSeq) return;
+        appliedAuditFilters = data.applied_filters || filters;
         auditEvents = cursor ? auditEvents.concat(data.events || []) : (data.events || []);
         auditNextCursor = data.next_cursor;
         renderAuditResults();
-        renderAppliedFilters(data.applied_filters || filters);
+        renderAppliedFilters(appliedAuditFilters);
       })
       .catch(function (err) {
         if (seq !== currentAuditSearchSeq) return;
@@ -177,10 +179,8 @@
   }
 
   function renderAuditPanel() {
-    appliedAuditFilters = currentAuditFilters();
-    auditEvents = [];
-    auditNextCursor = null;
-    return fetchAuditPage(null);
+    var targetFilters = currentAuditFilters();
+    return fetchAuditPage(null, targetFilters);
   }
 
   if (auditFilterForm) {
@@ -245,9 +245,6 @@
 
   ns.activityDrawer = activityDrawer;
   ns.closeActivityDrawer = closeActivityDrawer;
-  ns.getCurrentActivitySeq = function () { return currentActivitySeq; };
-  ns.getCurrentAuditSearchSeq = function () { return currentAuditSearchSeq; };
-  ns.getAppliedAuditFilters = function () { return appliedAuditFilters; };
   ns.openActivityDrawer = openActivityDrawer;
   ns.renderAuditPanel = renderAuditPanel;
 

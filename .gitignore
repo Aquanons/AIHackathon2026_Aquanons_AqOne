@@ -41,6 +41,7 @@ mobile/out.db
 *.db.dump
 
 mobile/build/
+mobile/releases/
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/android/app/.gradle/

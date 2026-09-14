@@ -85,7 +85,7 @@ def test_reset_removes_only_tagged_rows():
 
 def test_firing_same_beat_is_idempotent(monkeypatch):
     state = scenarios.get_state()
-    state.scenario = 'clear-day'
+    state.scenario = 'squall-fleet'
     state.beat = 0
     state.fired = {0}
     state.run_id = 'run-1'
@@ -101,4 +101,4 @@ def test_firing_same_beat_is_idempotent(monkeypatch):
     second = asyncio.run(scenarios.fire_beat(1))
 
     assert first == second
-    assert writes == [('run-1', 1, 'clear-day')]
+    assert writes == [('run-1', 1, 'squall-fleet')]

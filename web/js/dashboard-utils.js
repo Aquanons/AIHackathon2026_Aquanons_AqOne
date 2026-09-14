@@ -108,9 +108,13 @@
    * badges").
    */
   function alertBadge(isLive) {
-    return isLive
-      ? { text: 'LIVE', cssClass: 'alert-live-badge' }
-      : { text: 'DEMO', cssClass: 'alert-demo-badge' };
+    if (isLive === 'unknown') {
+      return { text: 'UNKNOWN', cssClass: 'alert-unknown-badge' };
+    }
+    if (isLive === true || isLive === 'real' || isLive === 'live') {
+      return { text: 'LIVE', cssClass: 'alert-live-badge' };
+    }
+    return { text: 'DEMO', cssClass: 'alert-demo-badge' };
   }
 
   /**
@@ -360,8 +364,13 @@
     var calibrationText = p.calibration === 'synthetic'
       ? 'calibrated on simulated data'
       : 'calibrated model';
+    var isStaleOrOffline = p.freshness === 'stale' || p.freshness === 'offline';
     var badgeHtml = '';
-    if (p.source === 'live' || p.source === 'synthetic') {
+    if (isStaleOrOffline) {
+      badgeHtml =
+        '<span class="alert-demo-badge">LAST KNOWN</span>' +
+        '<span class="alert-unknown-badge" style="margin-left:4px;">FEED ' + (p.freshness === 'offline' ? 'OFFLINE' : 'STALE') + '</span>';
+    } else if (p.source === 'live' || p.source === 'synthetic') {
       var badge = alertBadge(p.source === 'live');
       badgeHtml = '<span class="' + badge.cssClass + '">' + badge.text + '</span>';
     }
@@ -371,9 +380,11 @@
         '<span class="ai-squall-status-age">' + escapeHtml(ageText) + '</span>' +
         '<span class="ai-squall-status-calibration">' + escapeHtml(calibrationText) + '</span>' +
       '</div>';
-    if (p.level === 'unknown') {
-      var reason = p.status_reason || 'Squall status cannot be confirmed right now.';
-      line += '<div class="ai-squall-status-reason">' + escapeHtml(reason) + '</div>';
+    if (p.level === 'unknown' || isStaleOrOffline || p.status_reason) {
+      var reason = p.status_reason || (p.level === 'unknown' ? 'Squall status cannot be confirmed right now.' : '');
+      if (reason) {
+        line += '<div class="ai-squall-status-reason">' + escapeHtml(reason) + '</div>';
+      }
     }
     return line;
   }

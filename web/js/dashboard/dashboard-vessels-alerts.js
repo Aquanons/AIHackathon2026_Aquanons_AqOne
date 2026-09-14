@@ -126,11 +126,11 @@
 
   // ===== ALERT DATA (confidence-scored, escalation ladder) =====
   const alertData = [
-    { type: 'overdue-vessel', desc: 'Overdue \u2014 "San Pedro" (V-002) missed expected contact at Buoy-C', time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 88, stage: 'STAGE 3 \u2014 SCORED ALERT' },
-    { type: 'sos',             desc: 'Manual SOS \u2014 Vessel "San Pedro" (V-002)',                       time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 92, stage: 'STAGE 3 \u2014 SCORED ALERT' },
-    { type: 'wave-zone',       desc: 'Squall Nowcast \u2014 RETURN NOW on Buoy-B / Buoy-C',                time: '12 minutes ago',  lat: 11.7029, lng: 122.5107, status: 'active', vesselId: null, confidence: 88, stage: 'SQUALL \u2014 45 MIN LEAD' },
-    { type: 'overdue-vessel',  desc: 'Overdue \u2014 "Maria Gracia" (V-005) check-in request outstanding', time: '1 hour 12 minutes ago', lat: 11.6768, lng: 122.4757, status: 'acknowledged', vesselId: 'V-005', confidence: 64, stage: 'STAGE 2 \u2014 CHECK-IN' },
-    { type: 'capsizing-risk',  desc: 'Resolved \u2014 false alarm from single-vessel deviation',            time: '2 hours ago',     lat: 11.6563, lng: 122.5327, status: 'resolved', vesselId: null, confidence: 41, stage: 'STAGE 1 \u2014 SILENT CHECK-IN' },
+    { type: 'overdue-vessel', desc: 'Overdue \u2014 "San Pedro" (V-002) missed expected contact at Buoy-C', time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 88, stage: 'STAGE 3 \u2014 SCORED ALERT', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'sos',             desc: 'Manual SOS \u2014 Vessel "San Pedro" (V-002)',                       time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 92, stage: 'STAGE 3 \u2014 SCORED ALERT', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'wave-zone',       desc: 'Squall Nowcast \u2014 RETURN NOW on Buoy-B / Buoy-C',                time: '12 minutes ago',  lat: 11.7029, lng: 122.5107, status: 'active', vesselId: null, confidence: 88, stage: 'SQUALL \u2014 45 MIN LEAD', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'overdue-vessel',  desc: 'Overdue \u2014 "Maria Gracia" (V-005) check-in request outstanding', time: '1 hour 12 minutes ago', lat: 11.6768, lng: 122.4757, status: 'acknowledged', vesselId: 'V-005', confidence: 64, stage: 'STAGE 2 \u2014 CHECK-IN', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'capsizing-risk',  desc: 'Resolved \u2014 false alarm from single-vessel deviation',            time: '2 hours ago',     lat: 11.6563, lng: 122.5327, status: 'resolved', vesselId: null, confidence: 41, stage: 'STAGE 1 \u2014 SILENT CHECK-IN', isLive: false, isSynthetic: true, provenance: 'synthetic' },
   ];
 
   // Real SOS events from the backend. Kept in a separate array from the demo
@@ -170,20 +170,20 @@
     return '#f1c40f';
   }
 
-  // A live SOS shows no confidence score. The other alert types are model
+  // An SOS shows no confidence score. The other alert types are model
   // output and a percentage is meaningful; a person pressing the button is a
   // fact, and dressing it in a fabricated confidence number would be a lie in
   // the one place on this dashboard where lying costs the most.
   function alertConfidenceRow(a) {
-    if (a.isLive) {
+    if (a.type === 'sos' || a.confidence == null) {
       return `<div class="aq-alert-conf">
-            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
+            <span class="aq-stage-mini">${escapeHtml(a.stage || '')}</span>
           </div>`;
     }
     return `<div class="aq-alert-conf">
             <span class="aq-conf-mini" style="color:${confidenceColor(a.confidence)};">${a.confidence}% conf</span>
             <span class="aq-conf-bar"><span class="aq-conf-fill" style="width:${a.confidence}%;background:${confidenceColor(a.confidence)};"></span></span>
-            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
+            <span class="aq-stage-mini">${escapeHtml(a.stage || '')}</span>
           </div>`;
   }
 
@@ -191,12 +191,18 @@
     const list = document.getElementById('alert-list');
     const rows = allAlerts();
     list.innerHTML = rows.map((a, i) => `
-      <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}" tabindex="0" role="button" aria-label="Incident: ${escapeHtml(a.desc)}">
+      <div class="alert-row${(a.isLive || a.provenance === 'unknown') ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}" tabindex="0" role="button" aria-label="Incident: ${escapeHtml(a.desc)}">
         ${alertIcon(a.type)}
         <div class="alert-info">
           <div class="alert-desc">${(function () {
-            var badge = alertBadge(a.isLive);
-            var title = a.isLive ? '' : ' title="Scripted sample data, not a real incident"';
+            var prov = a.provenance || (a.isLive ? 'real' : (a.isSynthetic ? 'synthetic' : (a.type === 'sos' ? 'unknown' : 'demo')));
+            var badge = alertBadge(prov);
+            var title = '';
+            if (prov === 'synthetic' || prov === 'demo' || (!a.isLive && prov !== 'unknown')) {
+              title = ' title="Scripted sample data, not a real incident"';
+            } else if (prov === 'unknown') {
+              title = ' title="Distress call with unknown provenance"';
+            }
             return '<span class="' + badge.cssClass + '"' + title + '>' + badge.text + '</span>';
           })()}${escapeHtml(a.desc)}</div>
           <div class="alert-meta">${a.time} &middot; ${
@@ -219,8 +225,8 @@
         if (a.lat != null && a.lng != null) {
           map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
         }
-        if (a.isLive && a.drawerData) {
-          ns.openIncidentDrawer(a.drawerData, (ns.liveSosMarkers && ns.liveSosMarkers[a.sosEventId]) || null);
+        if (a.drawerData && (a.sosEventId != null || a.type === 'sos')) {
+          ns.openIncidentDrawer(a.drawerData, (ns.liveSosMarkers && a.sosEventId != null && ns.liveSosMarkers[a.sosEventId]) || null);
           return;
         }
         if (a.vesselId) {

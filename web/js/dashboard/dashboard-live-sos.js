@@ -115,10 +115,13 @@
   function liveAlertFromEvent(ev) {
     const boat = ev.boat || ev.vessel_id || 'Unidentified vessel';
     const hasFix = typeof ev.latitude === 'number' && typeof ev.longitude === 'number';
-    const isRealLive = ev.is_synthetic === false;
+    const provenance = ev.is_synthetic === false ? 'real' : (ev.is_synthetic === true ? 'synthetic' : 'unknown');
+    const isRealLive = provenance === 'real';
+    const isSynthetic = provenance === 'synthetic';
     const alert = {
       isLive: isRealLive,
-      isSynthetic: ev.is_synthetic === true,
+      isSynthetic: isSynthetic,
+      provenance: provenance,
       sosEventId: ev.id,
       type: 'sos',
       desc: 'SOS — ' + boat + (ev.note ? ' — “' + ev.note + '”' : ''),
@@ -135,9 +138,12 @@
     };
     alert.drawerData = {
       alertType: 'sos',
-      headerText: isRealLive ? 'SOS — DISTRESS CALL RECEIVED' : 'DEMO SOS — SIMULATED DISTRESS CALL',
+      headerText: provenance === 'real'
+        ? 'SOS — DISTRESS CALL RECEIVED'
+        : (provenance === 'synthetic' ? 'DEMO SOS — SIMULATED DISTRESS CALL' : 'SOS — DISTRESS CALL (PROVENANCE UNKNOWN)'),
       sosEventId: ev.id,
-      isSynthetic: ev.is_synthetic === true,
+      isSynthetic: isSynthetic,
+      provenance: provenance,
       vesselId: ev.vessel_id || 'Unknown',
       owner: boat,
       position: sosPosition(ev),
@@ -276,13 +282,6 @@
   ns.liveSosMarkers = liveSosMarkers;
   ns.liveSosFirstLoad = liveSosFirstLoad;
   ns.knownSosIds = knownSosIds;
-  Object.defineProperty(ns, 'lastSosSuccessMs', {
-    get: function () { return lastSosSuccessMs; },
-    set: function (v) { lastSosSuccessMs = v; },
-    configurable: true
-  });
-  ns.getActiveSosReqSeq = function () { return activeSosReqSeq; };
-  ns.getLastAcceptedSosSeq = function () { return lastAcceptedSosSeq; };
   ns.syncStatusEl = syncStatusEl;
   ns.syncTextEl = syncTextEl;
   ns.bannerTimeEl = bannerTimeEl;

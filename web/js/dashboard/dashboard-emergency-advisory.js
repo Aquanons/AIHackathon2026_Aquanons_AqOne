@@ -391,6 +391,15 @@
    // .banner-time every second from the one real timestamp
    // (lastSosSuccessMs), so a second writer here could only drift from it.
 
+  ns.emergencyOverlay = emergencyOverlay;
+  ns.openEmergencyModal = openEmergencyModal;
+  ns.closeEmergencyModal = closeEmergencyModal;
+  ns.advisoryOverlay = advisoryOverlay;
+  ns.openAdvisoryModal = openAdvisoryModal;
+  ns.closeAdvisoryModal = closeAdvisoryModal;
+  ns.deleteOverlay = deleteOverlay;
+  ns.closeDeleteModal = closeDeleteModal;
+  ns.renderAdvisoryList = renderAdvisoryList;
   ns.renderSeaCondition = renderSeaCondition;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

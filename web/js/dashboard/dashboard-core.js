@@ -35,7 +35,8 @@
   var classifyFreshness = dashboardUtils.classifyFreshness;
   var freshnessLabel = dashboardUtils.freshnessLabel;
   var alertBadge = dashboardUtils.alertBadge || function (isLive) {
-    return isLive
+    if (isLive === 'unknown') return { text: 'UNKNOWN', cssClass: 'alert-unknown-badge' };
+    return (isLive === true || isLive === 'real' || isLive === 'live')
       ? { text: 'LIVE', cssClass: 'alert-live-badge' }
       : { text: 'DEMO', cssClass: 'alert-demo-badge' };
   };

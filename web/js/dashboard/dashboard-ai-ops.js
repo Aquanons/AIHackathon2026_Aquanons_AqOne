@@ -6,12 +6,6 @@
   var map = ns.map;
   var showToast = ns.showToast || function () {};
   var escapeHtml = ns.escapeHtml;
-  if (!escapeHtml) {
-    escapeHtml = function (s) {
-      if (s == null) return '';
-      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    };
-  }
 
   // ===== AI OPERATIONS =====
   var aiContoursLayer = ns.driftLayer || (typeof L !== 'undefined' && typeof L.layerGroup === 'function' ? L.layerGroup().addTo(map) : null);
@@ -47,12 +41,22 @@
     nextArea: '#38bdf8'
   };
 
+  var AI_FETCH_TIMEOUT_MS = 25000;
+
   function aiFetchJson(path) {
-    return authFetch(path)
+    var fetchPromise = authFetch(path)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       });
+
+    var timeoutPromise = new Promise(function (_, reject) {
+      setTimeout(function () {
+        reject(new Error('AI fetch timed out: ' + path));
+      }, AI_FETCH_TIMEOUT_MS);
+    });
+
+    return Promise.race([fetchPromise, timeoutPromise]);
   }
 
   function aiStatusClass(status) {
@@ -605,12 +609,17 @@
     });
   }
 
-  function renderRiskFeed(rows) {
+  function renderRiskFeed(rows, freshness) {
     var list = document.getElementById('ai-risk-list');
     var count = document.getElementById('ai-risk-count');
     if (!list) return;
-    if (rows === null) {
+    if (rows === null || (freshness === 'offline' && (!rows || !rows.length))) {
       list.innerHTML = '<div class="ai-empty-state ai-unavailable-state">Vessel risk feed unavailable &middot; unable to reach the anomaly service.</div>';
+      if (count) count.textContent = '--';
+      return;
+    }
+    if (freshness === 'stale' && (!rows || !rows.length)) {
+      list.innerHTML = '<div class="ai-empty-state ai-unavailable-state">Vessel risk feed is stale &middot; unable to refresh anomaly service.</div>';
       if (count) count.textContent = '--';
       return;
     }
@@ -628,7 +637,7 @@
 
     if (count) count.textContent = String(sorted.length);
 
-    list.innerHTML = sorted.map(function (row, index) {
+    var rowsHtml = sorted.map(function (row, index) {
       var score = typeof row.score === 'number' ? row.score.toFixed(2) : String(row.score || '--');
       var lastSeen = row.last_contact_at ? new Date(row.last_contact_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
       var expectedBuoy = row.expected_next_buoy_id || 'n/a';
@@ -654,6 +663,15 @@
           '</div>' +
         '</details>';
     }).join('');
+
+    if (freshness === 'stale' || freshness === 'offline') {
+      var notice = '<div class="ai-risk-stale-notice" style="padding:6px 8px;margin-bottom:6px;background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;font-size:11px;color:var(--text-secondary);">' +
+        '<span class="' + (freshness === 'offline' ? 'alert-demo-badge' : 'alert-unknown-badge') + '">FEED ' + (freshness === 'offline' ? 'OFFLINE' : 'STALE') + '</span> ' +
+        'Vessel risk feed unavailable &middot; showing last-known status' +
+      '</div>';
+      rowsHtml = notice + rowsHtml;
+    }
+    list.innerHTML = rowsHtml;
   }
 
   function renderSquallChart(traceSeries) {
@@ -830,10 +848,19 @@
       });
   }
 
+  let lastRiskSuccessMs = null;
+  let lastKnownRiskRows = null;
+  let lastSquallSuccessMs = null;
+  let lastKnownSquallPayload = null;
+  let lastKnownSquallTrace = [];
+
   function loadSquallTrace(payload) {
+    lastSquallSuccessMs = Date.now();
+    lastKnownSquallPayload = payload;
     var detection = payload && payload.detections && payload.detections[0];
     var arrival = detection && detection.arrival_by_buoy ? detection.arrival_by_buoy.slice(0, 3) : [];
     if (!arrival.length) {
+      lastKnownSquallTrace = [];
       renderSquallWatch(payload, []);
       return Promise.resolve();
     }
@@ -855,8 +882,84 @@
           };
         });
     })).then(function (series) {
-      renderSquallWatch(payload, series.filter(function (item) { return item.points.length; }));
+      lastKnownSquallTrace = series.filter(function (item) { return item.points.length; });
+      renderSquallWatch(payload, lastKnownSquallTrace);
     });
+  }
+
+  function updateAIFreshness() {
+    var classify = ns.classifyFreshness || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.classifyFreshness);
+    var now = Date.now();
+
+    var riskFreshness = typeof classify === 'function' ? classify(lastRiskSuccessMs, now, {
+      pollIntervalMs: 60000,
+      staleAfterMs: 180000,
+      offlineAfterMs: 360000
+    }) : 'offline';
+    if (riskFreshness === 'stale' || riskFreshness === 'offline') {
+      if (!lastKnownRiskRows || !lastKnownRiskRows.length) {
+        renderRiskFeed(null, riskFreshness);
+      } else {
+        renderRiskFeed(lastKnownRiskRows, riskFreshness);
+      }
+    }
+
+    var squallFreshness = typeof classify === 'function' ? classify(lastSquallSuccessMs, now, {
+      pollIntervalMs: 60000,
+      staleAfterMs: 180000,
+      offlineAfterMs: 360000
+    }) : 'offline';
+    if (squallFreshness === 'stale' || squallFreshness === 'offline') {
+      if (!lastKnownSquallPayload || !lastKnownSquallPayload.detections || !lastKnownSquallPayload.detections.length) {
+        renderSquallWatch({
+          level: 'unknown',
+          detections: [],
+          freshness: squallFreshness,
+          status_reason: 'Squall service unavailable · connection lost'
+        }, []);
+        updateSquallLegendVisibility();
+      } else {
+        var elapsedSec = Math.max(0, Math.floor((now - (lastSquallSuccessMs || now)) / 1000));
+        var agedPayload = Object.assign({}, lastKnownSquallPayload, {
+          data_age_seconds: (lastKnownSquallPayload.data_age_seconds || 0) + elapsedSec,
+          freshness: squallFreshness,
+          status_reason: (lastKnownSquallPayload.status_reason ? lastKnownSquallPayload.status_reason + ' · ' : '') + (squallFreshness === 'offline' ? 'Service offline (showing last-known detection)' : 'Feed stale (showing last-known detection)')
+        });
+        renderSquallWatch(agedPayload, lastKnownSquallTrace || []);
+      }
+    }
+  }
+
+  function pollAIOperations() {
+    updateAIFreshness();
+
+    aiFetchJson('/api/ai/anomaly/active')
+      .then(function (rows) {
+        lastRiskSuccessMs = Date.now();
+        lastKnownRiskRows = rows || [];
+        renderRiskFeed(lastKnownRiskRows, 'live');
+      })
+      .catch(function (err) {
+        console.warn('[AqOne] Vessel risk poll failed, checking freshness:', err.message);
+        updateAIFreshness();
+      });
+
+    // A transient poll failure leaves the squall panel with its last-known
+    // state if a real detection existed, but advances its age and labels it;
+    // expired calm data must not read as current lower-risk guidance.
+    aiFetchJson('/api/ai/squall/current')
+      .then(loadSquallTrace)
+      .then(updateSquallLegendVisibility)
+      .catch(function (err) {
+        console.warn('[AqOne] Squall poll failed, checking freshness:', err.message);
+        updateAIFreshness();
+      });
+
+    // Never yank the map out from under a responder mid-draw or
+    // mid-confirmation (docs/40 Phase 4 item 2).
+    if (sectorDraw.active || sectorDraw.bounds) return;
+    var currentSelect = document.getElementById('ai-drift-select');
+    if (currentSelect && currentSelect.value) loadDriftIncidentDetail(currentSelect.value);
   }
 
   function initAIOperations() {
@@ -879,9 +982,11 @@
       var squallResult = results[2];
 
       if (riskResult.status === 'fulfilled') {
-        renderRiskFeed(riskResult.value || []);
+        lastRiskSuccessMs = Date.now();
+        lastKnownRiskRows = riskResult.value || [];
+        renderRiskFeed(lastKnownRiskRows, 'live');
       } else {
-        renderRiskFeed(null);
+        renderRiskFeed(null, 'offline');
       }
 
       if (incidentsResult.status === 'fulfilled') {
@@ -913,8 +1018,9 @@
       renderSquallWatch({ level: 'unknown', detections: [], status_reason: 'unable to reach the squall service' }, []);
       updateSquallLegendVisibility();
       return incidentPromise;
-    }).catch(function () {
-      renderRiskFeed(null);
+    }).catch(function (err) {
+      console.warn('[AqOne] AI init failed:', err && err.message);
+      renderRiskFeed(null, 'offline');
       renderDriftIncidentList([]);
       clearAiDriftLayers();
       renderSquallWatch({ level: 'unknown', detections: [], status_reason: 'unable to reach the squall service' }, []);
@@ -922,25 +1028,13 @@
     });
 
     if (aiRefreshTimer) clearInterval(aiRefreshTimer);
-    aiRefreshTimer = setInterval(function () {
-      aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function (err) {
-        console.warn('[AqOne] Vessel risk poll failed, keeping last known status:', err.message);
-      });
-      // A transient poll failure leaves the squall panel exactly as it was -
-      // it must not overwrite an already-displayed warning with silence or a
-      // false "no active detections" (docs/39 Phase 3 item 4, mirroring the
-      // same rule already applied to the mobile client in app_shell.dart).
-      aiFetchJson('/api/ai/squall/current').then(loadSquallTrace).then(updateSquallLegendVisibility).catch(function (err) {
-        console.warn('[AqOne] Squall poll failed, keeping last known status:', err.message);
-      });
-      // Never yank the map out from under a responder mid-draw or
-      // mid-confirmation (docs/40 Phase 4 item 2).
-      if (sectorDraw.active || sectorDraw.bounds) return;
-      var currentSelect = document.getElementById('ai-drift-select');
-      if (currentSelect && currentSelect.value) loadDriftIncidentDetail(currentSelect.value);
-    }, 60000);
+    aiRefreshTimer = setInterval(pollAIOperations, 60000);
     if (aiRefreshTimer && typeof aiRefreshTimer.unref === 'function') {
       aiRefreshTimer.unref();
+    }
+    var aiFreshnessTimer = setInterval(updateAIFreshness, 15000);
+    if (aiFreshnessTimer && typeof aiFreshnessTimer.unref === 'function') {
+      aiFreshnessTimer.unref();
     }
   }
 
@@ -981,6 +1075,8 @@
   ns.renderSquallWatch = renderSquallWatch;
   ns.loadDriftIncidentDetail = loadDriftIncidentDetail;
   ns.loadSquallTrace = loadSquallTrace;
+  ns.pollAIOperations = pollAIOperations;
+  ns.updateAIFreshness = updateAIFreshness;
   ns.initAIOperations = initAIOperations;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

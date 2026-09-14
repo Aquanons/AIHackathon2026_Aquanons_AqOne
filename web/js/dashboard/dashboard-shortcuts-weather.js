@@ -13,7 +13,7 @@
   var sosDrawer = ns.sosDrawer;
   var closeSOSDrawer = ns.closeSOSDrawer;
   var updateStats = typeof ns.updateStats === 'function' ? ns.updateStats : function () {};
-  var alertData = ns.alertData;
+  var alertData = Array.isArray(ns.alertData) ? ns.alertData : [];
 
   function isEditable(el) {
     if (!el) return false;
@@ -213,25 +213,70 @@
     '</div>';
   }
 
+  function parseStrictFinite(val) {
+    if (typeof val === 'number') {
+      return Number.isFinite(val) ? val : null;
+    }
+    if (typeof val === 'string' && val.trim() !== '') {
+      var n = Number(val);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  function parseStrictNonNegative(val) {
+    var n = parseStrictFinite(val);
+    return (n !== null && n >= 0) ? n : null;
+  }
+
   function renderWeatherCard(data, marineData, meta) {
-    var current = data.current || {};
-    var marineCurrent = marineData && marineData.current ? marineData.current : {};
-    var code = typeof current.weather_code === 'number' ? current.weather_code : null;
+    var current = (data && data.current) || {};
+    var marineCurrent = (marineData && marineData.current) || {};
+    var code = parseStrictFinite(current.weather_code);
     var icon = wmoIcon(code);
-    var temp = Number.isFinite(Number(current.temperature_2m)) ? Math.round(current.temperature_2m) : '--';
-    var feelsLike = Number.isFinite(Number(current.apparent_temperature)) ? Math.round(current.apparent_temperature) : '--';
-    var windKmh = Number.isFinite(Number(current.wind_speed_10m)) && Number(current.wind_speed_10m) >= 0 ? Number(current.wind_speed_10m) : null;
-    var gustKmh = Number.isFinite(Number(current.wind_gusts_10m)) && Number(current.wind_gusts_10m) >= 0 ? Number(current.wind_gusts_10m) : null;
+    var rawTemp = parseStrictFinite(current.temperature_2m);
+    var temp = rawTemp !== null ? Math.round(rawTemp) : '--';
+    var rawFeels = parseStrictFinite(current.apparent_temperature);
+    var feelsLike = rawFeels !== null ? Math.round(rawFeels) : '--';
+    var windKmh = parseStrictNonNegative(current.wind_speed_10m);
+    var gustKmh = parseStrictNonNegative(current.wind_gusts_10m);
     var maxWind = (windKmh !== null && gustKmh !== null) ? Math.max(windKmh, gustKmh) : (windKmh !== null ? windKmh : gustKmh);
-    var windDir = typeof current.wind_direction_10m === 'number' ? degToCompass(current.wind_direction_10m) : '';
-    var waveM = Number.isFinite(Number(marineCurrent.wave_height)) && Number(marineCurrent.wave_height) >= 0 ? Number(marineCurrent.wave_height) : null;
-    var wavePeriod = Number.isFinite(Number(marineCurrent.wave_period)) && Number(marineCurrent.wave_period) >= 0 ? Number(marineCurrent.wave_period) : null;
-    var pressure = Number.isFinite(Number(current.pressure_msl)) ? Number(current.pressure_msl) : null;
-    var seaLevel = Number.isFinite(Number(marineCurrent.sea_level_height_msl)) ? Number(marineCurrent.sea_level_height_msl) : null;
+    var rawDir = parseStrictFinite(current.wind_direction_10m);
+    var windDir = rawDir !== null ? degToCompass(rawDir) : '';
+    var waveM = parseStrictNonNegative(marineCurrent.wave_height);
+    var wavePeriod = parseStrictNonNegative(marineCurrent.wave_period);
+    var pressure = parseStrictNonNegative(current.pressure_msl);
+    var seaLevel = parseStrictFinite(marineCurrent.sea_level_height_msl);
     var condText = (code !== null && WMO_MAP[code]) ? WMO_MAP[code].label : 'Unknown';
     var safety = classifySafety(maxWind, waveM, code);
     var monitorAlerts = meta && Array.isArray(meta.alerts) ? meta.alerts : [];
+
+    var WEATHER_MAX_OBS_AGE_MS = 3 * 3600 * 1000;
+    var WEATHER_FETCH_STALE_MS = 15 * 60 * 1000;
     var stale = Boolean(meta && meta.stale);
+    var nowMs = (meta && typeof meta.nowMs === 'number') ? meta.nowMs : Date.now();
+
+    function isObsFresh(t) {
+      if (!t) return false;
+      var ms = new Date(t).getTime();
+      if (!isFinite(ms)) return false;
+      var ageMs = nowMs - ms;
+      return isFinite(ageMs) && ageMs <= WEATHER_MAX_OBS_AGE_MS && ageMs >= -600000;
+    }
+
+    if (!stale) {
+      if (!isObsFresh(current.time) || !isObsFresh(marineCurrent.time)) {
+        stale = true;
+      }
+    }
+
+    if (!stale && meta && meta.fetchedAt) {
+      var fetchAgeMs = nowMs - new Date(meta.fetchedAt).getTime();
+      if (!isFinite(fetchAgeMs) || fetchAgeMs > WEATHER_FETCH_STALE_MS) {
+        stale = true;
+      }
+    }
+
     if (stale && safety.cls === 'wc-safety-safe') {
       safety = SAFETY_TIERS.unknown;
     }
@@ -261,8 +306,10 @@
       waveVal = '\u2014 / ' + wavePeriod.toFixed(1) + ' s';
     }
 
-    var humidityVal = Number.isFinite(Number(current.relative_humidity_2m)) ? current.relative_humidity_2m + '%' : '\u2014';
-    var rainVal = Number.isFinite(Number(current.precipitation)) && Number(current.precipitation) >= 0 ? Number(current.precipitation).toFixed(1) + ' mm' : '\u2014';
+    var rawHum = parseStrictFinite(current.relative_humidity_2m);
+    var humidityVal = (rawHum !== null && rawHum >= 0) ? rawHum + '%' : '\u2014';
+    var rawRain = parseStrictNonNegative(current.precipitation);
+    var rainVal = rawRain !== null ? rawRain.toFixed(1) + ' mm' : '\u2014';
 
     wcBody.innerHTML =
       safetyBadgeHTML(safety) +
@@ -443,13 +490,16 @@
   }
 
   function replaceForecastAlerts(forecastAlerts) {
-    for (var index = alertData.length - 1; index >= 0; index--) {
-      if (alertData[index].source === 'forecast-monitor') alertData.splice(index, 1);
+    var list = Array.isArray(alertData) ? alertData : [];
+    for (var index = list.length - 1; index >= 0; index--) {
+      if (list[index].source === 'forecast-monitor') list.splice(index, 1);
     }
     for (var alertIndex = forecastAlerts.length - 1; alertIndex >= 0; alertIndex--) {
-      alertData.unshift(forecastAlerts[alertIndex]);
+      list.unshift(forecastAlerts[alertIndex]);
     }
-    ns.syncAlertIndicators();
+    if (typeof ns.syncAlertIndicators === 'function') {
+      ns.syncAlertIndicators();
+    }
 
     var signature = forecastAlerts.map(function (alert) { return alert.type + ':' + alert.time; }).join('|');
     var previousSignature = localStorage.getItem('aqone-forecast-alert-signature') || '';
@@ -460,8 +510,12 @@
   }
 
   function displayWeatherSnapshot(snapshot, stale, alerts) {
-    renderWeatherCard(snapshot.weather, snapshot.marine, { stale: stale, alerts: alerts || [] });
-    if (snapshot.weather.daily) {
+    renderWeatherCard(snapshot.weather, snapshot.marine, {
+      stale: stale,
+      alerts: alerts || [],
+      fetchedAt: snapshot.fetchedAt
+    });
+    if (snapshot.weather && snapshot.weather.daily) {
       renderForecast(snapshot.weather.daily);
       renderRainfall(snapshot.weather.daily);
     }
@@ -492,7 +546,8 @@
       .catch(function (error) {
         var cached = readWeatherCache();
         if (cached) {
-          var existingAlerts = alertData.filter(function (alert) { return alert.source === 'forecast-monitor'; });
+          var list = Array.isArray(alertData) ? alertData : [];
+          var existingAlerts = list.filter(function (alert) { return alert.source === 'forecast-monitor'; });
           displayWeatherSnapshot(cached, true, existingAlerts);
         } else {
           wcBody.innerHTML = '<div class="wc-error">Live weather unavailable. Check connection and PAGASA advisories.</div>';
