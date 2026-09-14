@@ -1,6 +1,6 @@
 # Implementation Plan: Documentation organization
 
-> **Status:** Phase 3 complete; awaiting sign-off for Phase 4
+> **Status:** Complete — all four phases verified and committed
 > **Target Branch:** `codex/web-audit-remediation`
 > **Test Command:** repository reference scan plus Markdown link validation
 > **Lint/Check Command:** `git diff --check`
