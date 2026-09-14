@@ -156,7 +156,10 @@
     return `<div class="alert-icon ${colors[type] || 'icon-yellow'}">${icons[type] || ''}</div>`;
   }
 
-  function alertStatusPill(status) {
+  function alertStatusPill(status, fisherReply) {
+    if (fisherReply === 1) {
+      return '<span class="alert-status status-danger">Still in Danger</span>';
+    }
     const map = { active: 'status-active', acknowledged: 'status-acknowledged', resolved: 'status-resolved' };
     return `<span class="alert-status ${map[status] || ''}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>`;
   }
@@ -203,7 +206,7 @@
           }${a.etaAt ? ' &middot; <span data-eta-at="' + escapeHtml(a.etaAt) + '"></span>' : ''}</div>
           ${alertConfidenceRow(a)}
         </div>
-        ${alertStatusPill(a.status)}
+        ${alertStatusPill(a.status, a.fisherReply != null ? a.fisherReply : (a.drawerData && a.drawerData.fisherReply))}
       </div>
     `).join('');
 
@@ -228,23 +231,12 @@
     });
   }
 
-  renderAlerts();
-
-  const activeAlertCount = liveAlerts.filter(a => a.status === 'active').length;
-  document.getElementById('badge-alerts').textContent = activeAlertCount;
-
   const liveBanner = document.getElementById('live-alert-banner');
   const bannerCountEl = document.getElementById('banner-alert-count');
-  const sosStatusEl = document.getElementById('stats-sos-status');
-  if (bannerCountEl) bannerCountEl.textContent = activeAlertCount;
-  if (sosStatusEl) {
-    sosStatusEl.textContent = activeAlertCount ? 'ACTION NEEDED' : 'ALL CLEAR';
-    sosStatusEl.className = 'metric-status metric-status-' + (activeAlertCount ? 'danger' : 'clear');
-  }
-  if (liveBanner) liveBanner.classList.toggle('has-alerts', activeAlertCount > 0);
-
   const squallCountEl = document.getElementById('banner-squall-count');
   if (squallCountEl) squallCountEl.textContent = 0;
+
+  let activeAlertCount = 0;
 
   // Recomputes the alert badge and banner after alertData changes.
   //
@@ -254,20 +246,43 @@
   // ReferenceError on that path. This is the branch's logic minus the hotspot
   // parts, reusing the elements resolved just above.
   function syncAlertIndicators() {
-    const activeCount = liveAlerts.filter(function (alert) {
+    const unackedCount = liveAlerts.filter(function (alert) {
       return alert.status === 'active';
     }).length;
+    activeAlertCount = unackedCount;
+    ns.activeAlertCount = activeAlertCount;
+    const unresolvedCount = liveAlerts.filter(function (alert) {
+      return alert.status !== 'resolved';
+    }).length;
+    const dangerReplyCount = liveAlerts.filter(function (alert) {
+      const reply = alert.fisherReply != null ? alert.fisherReply : (alert.drawerData && alert.drawerData.fisherReply);
+      return reply === 1 && alert.status !== 'resolved';
+    }).length;
+
     const alertBadge = document.getElementById('badge-alerts');
     const sosStatus = document.getElementById('stats-sos-status');
-    if (alertBadge) alertBadge.textContent = activeCount;
-    if (bannerCountEl) bannerCountEl.textContent = activeCount;
+    if (alertBadge) alertBadge.textContent = unackedCount;
+    if (bannerCountEl) bannerCountEl.textContent = unackedCount;
     if (sosStatus) {
-      sosStatus.textContent = activeCount ? 'ACTION NEEDED' : 'ALL CLEAR';
-      sosStatus.className = 'metric-status metric-status-' + (activeCount ? 'danger' : 'clear');
+      if (unackedCount > 0) {
+        sosStatus.textContent = unackedCount === 1 ? '1 UNACKNOWLEDGED SOS' : unackedCount + ' UNACKNOWLEDGED SOS';
+        sosStatus.className = 'metric-status metric-status-danger';
+      } else if (dangerReplyCount > 0) {
+        sosStatus.textContent = 'STILL IN DANGER (' + dangerReplyCount + ' unresolved)';
+        sosStatus.className = 'metric-status metric-status-danger';
+      } else if (unresolvedCount > 0) {
+        sosStatus.textContent = unresolvedCount === 1 ? '1 UNRESOLVED (ACKNOWLEDGED)' : unresolvedCount + ' UNRESOLVED (ACKNOWLEDGED)';
+        sosStatus.className = 'metric-status metric-status-caution';
+      } else {
+        sosStatus.textContent = 'NO UNACKNOWLEDGED SOS';
+        sosStatus.className = 'metric-status metric-status-clear';
+      }
     }
-    if (liveBanner) liveBanner.classList.toggle('has-alerts', activeCount > 0);
+    if (liveBanner) liveBanner.classList.toggle('has-alerts', unackedCount > 0 || unresolvedCount > 0);
     renderAlerts();
   }
+
+  syncAlertIndicators();
 
   ns.vessels = vessels;
   ns.vesselStatusBadge = vesselStatusBadge;

@@ -115,8 +115,10 @@
   function liveAlertFromEvent(ev) {
     const boat = ev.boat || ev.vessel_id || 'Unidentified vessel';
     const hasFix = typeof ev.latitude === 'number' && typeof ev.longitude === 'number';
+    const isRealLive = ev.is_synthetic === false;
     const alert = {
-      isLive: true,
+      isLive: isRealLive,
+      isSynthetic: ev.is_synthetic === true,
       sosEventId: ev.id,
       type: 'sos',
       desc: 'SOS — ' + boat + (ev.note ? ' — “' + ev.note + '”' : ''),
@@ -128,12 +130,14 @@
       confidence: null,
       stage: 'DISTRESS CALL — ' + deliveryPath(ev),
       // Read by dashboard-vessels-alerts.js's [data-eta-at] countdown span.
-      etaAt: ev.eta_at || null
+      etaAt: ev.eta_at || null,
+      fisherReply: ev.fisher_reply || null
     };
     alert.drawerData = {
       alertType: 'sos',
-      headerText: 'SOS — DISTRESS CALL RECEIVED',
+      headerText: isRealLive ? 'SOS — DISTRESS CALL RECEIVED' : 'DEMO SOS — SIMULATED DISTRESS CALL',
       sosEventId: ev.id,
+      isSynthetic: ev.is_synthetic === true,
       vesselId: ev.vessel_id || 'Unknown',
       owner: boat,
       position: sosPosition(ev),

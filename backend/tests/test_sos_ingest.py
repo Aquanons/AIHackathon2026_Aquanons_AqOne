@@ -179,3 +179,59 @@ def test_dedup_key_is_stable_across_transports():
     # something to merge rather than being a no-op.
     assert direct.get('local_id') and not buoy.get('local_id')
     assert buoy.get('buoy_id') and not direct.get('buoy_id')
+
+
+def test_active_sos_returns_is_synthetic_provenance(monkeypatch):
+    from datetime import UTC, datetime
+
+    from app import db as app_db
+    from app.api import sos as sos_api
+    from app.auth import create_token
+
+    class _ActiveSosFakePool:
+        def __init__(self, events):
+            self.events = events
+        async def fetch(self, query, *args):
+            assert 'is_synthetic' in query, 'active_sos query must select is_synthetic'
+            return self.events
+        def acquire(self):
+            return self
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+
+    pool = _ActiveSosFakePool([
+        {
+            'id': 1, 'vessel_id': 'V001', 'boat': 'NW-001',
+            'latitude': 11.6, 'longitude': 122.4, 'note': 'real sos',
+            'trust_tier': 'self_declared', 'client_ts': 1754300000,
+            'delivered_direct': True, 'delivered_via_buoy': False,
+            'buoy_id': None, 'created_at': datetime.now(UTC),
+            'acknowledged_at': None, 'acked_by': None,
+            'eta_at': None, 'responder_status': None, 'responder_note': None,
+            'fisher_reply': None, 'fisher_replied_at': None, 'resolved_at': None,
+            'is_synthetic': False,
+        },
+        {
+            'id': 2, 'vessel_id': 'V002', 'boat': 'NW-002',
+            'latitude': 11.7, 'longitude': 122.5, 'note': 'demo sos',
+            'trust_tier': 'self_declared', 'client_ts': 1754300001,
+            'delivered_direct': True, 'delivered_via_buoy': False,
+            'buoy_id': None, 'created_at': datetime.now(UTC),
+            'acknowledged_at': None, 'acked_by': None,
+            'eta_at': None, 'responder_status': None, 'responder_note': None,
+            'fisher_reply': None, 'fisher_replied_at': None, 'resolved_at': None,
+            'is_synthetic': True,
+        }
+    ])
+    monkeypatch.setattr(app_db, 'get_pool', lambda: pool)
+    monkeypatch.setattr(sos_api, 'get_pool', lambda: pool)
+    token = create_token(1, 'ranger@example.com', 'mdrrmo')
+    with TestClient(app, raise_server_exceptions=False) as client:
+        res = client.get('/api/sos/active', headers={'Authorization': f'Bearer {token}'})
+    assert res.status_code == 200
+    events = res.json()['events']
+    assert len(events) == 2
+    assert events[0]['id'] == 1 and events[0]['is_synthetic'] is False
+    assert events[1]['id'] == 2 and events[1]['is_synthetic'] is True

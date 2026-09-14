@@ -191,9 +191,13 @@ until a dispatcher calls `POST /api/sos/{id}/resolve` or the fisher replies
 it as soon as it is acknowledged — the previous behaviour — hid the fisher's
 subsequent reply from the dispatcher. Each row carries `acknowledged_at`,
 `acked_by`, `eta_at`, `responder_status`, `responder_status_label`,
-`responder_note`, `fisher_reply`, `fisher_replied_at` and `resolved_at`
-(always `null` here, since a resolved row has left the feed) alongside the
-fields `GET /api/v1/sos` documents above.
+`responder_note`, `fisher_reply`, `fisher_replied_at`, `resolved_at`
+(always `null` here, since a resolved row has left the feed), and `is_synthetic`
+(boolean, `true` for scripted/demo scenario events and `false` for genuine distress
+calls) alongside the fields `GET /api/v1/sos` documents above. Clients must derive
+display provenance (e.g. DEMO vs LIVE badges) from `is_synthetic` rather than
+assuming every event returned by `/api/sos/active` is live, while keeping operational
+acknowledgement and resolution actions available against real event IDs.
 
 ### `POST /api/sos/{id}/acknowledge` and `POST /api/sos/{id}/resolve`
 

@@ -29,12 +29,14 @@
     }
     var shown = active.slice(0, 4);
     el.innerHTML = shown.map(function (a, i) {
+      var badge = typeof ns.alertBadge === 'function' ? ns.alertBadge(a.isLive) : (a.isLive ? { cssClass: 'alert-live-badge', text: 'LIVE' } : { cssClass: 'alert-demo-badge', text: 'DEMO' });
+      var titleAttr = a.isLive ? '' : ' title="Scripted sample data, not a real incident"';
+      var badgeHtml = '<span class="' + badge.cssClass + '"' + titleAttr + '>' + badge.text + '</span>';
       return '<div class="incident-feed-row' + (a.isLive ? ' incident-feed-live' : '') +
         '" data-idx="' + i + '">' +
         alertIcon(a.type) +
         '<div class="incident-feed-info">' +
-          '<div class="incident-feed-desc">' +
-            (a.isLive ? '<span class="alert-live-badge">LIVE</span>' : '') + escapeHtml(a.desc) + '</div>' +
+          '<div class="incident-feed-desc">' + badgeHtml + escapeHtml(a.desc) + '</div>' +
           '<div class="incident-feed-meta">' + escapeHtml(a.time) + '</div>' +
         '</div>' +
       '</div>';
@@ -185,12 +187,9 @@
     openPanel('buoys');
   });
 
-  function updateBuoySync() {
-    var elapsed = Math.floor((Date.now() - buoySyncTime) / 1000);
-    buoyFooter.textContent = 'Last synced: ' + elapsed + ' seconds ago';
+  if (buoyFooter) {
+    buoyFooter.textContent = 'Sample buoy network baseline (unpolled offline data)';
   }
-  updateBuoySync();
-  setInterval(updateBuoySync, 30000);
 
 
   // ===== VIEWPORT-BASED STATS =====
@@ -290,7 +289,6 @@
   ns.renderBuoyList = renderBuoyList;
   ns.renderBuoyHealthCard = renderBuoyHealthCard;
   ns.renderBuoyHealth = renderBuoyHealth;
-  ns.updateBuoySync = updateBuoySync;
   ns.updateStats = updateStats;
   ns.formatCoord = formatCoord;
   ns.compassWidget = compassWidget;

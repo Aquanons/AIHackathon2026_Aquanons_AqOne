@@ -151,7 +151,10 @@ function createDOMContext(elements = {}, ns = { ready: true }) {
     Object: Object,
     Math: Math,
     parseFloat: parseFloat,
-    parseInt: parseInt
+    parseInt: parseInt,
+    AbortController: global.AbortController || AbortController,
+    URLSearchParams: global.URLSearchParams || URLSearchParams,
+    fetch: global.fetch || (() => new Promise(() => {}))
   };
   windowStub.window = windowStub;
 
@@ -838,6 +841,385 @@ test('Phase 2 - F11 & F14: Secondary UI wiring and real session behavior', async
     assert.ok(
       coreCode.includes("sessionStorage.removeItem('aqoneDemoBypassActive');"),
       'clearSession must remove aqoneDemoBypassActive'
+    );
+  });
+});
+
+test('Phase 3 - Safety data freshness, numerical validation, and demo provenance', async (t) => {
+  await t.test('classifySafety and renderWeatherCard enforce numerical validation, adverse codes, and stale demotion', () => {
+    const wcBody = createStubElement('div', 'wc-body');
+    const forecastBody = createStubElement('div', 'forecast-body');
+    const rainfallCard = createStubElement('div', 'rainfall-card');
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml
+    };
+
+    const { window, document } = createDOMContext({
+      'wc-body': wcBody,
+      'forecast-body': forecastBody,
+      'rainfall-card': rainfallCard
+    }, ns);
+
+    // Weather thresholds and tiers
+    const weatherCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-shortcuts-weather.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(weatherCode, context);
+
+    assert.equal(typeof ns.classifySafety, 'function');
+    assert.equal(typeof ns.renderWeatherCard, 'function');
+
+    // 1. Missing or null inputs cannot certify lower risk
+    assert.equal(ns.classifySafety(null, null).cls, 'wc-safety-unknown', 'null wind and waves must return unknown');
+    assert.equal(ns.classifySafety(12, null).cls, 'wc-safety-unknown', 'missing wave cannot certify lower risk');
+    assert.equal(ns.classifySafety(null, 0.4).cls, 'wc-safety-unknown', 'missing wind cannot certify lower risk');
+
+    // 2. Negative inputs are rejected
+    assert.equal(ns.classifySafety(-5, 0.4).cls, 'wc-safety-unknown', 'negative wind must be rejected');
+    assert.equal(ns.classifySafety(12, -0.5).cls, 'wc-safety-unknown', 'negative wave must be rejected');
+
+    // 3. Known adverse thunderstorm code >= 95 preserves caution even with missing observations
+    assert.equal(ns.classifySafety(null, null, 95).cls, 'wc-safety-caution', 'thunderstorm code 95 must trigger caution even if wind/wave missing');
+    assert.equal(ns.classifySafety(10, 0.3, 96).cls, 'wc-safety-caution', 'thunderstorm code 96 must override otherwise calm wind/wave');
+
+    // 4. Valid inputs evaluate correctly
+    assert.equal(ns.classifySafety(10, 0.4, 0).cls, 'wc-safety-safe', 'calm conditions return safe');
+    assert.equal(ns.classifySafety(25, 0.4, 0).cls, 'wc-safety-caution', 'wind >= 20 km/h returns caution');
+    assert.equal(ns.classifySafety(45, 0.4, 0).cls, 'wc-safety-advisory', 'wind >= 40 km/h returns advisory');
+    assert.equal(ns.classifySafety(10, 3.2, 0).cls, 'wc-safety-danger', 'waves >= 3.0 m returns danger');
+
+    // 5. renderWeatherCard handles missing wavePeriod without crashing
+    assert.doesNotThrow(() => {
+      ns.renderWeatherCard(
+        { current: { temperature_2m: 28, apparent_temperature: 30, wind_speed_10m: 12, wind_gusts_10m: 15, weather_code: 1, time: new Date().toISOString() } },
+        { current: { wave_height: 0.8, wave_period: null } },
+        { stale: false }
+      );
+    }, 'renderWeatherCard must not crash when wave_period is null');
+    assert.ok(wcBody.innerHTML.includes('0.80 m') && wcBody.innerHTML.includes('\u2014'), 'wave height is rendered with placeholder for period');
+
+    // 6. Stale cache downgrades safe condition to unknown
+    ns.renderWeatherCard(
+      { current: { temperature_2m: 28, apparent_temperature: 30, wind_speed_10m: 10, wind_gusts_10m: 12, weather_code: 0, time: new Date().toISOString() } },
+      { current: { wave_height: 0.5, wave_period: 6.0 } },
+      { stale: true }
+    );
+    assert.ok(wcBody.innerHTML.includes('CONDITIONS UNKNOWN'), 'stale cache must downgrade safe tier to unknown');
+    assert.ok(wcBody.innerHTML.includes('LAST KNOWN'), 'stale cache must display LAST KNOWN banner');
+  });
+
+  await t.test('dangerZonePredictor strictly validates features and scopes overrides to demo session', () => {
+    const modelCode = fs.readFileSync(path.join(__dirname, '../js/dangerZoneModel.js'), 'utf8');
+    const predictorCode = fs.readFileSync(path.join(__dirname, '../js/dangerZonePredictor.js'), 'utf8');
+
+    const testSessionStorage = {
+      data: new Map(),
+      getItem(k) { return this.data.get(k); },
+      setItem(k, v) { this.data.set(k, String(v)); },
+      removeItem(k) { this.data.delete(k); }
+    };
+    const testLocalStorage = {
+      data: new Map([['AQONE_WEATHER_BASE', 'http://malicious.origin/weather']]),
+      getItem(k) { return this.data.get(k); }
+    };
+
+    const windowStub = {
+      sessionStorage: testSessionStorage,
+      localStorage: testLocalStorage,
+      URLSearchParams: global.URLSearchParams,
+      Date: Date,
+      Math: Math,
+      Number: Number,
+      String: String,
+      Array: Array,
+      Object: Object
+    };
+    windowStub.window = windowStub;
+
+    const context = vm.createContext(windowStub);
+    vm.runInContext(modelCode, context);
+    vm.runInContext(predictorCode, context);
+
+    const predictor = windowStub.AqOneDangerZonePredictor;
+    assert.equal(typeof predictor.predictProbability, 'function');
+
+    // 1. Missing feature throws
+    assert.throws(() => {
+      predictor.predictProbability({ wave_height: 1.0 });
+    }, /Missing live feature/, 'predictProbability must throw on missing feature');
+
+    // 2. Null / non-finite feature throws
+    assert.throws(() => {
+      predictor.predictProbability({
+        wave_height: null,
+        wave_period: 6,
+        wind_speed_10m: 15,
+        wind_gusts_10m: 20,
+        pressure_msl: 1012,
+        precipitation: 0,
+        depth_m: 10,
+        distance_to_shore_km: 2,
+        month_sin: 0,
+        month_cos: 1
+      });
+    }, /Missing live feature/, 'predictProbability must throw on null feature');
+
+    // 3. Negative wave height throws
+    assert.throws(() => {
+      predictor.predictProbability({
+        wind_speed_10m: 15,
+        wind_gusts_10m: 20,
+        precipitation: 0,
+        weather_code: 0,
+        wave_height: -1.0,
+        wave_period: 6,
+        depth_m: 10,
+        month_sin: 0,
+        month_cos: 1
+      });
+    }, /Physically invalid negative feature/, 'predictProbability must throw on negative wave height');
+
+    // 4. Valid inputs produce numeric probability in [0, 1]
+    const validProb = predictor.predictProbability({
+      wind_speed_10m: 18,
+      wind_gusts_10m: 25,
+      precipitation: 0.5,
+      weather_code: 0,
+      wave_height: 1.2,
+      wave_period: 6.5,
+      depth_m: 12,
+      month_sin: 0,
+      month_cos: 1
+    });
+    assert.equal(typeof validProb, 'number');
+    assert.ok(validProb >= 0 && validProb <= 1, 'probability must be within [0, 1]');
+  });
+
+  await t.test('liveAlertFromEvent correctly assigns isLive and isSynthetic provenance', () => {
+    const utils = require('../js/dashboard-utils.js');
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml,
+      authFetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }),
+      liveSosMarkers: {},
+      allAlerts: () => [],
+      classifyFreshness: utils.classifyFreshness,
+      freshnessLabel: utils.freshnessLabel
+    };
+
+    const { window, document } = createDOMContext({
+      'sync-indicator': createStubElement('span', 'sync-indicator'),
+      'sync-text': createStubElement('span', 'sync-text'),
+      'banner-live-time': createStubElement('span', 'banner-live-time')
+    }, ns);
+
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {} }) }),
+      divIcon: () => ({})
+    };
+
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-live-sos.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    assert.equal(typeof ns.liveAlertFromEvent, 'function');
+
+    // Real event: is_synthetic === false
+    const realAlert = ns.liveAlertFromEvent({
+      id: 'real-sos-1',
+      boat: 'Elena Real',
+      latitude: 11.71,
+      longitude: 122.42,
+      created_at: new Date().toISOString(),
+      is_synthetic: false
+    });
+    assert.equal(realAlert.isLive, true, 'is_synthetic: false must be marked isLive: true');
+    assert.equal(realAlert.isSynthetic, false);
+    assert.equal(realAlert.sosEventId, 'real-sos-1');
+    assert.equal(realAlert.drawerData.headerText, 'SOS — DISTRESS CALL RECEIVED');
+
+    // Synthetic event: is_synthetic === true
+    const demoAlert = ns.liveAlertFromEvent({
+      id: 'demo-sos-2',
+      boat: 'Scripted Demo Boat',
+      latitude: 11.71,
+      longitude: 122.42,
+      created_at: new Date().toISOString(),
+      is_synthetic: true
+    });
+    assert.equal(demoAlert.isLive, false, 'is_synthetic: true must be marked isLive: false');
+    assert.equal(demoAlert.isSynthetic, true);
+    assert.equal(demoAlert.sosEventId, 'demo-sos-2', 'real backend ID must be preserved on synthetic row');
+    assert.equal(demoAlert.drawerData.headerText, 'DEMO SOS — SIMULATED DISTRESS CALL');
+
+    // Missing provenance: is_synthetic undefined
+    const unknownAlert = ns.liveAlertFromEvent({
+      id: 'legacy-sos-3',
+      boat: 'Legacy Boat',
+      latitude: 11.71,
+      longitude: 122.42,
+      created_at: new Date().toISOString()
+    });
+    assert.equal(unknownAlert.isLive, false, 'missing provenance must default to unverified (not real LIVE)');
+    assert.equal(unknownAlert.sosEventId, 'legacy-sos-3');
+  });
+
+  await t.test('SOS summary text avoids ALL CLEAR when active or unresolved SOS exists, and highlights STILL_IN_DANGER', () => {
+    const sosStatusEl = createStubElement('span', 'stats-sos-status');
+    const badgeAlerts = createStubElement('span', 'badge-alerts');
+    const bannerCount = createStubElement('span', 'banner-alert-count');
+    const alertList = createStubElement('div', 'alert-list');
+    const liveBanner = createStubElement('div', 'live-alert-banner');
+
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml,
+      allAlerts: () => [],
+      map: { on() {}, setView() {}, addLayer() {} },
+      vesselLayer: { addLayer() {}, removeLayer() {} },
+      createOverdueIcon: () => ({}),
+      createMarkerIcon: () => ({}),
+      makePopup: () => '',
+      vesselStatusBadge: () => ({ text: '', cls: '' }),
+      alertBadge: () => ({ text: '', cssClass: '' })
+    };
+
+    const { window, document } = createDOMContext({
+      'stats-sos-status': sosStatusEl,
+      'badge-alerts': badgeAlerts,
+      'banner-alert-count': bannerCount,
+      'alert-list': alertList,
+      'live-alert-banner': liveBanner,
+      'vessel-filters': createStubElement('div', 'vessel-filters'),
+      'vessel-list': createStubElement('div', 'vessel-list'),
+      'badge-vessels': createStubElement('span', 'badge-vessels')
+    }, ns);
+
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ addLayer: () => {} }) }),
+      marker: () => ({ addTo: () => ({}), bindPopup: () => ({}), on: () => ({}) })
+    };
+
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-vessels-alerts.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    // Initial state: no live alerts -> NO UNACKNOWLEDGED SOS (never ALL CLEAR)
+    assert.equal(sosStatusEl.textContent, 'NO UNACKNOWLEDGED SOS', 'no alerts must display NO UNACKNOWLEDGED SOS');
+
+    // Case 1: Active unacknowledged SOS
+    ns.liveAlerts.length = 0;
+    ns.liveAlerts.push({ status: 'active', desc: 'SOS 1', isLive: true });
+    ns.syncAlertIndicators();
+    assert.equal(sosStatusEl.textContent, '1 UNACKNOWLEDGED SOS');
+    assert.equal(sosStatusEl.className, 'metric-status metric-status-danger');
+
+    // Case 2: Acknowledged but unresolved SOS
+    ns.liveAlerts.length = 0;
+    ns.liveAlerts.push({ status: 'acknowledged', desc: 'SOS 1', isLive: true });
+    ns.syncAlertIndicators();
+    assert.equal(sosStatusEl.textContent, '1 UNRESOLVED (ACKNOWLEDGED)');
+    assert.equal(sosStatusEl.className, 'metric-status metric-status-caution');
+
+    // Case 3: Acknowledged SOS with fisher reply 1 (STILL_IN_DANGER)
+    ns.liveAlerts.length = 0;
+    ns.liveAlerts.push({ status: 'acknowledged', fisherReply: 1, desc: 'SOS 1', isLive: true });
+    ns.syncAlertIndicators();
+    assert.equal(sosStatusEl.textContent, 'STILL IN DANGER (1 unresolved)');
+    assert.equal(sosStatusEl.className, 'metric-status metric-status-danger');
+
+    // Check alertStatusPill with fisherReply 1
+    const pillHtml = ns.alertStatusPill('acknowledged', 1);
+    assert.ok(pillHtml.includes('Still in Danger'), 'pill must show Still in Danger');
+    assert.ok(pillHtml.includes('status-danger'), 'pill must have status-danger class');
+  });
+
+  await t.test('trip checks and risk feed distinguish unavailable service from empty data', () => {
+    const utils = require('../js/dashboard-utils.js');
+
+    // 1. tripChecksListHtml
+    const unavailableHtml = utils.tripChecksListHtml(null);
+    assert.ok(unavailableHtml.includes('trip-checks-unavailable'), 'null cases must render unavailable notice');
+    assert.ok(unavailableHtml.includes('unable to reach the anomaly detection service'));
+
+    const emptyHtml = utils.tripChecksListHtml([]);
+    assert.ok(!emptyHtml.includes('trip-checks-unavailable'), 'empty array must not render unavailable');
+    assert.ok(emptyHtml.includes('No trip checks right now'));
+
+    // 2. renderRiskFeed in dashboard-ai-ops.js
+    const riskList = createStubElement('div', 'ai-risk-list');
+    const riskCount = createStubElement('span', 'ai-risk-count');
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml,
+      authFetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }),
+      squallStatusHtml: () => '',
+      aiStatusClass: () => 'status-normal'
+    };
+
+    const { window, document } = createDOMContext({
+      'ai-risk-list': riskList,
+      'ai-risk-count': riskCount
+    }, ns);
+
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {} }) }),
+      featureGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {}, getBounds: () => ({ isValid: () => false }) }) })
+    };
+
+    const aiOpsCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-ai-ops.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(aiOpsCode, context);
+
+    // Render null -> unavailable
+    ns.renderRiskFeed(null);
+    assert.ok(riskList.innerHTML.includes('ai-unavailable-state'), 'null rows must render ai-unavailable-state');
+    assert.equal(riskCount.textContent, '--', 'count must be -- when service is unavailable');
+
+    // Render empty array -> 0 active rows
+    ns.renderRiskFeed([]);
+    assert.ok(!riskList.innerHTML.includes('ai-unavailable-state'), 'empty rows must not render unavailable state');
+    assert.equal(riskCount.textContent, '0', 'count must be 0 when feed is empty');
+  });
+
+  await t.test('compact incident feed and buoy network render DEMO badges and honest offline baseline', () => {
+    const feedList = createStubElement('div', 'incident-feed-list');
+    const ns = {
+      ready: true,
+      OPS_CENTER: [11.7, 122.4],
+      OPS_ZOOM: 11,
+      shoreStations: [],
+      initialBuoys: [],
+      vessels: [],
+      incidents: [],
+      map: { setView() {}, on() {} },
+      openPanel() {},
+      closePanel() {},
+      allAlerts: () => [
+        { desc: 'Sample Incident', time: '10m ago', isLive: false, type: 'sos', lat: 11.7, lng: 122.4 }
+      ],
+      alertIcon: () => '<span class="icon"></span>',
+      escapeHtml: escapeHtml
+    };
+
+    const { window, document } = createDOMContext({ 'incident-feed-list': feedList }, ns);
+    const buoyHealthCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-buoy-health.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(buoyHealthCode, context);
+
+    // Verify DEMO badge rendered on sample row
+    assert.ok(feedList.innerHTML.includes('alert-demo-badge'), 'sample alert must render DEMO badge');
+    assert.ok(feedList.innerHTML.includes('DEMO'), 'badge text must be DEMO');
+
+    // Verify buoy baseline text in dashboard.html and buoy-health.js
+    const dashboardHtml = fs.readFileSync(path.join(__dirname, '../html/dashboard.html'), 'utf8');
+    assert.ok(
+      dashboardHtml.includes('Sample buoy network baseline (unpolled offline data)'),
+      'dashboard.html must contain honest baseline label instead of fake Last synced ticker'
+    );
+    assert.ok(
+      buoyHealthCode.includes('Sample buoy network baseline (unpolled offline data)'),
+      'dashboard-buoy-health.js must contain honest baseline label'
     );
   });
 });

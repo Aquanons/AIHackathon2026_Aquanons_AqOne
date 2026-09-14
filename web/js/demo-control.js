@@ -13,8 +13,13 @@
   var connectionDot = document.getElementById('connection-dot');
   var squallStatusEl = document.getElementById('demo-squall-status');
 
-  localStorage.setItem('AQONE_WEATHER_BASE', '/api/demo/weather/forecast');
-  localStorage.setItem('AQONE_MARINE_BASE', '/api/demo/weather/marine');
+  try {
+    localStorage.removeItem('AQONE_WEATHER_BASE');
+    localStorage.removeItem('AQONE_MARINE_BASE');
+    sessionStorage.setItem('AQONE_WEATHER_BASE', '/api/demo/weather/forecast');
+    sessionStorage.setItem('AQONE_MARINE_BASE', '/api/demo/weather/marine');
+    sessionStorage.setItem('aqoneDemoBypassActive', '1');
+  } catch (_) {}
 
   function api(path, options) {
     var request = options || {};

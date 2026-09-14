@@ -1,20 +1,39 @@
 (function () {
   'use strict';
 
-  function storedBase(key) {
+  function resolveEndpoints() {
+    var isDemoBypass = false;
     try {
-      return window.localStorage.getItem(key) || '';
-    } catch (_error) {
-      return '';
-    }
-  }
+      isDemoBypass = typeof window !== 'undefined' && window.sessionStorage &&
+        window.sessionStorage.getItem('aqoneDemoBypassActive') === '1';
+    } catch (_) {}
 
-  var WEATHER_ENDPOINT = window.AQONE_WEATHER_BASE ||
-    storedBase('AQONE_WEATHER_BASE') ||
-    'https://api.open-meteo.com/v1/forecast';
-  var MARINE_ENDPOINT = window.AQONE_MARINE_BASE ||
-    storedBase('AQONE_MARINE_BASE') ||
-    'https://marine-api.open-meteo.com/v1/marine';
+    var weatherBase = 'https://api.open-meteo.com/v1/forecast';
+    var marineBase = 'https://marine-api.open-meteo.com/v1/marine';
+    var isSynthetic = false;
+
+    if (typeof window !== 'undefined' && window.AQONE_WEATHER_BASE) {
+      weatherBase = window.AQONE_WEATHER_BASE;
+      if (weatherBase.indexOf('/demo/') !== -1) isSynthetic = true;
+    } else if (isDemoBypass) {
+      try {
+        var sWeather = window.sessionStorage.getItem('AQONE_WEATHER_BASE');
+        if (sWeather) { weatherBase = sWeather; isSynthetic = true; }
+      } catch (_) {}
+    }
+
+    if (typeof window !== 'undefined' && window.AQONE_MARINE_BASE) {
+      marineBase = window.AQONE_MARINE_BASE;
+      if (marineBase.indexOf('/demo/') !== -1) isSynthetic = true;
+    } else if (isDemoBypass) {
+      try {
+        var sMarine = window.sessionStorage.getItem('AQONE_MARINE_BASE');
+        if (sMarine) { marineBase = sMarine; isSynthetic = true; }
+      } catch (_) {}
+    }
+
+    return { weather: weatherBase, marine: marineBase, isSynthetic: isSynthetic };
+  }
   var NEW_WASHINGTON_COVERAGE = [
     { id: 'tambak-coastal-waters', name: 'Tambak Coastal Waters', lat: 11.680, lng: 122.414, radius: 600, depth_m: 9, bathymetry_dataset: 'gebco2020' },
     { id: 'poblacion-coastal-waters', name: 'Poblacion Coastal Waters', lat: 11.666, lng: 122.431, radius: 600, depth_m: 9, bathymetry_dataset: 'gebco2020' },
@@ -57,8 +76,14 @@
   function predictProbability(featureMap) {
     var model = getModel();
     var features = model.features.map(function (name) {
-      var value = Number(featureMap[name]);
+      if (!featureMap || !(name in featureMap)) throw new Error('Missing live feature: ' + name);
+      var raw = featureMap[name];
+      if (raw === null || raw === undefined || raw === '') throw new Error('Missing live feature: ' + name);
+      var value = Number(raw);
       if (!Number.isFinite(value)) throw new Error('Missing live feature: ' + name);
+      if (name !== 'month_sin' && name !== 'month_cos' && value < 0) {
+        throw new Error('Physically invalid negative feature: ' + name);
+      }
       return value;
     });
     var rawScore = model.ensemble.base_raw_score;
@@ -197,14 +222,15 @@
   async function predictLive(buoys) {
     var model = getModel();
     var sectors = withNewWashingtonCoverage(model.sectors);
+    var endpoints = resolveEndpoints();
     var weatherUrl = endpointUrl(
-      WEATHER_ENDPOINT,
+      endpoints.weather,
       sectors,
       ['wind_speed_10m', 'wind_gusts_10m', 'precipitation', 'weather_code'],
       'weather'
     );
     var marineUrl = endpointUrl(
-      MARINE_ENDPOINT,
+      endpoints.marine,
       sectors,
       ['wave_height', 'wave_period'],
       'marine'
@@ -233,7 +259,8 @@
       metrics: model.metadata.metrics,
       buoySource: buoys && buoys.length ? 'AqOne buoy API live' : 'AqOne buoy API unavailable',
       sources: model.metadata.sources,
-      limitations: model.metadata.limitations
+      limitations: model.metadata.limitations,
+      is_synthetic: endpoints.isSynthetic
     };
   }
 

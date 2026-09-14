@@ -295,6 +295,9 @@
    * joined rows, newest first as the API already orders them.
    */
   function tripChecksListHtml(cases) {
+    if (cases === null) {
+      return '<div class="trip-checks-empty trip-checks-unavailable">Trip checks queue unavailable &middot; unable to reach the anomaly detection service.</div>';
+    }
     var list = Array.isArray(cases) ? cases : [];
     if (list.length === 0) {
       return '<div class="trip-checks-empty">No trip checks right now - every recent trip is within its expected pattern.</div>';

@@ -18,9 +18,11 @@
   const tripChecksListEl = document.getElementById('trip-checks-list');
   const tripChecksBadgeEl = document.getElementById('badge-tripchecks');
 
+  let loadedOnce = false;
+
   function renderTripChecks(cases) {
     if (tripChecksListEl) tripChecksListEl.innerHTML = tripChecksListHtml(cases);
-    if (tripChecksBadgeEl) tripChecksBadgeEl.textContent = cases.length;
+    if (tripChecksBadgeEl) tripChecksBadgeEl.textContent = Array.isArray(cases) ? cases.length : '--';
   }
 
   function loadOpenCases() {
@@ -30,12 +32,16 @@
         return res.json();
       })
       .then(function (cases) {
+        loadedOnce = true;
         renderTripChecks(Array.isArray(cases) ? cases : []);
       })
       .catch(function (err) {
         // A failed poll must not blank an already-rendered queue - same
         // fail-safe direction as loadActiveSos() for the SOS feed.
         console.warn('[AqOne] Trip checks poll failed:', err);
+        if (!loadedOnce) {
+          renderTripChecks(null);
+        }
       });
   }
 

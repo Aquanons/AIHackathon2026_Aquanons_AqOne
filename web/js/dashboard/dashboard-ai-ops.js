@@ -609,6 +609,11 @@
     var list = document.getElementById('ai-risk-list');
     var count = document.getElementById('ai-risk-count');
     if (!list) return;
+    if (rows === null) {
+      list.innerHTML = '<div class="ai-empty-state ai-unavailable-state">Vessel risk feed unavailable &middot; unable to reach the anomaly service.</div>';
+      if (count) count.textContent = '--';
+      return;
+    }
     if (!rows || !rows.length) {
       list.innerHTML = '<div class="ai-empty-state">No active vessel risk rows available.</div>';
       if (count) count.textContent = '0';
@@ -876,7 +881,7 @@
       if (riskResult.status === 'fulfilled') {
         renderRiskFeed(riskResult.value || []);
       } else {
-        renderRiskFeed([]);
+        renderRiskFeed(null);
       }
 
       if (incidentsResult.status === 'fulfilled') {
@@ -909,7 +914,7 @@
       updateSquallLegendVisibility();
       return incidentPromise;
     }).catch(function () {
-      renderRiskFeed([]);
+      renderRiskFeed(null);
       renderDriftIncidentList([]);
       clearAiDriftLayers();
       renderSquallWatch({ level: 'unknown', detections: [], status_reason: 'unable to reach the squall service' }, []);
@@ -918,7 +923,9 @@
 
     if (aiRefreshTimer) clearInterval(aiRefreshTimer);
     aiRefreshTimer = setInterval(function () {
-      aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function () { renderRiskFeed([]); });
+      aiFetchJson('/api/ai/anomaly/active').then(renderRiskFeed).catch(function (err) {
+        console.warn('[AqOne] Vessel risk poll failed, keeping last known status:', err.message);
+      });
       // A transient poll failure leaves the squall panel exactly as it was -
       // it must not overwrite an already-displayed warning with silence or a
       // false "no active detections" (docs/39 Phase 3 item 4, mirroring the

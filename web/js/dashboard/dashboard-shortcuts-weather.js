@@ -12,7 +12,7 @@
   var closePanel = ns.closePanel;
   var sosDrawer = ns.sosDrawer;
   var closeSOSDrawer = ns.closeSOSDrawer;
-  var updateStats = ns.updateStats;
+  var updateStats = typeof ns.updateStats === 'function' ? ns.updateStats : function () {};
   var alertData = ns.alertData;
 
   // ===== KEYBOARD SHORTCUTS =====
@@ -73,20 +73,31 @@
     unknown:  { label: 'CONDITIONS UNKNOWN',     cls: 'wc-safety-unknown',  color: '#7f8c8d' }
   };
 
-  function classifySafety(windKmh, waveM) {
-    if (windKmh === null && waveM === null) return SAFETY_TIERS.unknown;
-    var w = windKmh !== null ? windKmh : 0;
-    var h = waveM !== null ? waveM : 0;
+  function classifySafety(windKmh, waveM, weatherCode) {
+    var hasWind = typeof windKmh === 'number' && Number.isFinite(windKmh) && windKmh >= 0;
+    var hasWave = typeof waveM === 'number' && Number.isFinite(waveM) && waveM >= 0;
+    var isThunderstorm = typeof weatherCode === 'number' && weatherCode >= 95;
     var t = SAFETY_THRESHOLDS;
-    if (windKmh === null || waveM === null) {
-      if (w >= t.advisory.windMax || h >= t.advisory.waveMax) return SAFETY_TIERS.danger;
-      if (w >= t.caution.windMax  || h >= t.caution.waveMax)  return SAFETY_TIERS.advisory;
-      if (w >= t.safe.windMax     || h >= t.safe.waveMax)     return SAFETY_TIERS.caution;
+
+    var w = hasWind ? windKmh : 0;
+    var h = hasWave ? waveM : 0;
+
+    // Highest severity condition first
+    if ((hasWind && w >= t.advisory.windMax) || (hasWave && h >= t.advisory.waveMax)) {
+      return SAFETY_TIERS.danger;
+    }
+    if ((hasWind && w >= t.caution.windMax) || (hasWave && h >= t.caution.waveMax)) {
+      return SAFETY_TIERS.advisory;
+    }
+    if ((hasWind && w >= t.safe.windMax) || (hasWave && h >= t.safe.waveMax) || isThunderstorm) {
+      return SAFETY_TIERS.caution;
+    }
+
+    // If neither wind nor wave is complete, missing inputs cannot certify lower risk
+    if (!hasWind || !hasWave) {
       return SAFETY_TIERS.unknown;
     }
-    if (w >= t.advisory.windMax || h >= t.advisory.waveMax) return SAFETY_TIERS.danger;
-    if (w >= t.caution.windMax  || h >= t.caution.waveMax)  return SAFETY_TIERS.advisory;
-    if (w >= t.safe.windMax     || h >= t.safe.waveMax)     return SAFETY_TIERS.caution;
+
     return SAFETY_TIERS.safe;
   }
 
@@ -154,26 +165,53 @@
   function renderWeatherCard(data, marineData, meta) {
     var current = data.current || {};
     var marineCurrent = marineData && marineData.current ? marineData.current : {};
-    var code = current.weather_code;
+    var code = typeof current.weather_code === 'number' ? current.weather_code : null;
     var icon = wmoIcon(code);
-    var temp = Math.round(current.temperature_2m);
-    var feelsLike = Math.round(current.apparent_temperature);
-    var windKmh = Number(current.wind_speed_10m);
-    var gustKmh = Number(current.wind_gusts_10m);
-    var windDir = degToCompass(current.wind_direction_10m || 0);
-    var waveM = Number.isFinite(Number(marineCurrent.wave_height)) ? Number(marineCurrent.wave_height) : null;
-    var wavePeriod = Number.isFinite(Number(marineCurrent.wave_period)) ? Number(marineCurrent.wave_period) : null;
+    var temp = Number.isFinite(Number(current.temperature_2m)) ? Math.round(current.temperature_2m) : '--';
+    var feelsLike = Number.isFinite(Number(current.apparent_temperature)) ? Math.round(current.apparent_temperature) : '--';
+    var windKmh = Number.isFinite(Number(current.wind_speed_10m)) && Number(current.wind_speed_10m) >= 0 ? Number(current.wind_speed_10m) : null;
+    var gustKmh = Number.isFinite(Number(current.wind_gusts_10m)) && Number(current.wind_gusts_10m) >= 0 ? Number(current.wind_gusts_10m) : null;
+    var maxWind = (windKmh !== null && gustKmh !== null) ? Math.max(windKmh, gustKmh) : (windKmh !== null ? windKmh : gustKmh);
+    var windDir = typeof current.wind_direction_10m === 'number' ? degToCompass(current.wind_direction_10m) : '';
+    var waveM = Number.isFinite(Number(marineCurrent.wave_height)) && Number(marineCurrent.wave_height) >= 0 ? Number(marineCurrent.wave_height) : null;
+    var wavePeriod = Number.isFinite(Number(marineCurrent.wave_period)) && Number(marineCurrent.wave_period) >= 0 ? Number(marineCurrent.wave_period) : null;
     var pressure = Number.isFinite(Number(current.pressure_msl)) ? Number(current.pressure_msl) : null;
     var seaLevel = Number.isFinite(Number(marineCurrent.sea_level_height_msl)) ? Number(marineCurrent.sea_level_height_msl) : null;
-    var condText = WMO_MAP[code] ? WMO_MAP[code].label : 'Unknown';
-    var safety = classifySafety(Math.max(windKmh || 0, gustKmh || 0), waveM);
+    var condText = (code !== null && WMO_MAP[code]) ? WMO_MAP[code].label : 'Unknown';
+    var safety = classifySafety(maxWind, waveM, code);
     var monitorAlerts = meta && Array.isArray(meta.alerts) ? meta.alerts : [];
     var stale = Boolean(meta && meta.stale);
+    if (stale && safety.cls === 'wc-safety-safe') {
+      safety = SAFETY_TIERS.unknown;
+    }
     var monitorClass = monitorAlerts.length ? 'wc-monitor-danger' : stale ? 'wc-monitor-stale' : 'wc-monitor-safe';
     var monitorText = monitorAlerts.length ?
       monitorAlerts.length + ' incoming severe-weather risk' + (monitorAlerts.length === 1 ? '' : 's') + ' detected' :
-      stale ? 'Live monitor paused \u00b7 showing last-known conditions' : '72-hour monitor \u00b7 no severe thresholds detected';
+      stale ? 'Live monitor paused \u00b7 showing last-known conditions' :
+      (waveM === null || windKmh === null) ? 'Monitor active \u00b7 partial observation data' :
+      '72-hour monitor \u00b7 no severe thresholds detected';
     var observedAt = current.time ? new Date(current.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
+
+    var windVal = '\u2014';
+    if (windKmh !== null && gustKmh !== null) {
+      windVal = windKmh.toFixed(1) + ' / ' + gustKmh.toFixed(1) + ' km/h' + (windDir ? ' ' + windDir : '');
+    } else if (windKmh !== null) {
+      windVal = windKmh.toFixed(1) + ' km/h' + (windDir ? ' ' + windDir : '');
+    } else if (gustKmh !== null) {
+      windVal = 'Gusts ' + gustKmh.toFixed(1) + ' km/h' + (windDir ? ' ' + windDir : '');
+    }
+
+    var waveVal = '\u2014';
+    if (waveM !== null && wavePeriod !== null) {
+      waveVal = waveM.toFixed(2) + ' m / ' + wavePeriod.toFixed(1) + ' s';
+    } else if (waveM !== null) {
+      waveVal = waveM.toFixed(2) + ' m / \u2014';
+    } else if (wavePeriod !== null) {
+      waveVal = '\u2014 / ' + wavePeriod.toFixed(1) + ' s';
+    }
+
+    var humidityVal = Number.isFinite(Number(current.relative_humidity_2m)) ? current.relative_humidity_2m + '%' : '\u2014';
+    var rainVal = Number.isFinite(Number(current.precipitation)) && Number(current.precipitation) >= 0 ? Number(current.precipitation).toFixed(1) + ' mm' : '\u2014';
 
     wcBody.innerHTML =
       safetyBadgeHTML(safety) +
@@ -188,13 +226,13 @@
       '</div>' +
       '<div class="wc-details">' +
         '<div class="wc-detail">' +
-          '<span>Wind</span><span class="wc-detail-val">' + windKmh.toFixed(1) + ' / ' + gustKmh.toFixed(1) + ' km/h ' + windDir + '</span>' +
+          '<span>Wind</span><span class="wc-detail-val">' + windVal + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<span>Waves</span><span class="wc-detail-val">' + (waveM !== null ? waveM.toFixed(2) + ' m / ' + wavePeriod.toFixed(1) + ' s' : '\u2014') + '</span>' +
+          '<span>Waves</span><span class="wc-detail-val">' + waveVal + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<span>Humidity</span><span class="wc-detail-val">' + current.relative_humidity_2m + '%</span>' +
+          '<span>Humidity</span><span class="wc-detail-val">' + humidityVal + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
           '<span>Pressure</span><span class="wc-detail-val">' + (pressure !== null ? pressure.toFixed(0) + ' hPa' : '\u2014') + '</span>' +
@@ -203,7 +241,7 @@
           '<span>Sea level</span><span class="wc-detail-val">' + (seaLevel !== null ? seaLevel.toFixed(2) + ' m MSL' : '\u2014') + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<span>Rain now</span><span class="wc-detail-val">' + Number(current.precipitation || 0).toFixed(1) + ' mm</span>' +
+          '<span>Rain now</span><span class="wc-detail-val">' + rainVal + '</span>' +
         '</div>' +
       '</div>' +
       '<div class="wc-forecast-monitor ' + monitorClass + '">' + monitorText + '</div>' +

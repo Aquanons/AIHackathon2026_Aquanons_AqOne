@@ -183,39 +183,39 @@ Wait for explicit user sign-off before Phase 3.
 
 ### Tasks
 
-- [ ] Task 3.1: Correct null/invalid numeric handling in `dashboard-shortcuts-weather.js` and `dangerZonePredictor.js` before classification.
+- [x] Task 3.1: Correct null/invalid numeric handling in `dashboard-shortcuts-weather.js` and `dangerZonePredictor.js` before classification.
   Format wave height and period independently, and ensure missing inputs cannot certify lower risk.
-- [ ] Task 3.2: Reconcile the existing current-weather classification with the documented weather-code/adverse-evidence policy.
+- [x] Task 3.2: Reconcile the existing current-weather classification with the documented weather-code/adverse-evidence policy.
   Preserve known dangerous evidence under partial input failure; retain the experimental-model label and do not recalibrate thresholds without supporting evidence.
-- [ ] Task 3.3: Record a per-feed freshness policy using existing contract limits where available.
+- [x] Task 3.3: Record a per-feed freshness policy using existing contract limits where available.
   Reuse `classifyFreshness` for trip checks and squall/risk views, show unavailable separately from empty, and stop stale low-risk caches reading as current guidance.
   Where no approved maximum age exists, default to explicitly unconfirmed rather than guessing a positive safety guarantee.
-- [ ] Task 3.4: Change the SOS summary from ALL CLEAR to precise unacknowledged/unresolved wording in `dashboard-vessels-alerts.js`.
+- [x] Task 3.4: Change the SOS summary from ALL CLEAR to precise unacknowledged/unresolved wording in `dashboard-vessels-alerts.js`.
   Keep an acknowledged but unresolved STILL_IN_DANGER incident visible.
-- [ ] Task 3.5: Update `docs/05_PUBLIC_API.md` first, then add `is_synthetic` to the existing `/api/sos/active` response in `backend/app/api/sos.py` without changing its active-event semantics.
+- [x] Task 3.5: Update `docs/05_PUBLIC_API.md` first, then add `is_synthetic` to the existing `/api/sos/active` response in `backend/app/api/sos.py` without changing its active-event semantics.
   Keep the existing incident ID/action capability, but derive display provenance independently from “came from the backend.”
   Display missing provenance as unknown rather than silently interpreting an old server as real.
   Add coverage to `backend/tests/test_sos_ingest.py` and the web runtime test.
-- [ ] Task 3.6: Restrict weather overrides in `demo-control.js` and `dangerZonePredictor.js` to explicit demo use, and stop stale origin-wide overrides affecting normal operation.
+- [x] Task 3.6: Restrict weather overrides in `demo-control.js` and `dangerZonePredictor.js` to explicit demo use, and stop stale origin-wide overrides affecting normal operation.
   Carry synthetic provenance into danger-zone output and its renderer; label sample compact-feed/buoy data locally and remove page-load-based “Last synced” claims.
-- [ ] Task 3.7: Keep backend SOS actions tied to real IDs even when those rows are marked DEMO.
+- [x] Task 3.7: Keep backend SOS actions tied to real IDs even when those rows are marked DEMO.
   Do not accidentally route a server-stored synthetic event through local-only sample handlers.
 
 ### Verification Gate
 
-- [ ] Run shared web checks and the targeted backend checks above; all must pass in a configured environment.
-- [ ] Exercise null, omitted, negative, non-finite and complete inputs, including missing wave period and known adverse weather with missing wind/waves.
-- [ ] Valid low-risk inputs remain low risk; incomplete or expired inputs do not display fresh lower-risk guidance.
-- [ ] Disconnect each safety feed independently while SOS remains reachable: only the affected feed becomes stale/unavailable, and known warnings remain visible with age.
-- [ ] Real, synthetic and provenance-missing SOS fixtures render distinct labels; synthetic backend IDs still use server actions.
-- [ ] Enter demo weather, leave demo, reload the normal dashboard and verify that ordinary requests no longer use stale demo overrides.
-- [ ] Acknowledged unresolved incidents cannot produce an unqualified ALL CLEAR label.
+- [x] Run shared web checks and the targeted backend checks above; all must pass in a configured environment.
+- [x] Exercise null, omitted, negative, non-finite and complete inputs, including missing wave period and known adverse weather with missing wind/waves.
+- [x] Valid low-risk inputs remain low risk; incomplete or expired inputs do not display fresh lower-risk guidance.
+- [x] Disconnect each safety feed independently while SOS remains reachable: only the affected feed becomes stale/unavailable, and known warnings remain visible with age.
+- [x] Real, synthetic and provenance-missing SOS fixtures render distinct labels; synthetic backend IDs still use server actions.
+- [x] Enter demo weather, leave demo, reload the normal dashboard and verify that ordinary requests no longer use stale demo overrides.
+- [x] Acknowledged unresolved incidents cannot produce an unqualified ALL CLEAR label.
 
 ### Review Gate (Ponytail)
 
-- [ ] No additional model, new transport, generic polling framework, cache framework, or telemetry system.
-- [ ] No schema migration for an `is_synthetic` column that already exists.
-- [ ] Demo labeling is explicit and local; a global banner is not used to excuse a contradictory LIVE badge.
+- [x] No additional model, new transport, generic polling framework, cache framework, or telemetry system.
+- [x] No schema migration for an `is_synthetic` column that already exists.
+- [x] Demo labeling is explicit and local; a global banner is not used to excuse a contradictory LIVE badge.
 
 ### Git Checkpoint
 
@@ -344,8 +344,8 @@ Do not deploy or declare physical SOS readiness from local acceptance; deploymen
 | Phase | State | Commit | Verification evidence |
 |---|---|---|---|
 | 1 | Completed | c7ef8505c00e6d10cb0970c56e54852dc196eb84 | 89/89 node --test passed; node --check clean; browser static & DOM checks confirmed |
-| 2 | Completed | Pending commit | 99/99 node --test passed; node --check clean; browser runtime and integration checks confirmed |
-| 3 | Not started | None | Pending |
+| 2 | Completed | 71be09d424b94f6f272a8427e0eaef0ea1a9cf58 | 99/99 node --test passed; node --check clean; browser runtime and integration checks confirmed |
+| 3 | Completed | 5878b40145be0e579b323a64ccdadb18d89134f8 | 106/106 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; safety data freshness, numerical validation, and demo provenance confirmed |
 | 4 | Not started | None | Pending |
 | 5 | Not started | None | Pending |
 

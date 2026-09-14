@@ -376,8 +376,9 @@
     }
     if (statusText) {
       var scanUpdatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var scanProvenance = result.is_synthetic ? 'DEMO ' : 'Live ';
       statusText.textContent = result.dangerCount + ' danger · ' + result.watchCount + ' watch · ' +
-        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · Live ' + scanUpdatedAt;
+        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · ' + scanProvenance + scanUpdatedAt;
     }
   }
 
