@@ -2370,7 +2370,7 @@ body {
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--gray-icon);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2383,6 +2383,8 @@ body {
   color: var(--text);
   transform: scale(1.05);
 }
+
+[data-theme="dark"] .compass-widget { color: rgba(255, 255, 255, 0.85); }
 
 /* Legend title/item — used inside the legend card and weather overlay */
 .legend-title {
