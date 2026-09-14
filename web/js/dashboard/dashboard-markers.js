@@ -19,6 +19,11 @@
   var squallLayer = ns.squallLayer;
   var driftLayer = ns.driftLayer;
   var dangerZoneLayer = ns.dangerZoneLayer;
+  var escapeHtml = ns.escapeHtml || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.escapeHtml) || function (val) {
+    return String(val == null ? '' : val)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
@@ -64,12 +69,12 @@
   }
 
   function makePopup(title, rows, badge) {
-    let html = `<div class="popup-title">${title}</div>`;
+    let html = `<div class="popup-title">${escapeHtml(title)}</div>`;
     rows.forEach(([label, val]) => {
-      html += `<div class="popup-row"><span>${label}</span><span>${val}</span></div>`;
+      html += `<div class="popup-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(val)}</span></div>`;
     });
     if (badge) {
-      html += `<div style="margin-top:6px"><span class="popup-badge badge-${badge.cls}">${badge.text}</span></div>`;
+      html += `<div style="margin-top:6px"><span class="popup-badge badge-${escapeHtml(badge.cls)}">${escapeHtml(badge.text)}</span></div>`;
     }
     return html;
   }
@@ -347,7 +352,7 @@
 
       circle.bindPopup(popup);
       marker.bindPopup(popup);
-      circle.bindTooltip(prediction.name + ' · ' + prediction.score + '%', {
+      circle.bindTooltip(escapeHtml(prediction.name) + ' · ' + prediction.score + '%', {
         direction: 'top',
         sticky: true
       });

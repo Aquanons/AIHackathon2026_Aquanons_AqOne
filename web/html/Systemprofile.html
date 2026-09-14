@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AqOne</title>
+    <title>AqOne - Operator Profile</title>
     <link rel="stylesheet" href="../css/profile2.css" />
 </head>
 
@@ -22,10 +22,6 @@
             <img class="top-logo" src="../assets/icons/aqoneLogo2.png" alt="AqOne" />
             <div class="header-brand-text">
                 <span class="top-title">AqOne</span>
-                <!-- From Arnold's branch. profile2.css has styled .top-subtitle
-                     since the profile page was first written, but the element
-                     itself was lost when this page superseded dashboardprof.html,
-                     leaving the operator no indication of which page they are on. -->
                 <span class="top-subtitle">My Profile</span>
             </div>
         </div>
@@ -45,10 +41,10 @@
             </button>
 
             <div class="header-user-dropdown" id="header-user-dropdown">
-                <div class="header-user-avatar">LG</div>
+                <div class="header-user-avatar" id="header-user-avatar">--</div>
                 <div class="header-user-text">
-                    <span class="header-user-name">LGU Administrator</span>
-                    <span class="header-user-role">Administrator</span>
+                    <span class="header-user-name" id="header-user-name">Loading...</span>
+                    <span class="header-user-role" id="header-user-role">Operator</span>
                 </div>
                 <svg class="header-user-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2">
@@ -69,41 +65,33 @@
             <div class="profile-card">
                 <div class="profile-card-cover"></div>
                 <div class="profile-card-avatar-wrap">
-                    <div class="profile-card-avatar">LG</div>
+                    <div class="profile-card-avatar" id="profile-card-avatar">--</div>
                     <span class="profile-online-dot" title="Online"></span>
                 </div>
-                <div class="profile-card-name">LGU Administrator</div>
-                <div class="profile-card-role">Municipal Disaster Risk Reduction Officer</div>
-                <div class="profile-card-office">
+                <div class="profile-card-name" id="profile-card-name">Loading...</div>
+                <div class="profile-card-role" id="profile-card-role">Operator</div>
+                <div class="profile-card-office" id="profile-card-office">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                         <circle cx="12" cy="10" r="3" />
                     </svg>
-                    Kalibo, Aklan
+                    New Washington, Aklan
                 </div>
-
-                <button class="profile-edit-btn" id="btn-edit-avatar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                    Change Photo
-                </button>
 
                 <div class="profile-card-divider"></div>
 
                 <div class="profile-stats-grid">
                     <div class="profile-stat">
-                        <span class="profile-stat-value" id="stat-advisories">0</span>
-                        <span class="profile-stat-label">Advisories</span>
+                        <span class="profile-stat-value" id="stat-role">Operator</span>
+                        <span class="profile-stat-label">Session Role</span>
                     </div>
                     <div class="profile-stat">
-                        <span class="profile-stat-value" id="stat-zones">0</span>
-                        <span class="profile-stat-label">Zones Reviewed</span>
+                        <span class="profile-stat-value" id="stat-auth">Active</span>
+                        <span class="profile-stat-label">Token State</span>
                     </div>
                     <div class="profile-stat">
-                        <span class="profile-stat-value" id="stat-alerts-ack">0</span>
-                        <span class="profile-stat-label">Alerts Handled</span>
+                        <span class="profile-stat-value" id="stat-region">Region VI</span>
+                        <span class="profile-stat-label">Coverage Zone</span>
                     </div>
                 </div>
 
@@ -118,7 +106,7 @@
                             <line x1="8" y1="2" x2="8" y2="6" />
                             <line x1="3" y1="10" x2="21" y2="10" />
                         </svg>
-                        <span>Joined March 2024</span>
+                        <span>Authenticated Account</span>
                     </div>
                     <div class="profile-meta-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -126,7 +114,7 @@
                             <circle cx="12" cy="12" r="10" />
                             <path d="M12 6v6l4 2" />
                         </svg>
-                        <span id="profile-last-active">Active now</span>
+                        <span id="profile-last-active">Active session</span>
                     </div>
                 </div>
             </div>
@@ -155,37 +143,28 @@
                 <div class="profile-panel">
                     <div class="profile-panel-header">
                         <h3>Personal Information</h3>
-                        <p>Update your name, role, and contact details.</p>
+                        <p>Authenticated operator account details.</p>
+                    </div>
+                    <div class="profile-notice" style="margin-bottom: 16px; padding: 12px 14px; background: rgba(15, 105, 201, 0.08); border-left: 3px solid var(--blue-primary); border-radius: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                        Account credentials and role assignments are managed by your system administrator. Contact your administrator to request updates.
                     </div>
                     <div class="profile-form-grid">
                         <div class="profile-field">
                             <label for="pf-fullname">Full Name</label>
-                            <input type="text" id="pf-fullname" value="LGU Administrator" />
-                        </div>
-                        <div class="profile-field">
-                            <label for="pf-position">Position</label>
-                            <input type="text" id="pf-position" value="Municipal Disaster Risk Reduction Officer" />
-                        </div>
-                        <div class="profile-field">
-                            <label for="pf-office">Office / Municipality</label>
-                            <input type="text" id="pf-office" value="Kalibo" readonly />
+                            <input type="text" id="pf-fullname" readonly />
                         </div>
                         <div class="profile-field">
                             <label for="pf-role">System Role</label>
-                            <input type="text" id="pf-role" value="LGU Administrator" readonly />
+                            <input type="text" id="pf-role" readonly />
                         </div>
                         <div class="profile-field">
                             <label for="pf-email">Email Address</label>
-                            <input type="email" id="pf-email" value="admin@kalibo.aklan.gov.ph" />
+                            <input type="email" id="pf-email" readonly />
                         </div>
                         <div class="profile-field">
-                            <label for="pf-phone">Contact Number</label>
-                            <input type="tel" id="pf-phone" placeholder="+63 994 489 1004" />
+                            <label for="pf-office">Office / Municipality</label>
+                            <input type="text" id="pf-office" value="New Washington, Aklan" readonly />
                         </div>
-                    </div>
-                    <div class="profile-panel-actions">
-                        <button class="profile-btn profile-btn-ghost" id="btn-cancel-personal">Cancel</button>
-                        <button class="profile-btn profile-btn-primary" id="btn-save-personal">Save Changes</button>
                     </div>
                 </div>
             </div>
@@ -195,32 +174,18 @@
                 <div class="profile-panel">
                     <div class="profile-panel-header">
                         <h3>Password &amp; Security</h3>
-                        <p>Change your password to keep your account secure.</p>
+                        <p>Account credentials and authentication state.</p>
                     </div>
-                    <div class="profile-form-grid">
-                        <div class="profile-field">
-                            <label for="sec-current-password">Current Password</label>
-                            <input type="password" id="sec-current-password" placeholder="••••••••" />
-                        </div>
-                        <div class="profile-field">
-                            <label for="sec-new-password">New Password</label>
-                            <input type="password" id="sec-new-password" placeholder="••••••••" />
-                        </div>
-                        <div class="profile-field">
-                            <label for="sec-confirm-password">Confirm New Password</label>
-                            <input type="password" id="sec-confirm-password" placeholder="••••••••" />
-                        </div>
-                    </div>
-                    <div class="profile-panel-actions">
-                        <button class="profile-btn profile-btn-ghost" id="btn-cancel-security">Cancel</button>
-                        <button class="profile-btn profile-btn-primary" id="btn-save-security">Update Password</button>
+                    <div class="profile-notice" style="padding: 14px 16px; background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; border-radius: 6px; font-size: 13px; line-height: 1.5; color: var(--text-secondary);">
+                        <strong>Self-service password changes are not available.</strong><br>
+                        Password updates and access credentials are administered through the server setup authority. Please contact your MDRRMO administrator if your credentials need to be updated.
                     </div>
                 </div>
 
                 <div class="profile-panel">
                     <div class="profile-panel-header">
-                        <h3>Active Sessions</h3>
-                        <p>Devices currently signed in to your account.</p>
+                        <h3>Active Session</h3>
+                        <p>Current authentication session details.</p>
                     </div>
                     <div class="profile-session-row">
                         <div class="profile-session-icon">
@@ -232,8 +197,8 @@
                             </svg>
                         </div>
                         <div class="profile-session-info">
-                            <div class="profile-session-name">This Device — Chrome on Windows</div>
-                            <div class="profile-session-meta">Kalibo, Aklan &middot; Active now</div>
+                            <div class="profile-session-name">This Device &mdash; Active Console Session</div>
+                            <div class="profile-session-meta" id="profile-session-meta">Authenticated via Bearer Token &middot; Active now</div>
                         </div>
                         <span class="profile-session-badge">Current</span>
                     </div>
@@ -245,14 +210,14 @@
                 <div class="profile-panel">
                     <div class="profile-panel-header">
                         <h3>Preferences</h3>
-                        <p>Control how AqOne looks and notifies you.</p>
+                        <p>Browser-local interface display settings.</p>
                     </div>
 
                     <!-- LANGUAGE SELECTION ROW -->
                     <div class="profile-toggle-row">
                         <div>
                             <div class="profile-toggle-title">System Language / Eingguahe</div>
-                            <div class="profile-toggle-desc">Choose between English and Akeanon (Aklanon).</div>
+                            <div class="profile-toggle-desc">Choose between English and Akeanon (Aklanon). Saved in this browser.</div>
                         </div>
                         <select class="profile-select-inline" id="pref-lang-select">
                             <option value="en" selected>English (EN)</option>
@@ -263,32 +228,10 @@
                     <div class="profile-toggle-row">
                         <div>
                             <div class="profile-toggle-title">Dark Mode</div>
-                            <div class="profile-toggle-desc">Switch between light and dark interface themes.</div>
+                            <div class="profile-toggle-desc">Switch between light and dark interface themes. Saved in this browser.</div>
                         </div>
                         <label class="profile-switch">
                             <input type="checkbox" id="pref-dark-toggle" />
-                            <span class="profile-switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="profile-toggle-row">
-                        <div>
-                            <div class="profile-toggle-title">Email Notifications</div>
-                            <div class="profile-toggle-desc">Receive alerts and advisory updates by email.</div>
-                        </div>
-                        <label class="profile-switch">
-                            <input type="checkbox" id="pref-email-toggle" checked />
-                            <span class="profile-switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="profile-toggle-row">
-                        <div>
-                            <div class="profile-toggle-title">SOS Sound Alerts</div>
-                            <div class="profile-toggle-desc">Play a sound when a new distress signal is received.</div>
-                        </div>
-                        <label class="profile-switch">
-                            <input type="checkbox" id="pref-sound-toggle" checked />
                             <span class="profile-switch-slider"></span>
                         </label>
                     </div>

@@ -6,6 +6,8 @@
 > **Lint/Check Command:** Mobile: `flutter analyze`; backend: `python -m ruff check .`.  
 > **Prepared:** 2026-09-13.
 
+Separate workstream: [Web audit remediation implementation plan](docs/WEB_REMEDIATION_IMPLEMENTATION_PLAN.md), prepared 2026-09-14; no web implementation phase has started.
+
 ---
 
 ## Overview

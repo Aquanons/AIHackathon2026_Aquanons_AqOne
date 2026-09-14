@@ -388,13 +388,23 @@
       });
   });
 
-  sosBtnBroadcast.addEventListener('click', function () {
-    sosBroadcastMsg.textContent = 'Broadcast sent to 3 nearby vessels over the LoRa mesh';
-  });
+  if (sosBtnBroadcast) {
+    sosBtnBroadcast.disabled = true;
+    sosBtnBroadcast.addEventListener('click', function () {
+      if (sosBroadcastMsg) {
+        sosBroadcastMsg.textContent = 'Broadcast unavailable: LoRa downlink to vessels is not supported.';
+      }
+    });
+  }
 
-  sosBtnCheckin.addEventListener('click', function () {
-    sosBroadcastMsg.textContent = 'Silent check-in request queued at surrounding buoys \u2014 awaiting next contact';
-  });
+  if (sosBtnCheckin) {
+    sosBtnCheckin.disabled = true;
+    sosBtnCheckin.addEventListener('click', function () {
+      if (sosBroadcastMsg) {
+        sosBroadcastMsg.textContent = 'Silent check-in unavailable: LoRa downlink to vessels is not supported.';
+      }
+    });
+  }
 
   // A demo row has no backend sos_event to have an audit trail for
   // (docs/41 Phase 4) - same "no real incident behind this" guard as the

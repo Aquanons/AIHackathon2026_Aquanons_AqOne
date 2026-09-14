@@ -3014,11 +3014,13 @@ body {
 
 .sos-btn-acknowledge { background: #f39c12; color: #1a1a2e; }
 .sos-btn-acknowledge:hover { background: #e67e22; }
+.sos-btn:disabled,
 .sos-btn-acknowledge:disabled {
   background: var(--border);
   color: var(--text-dim);
   cursor: not-allowed;
   pointer-events: none;
+  opacity: 0.6;
 }
 
 .sos-btn-resolve { background: #2ecc71; color: #1a1a2e; }

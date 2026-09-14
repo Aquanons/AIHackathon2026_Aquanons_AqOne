@@ -202,13 +202,13 @@
 
       return '<div class="advisory-card" data-id="' + a.id + '">' +
         '<div class="advisory-card-top">' +
-          '<span class="advisory-priority-badge ' + priorityClass + '">' + a.priority + '</span>' +
+          '<span class="advisory-priority-badge ' + priorityClass + '">' + _escHtml(a.priority) + '</span>' +
           '<span class="advisory-card-title">' + _escHtml(a.title) + '</span>' +
         '</div>' +
         '<div class="advisory-card-meta">' +
           '<span>' + _escHtml(a.municipality) + '</span>' +
-          '<span class="advisory-card-status ' + statusClass + '">' + statusDot + ' ' + a.status + '</span>' +
-          '<span>' + a.publishDate + '</span>' +
+          '<span class="advisory-card-status ' + statusClass + '">' + statusDot + ' ' + _escHtml(a.status) + '</span>' +
+          '<span>' + _escHtml(a.publishDate) + '</span>' +
         '</div>' +
         '<div class="advisory-card-actions">' +
           '<button class="adv-action-btn adv-edit" data-id="' + a.id + '">' +
@@ -315,24 +315,24 @@
      }
    }
 
-   function renderSeaCondition(current) {
-     if (!seaConditionCurrent) return;
-     var status = current.status || 'Unknown';
-     var reason = current.reason || '';
-     var setByName = current.set_by_name || '--';
-     var createdAt = current.created_at || '';
-     var color = SEA_STATUS_COLORS[status] || '#7f8c8d';
-     var statusClass = status === 'Safe to Go Out' ? 'sc-safe' : (status === 'Caution — Check Advisories' ? 'sc-caution' : 'sc-danger');
+    function renderSeaCondition(current) {
+      if (!seaConditionCurrent) return;
+      var status = current.status || 'Unknown';
+      var reason = current.reason || '';
+      var setByName = current.set_by_name || '--';
+      var createdAt = current.created_at || '';
+      var color = SEA_STATUS_COLORS[status] || '#7f8c8d';
+      var statusClass = status === 'Safe to Go Out' ? 'sc-safe' : (status === 'Caution — Check Advisories' ? 'sc-caution' : 'sc-danger');
 
-     var html =
-       '<div class="sc-status" style="color:' + color + ';">' + status + '</div>';
-     if (reason) {
-       html += '<div class="sc-reason">"' + reason + '"</div>';
-     }
-     html += '<div class="sc-meta">Last set by ' + setByName + ' at ' + formatSeaConditionTime(createdAt) + '</div>';
+      var html =
+        '<div class="sc-status" style="color:' + color + ';">' + escapeHtml(status) + '</div>';
+      if (reason) {
+        html += '<div class="sc-reason">"' + escapeHtml(reason) + '"</div>';
+      }
+      html += '<div class="sc-meta">Last set by ' + escapeHtml(setByName) + ' at ' + escapeHtml(formatSeaConditionTime(createdAt)) + '</div>';
 
-     seaConditionCurrent.innerHTML = html;
-   }
+      seaConditionCurrent.innerHTML = html;
+    }
 
    if (seaConditionSetBtn) {
      seaConditionSetBtn.addEventListener('click', function () {

@@ -3,6 +3,11 @@
   if (!ns.ready) return;
   var CURRENT_USER = ns.CURRENT_USER;
   var CURRENT_USER_COLOR = ns.CURRENT_USER_COLOR;
+  var escapeHtml = ns.escapeHtml || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.escapeHtml) || function (val) {
+    return String(val == null ? '' : val)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
   var map = ns.map;
   var tileLayers = ns.tileLayers;
   var currentBase = ns.currentBase;
@@ -44,9 +49,10 @@
     const id = 'local-' + Date.now();
     const color = CURRENT_USER_COLOR;
     const createdAt = Date.now();
+    const userName = (CURRENT_USER && CURRENT_USER.name) ? CURRENT_USER.name : 'User';
     const popupHtml =
       `<div class="popup-title">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px;border:2px solid rgba(255,255,255,0.7);"></span>${CURRENT_USER.name}
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px;border:2px solid rgba(255,255,255,0.7);"></span>${escapeHtml(userName)}
       </div>
       <div class="popup-row"><span>Pinned</span><span>just now</span></div>
       <div class="popup-row"><span>Lat</span><span>${latlng.lat.toFixed(5)}</span></div>
@@ -577,5 +583,6 @@
   ns.closePanel = closePanel;
   ns.toggleLayer = toggleLayer;
   ns.dangerZoneRefresh = dangerZoneRefresh;
+  ns.dropLocalPin = dropLocalPin;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

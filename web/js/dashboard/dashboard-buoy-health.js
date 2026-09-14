@@ -12,6 +12,11 @@
   var closePanel = ns.closePanel;
   var allAlerts = ns.allAlerts;
   var alertIcon = ns.alertIcon;
+  var escapeHtml = ns.escapeHtml || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.escapeHtml) || function (val) {
+    return String(val == null ? '' : val)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
 
   // ===== INCIDENT FEED =====
   function renderIncidentFeed() {
@@ -29,8 +34,8 @@
         alertIcon(a.type) +
         '<div class="incident-feed-info">' +
           '<div class="incident-feed-desc">' +
-            (a.isLive ? '<span class="alert-live-badge">LIVE</span>' : '') + a.desc + '</div>' +
-          '<div class="incident-feed-meta">' + a.time + '</div>' +
+            (a.isLive ? '<span class="alert-live-badge">LIVE</span>' : '') + escapeHtml(a.desc) + '</div>' +
+          '<div class="incident-feed-meta">' + escapeHtml(a.time) + '</div>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -92,17 +97,17 @@
 
       return '<div class="buoy-row' + offlineClass + '" data-lat="' + b.lat + '" data-lng="' + b.lng + '" data-id="' + b.id + '">' +
         '<div class="buoy-row-top">' +
-          '<span class="buoy-row-name">' + b.name + '</span>' +
+          '<span class="buoy-row-name">' + escapeHtml(b.name) + '</span>' +
           '<span class="buoy-status-dot ' + b.dotClass + '"></span>' +
         '</div>' +
-        '<div class="buoy-row-severity">' + b.severity + '</div>' +
+        '<div class="buoy-row-severity">' + escapeHtml(b.severity) + '</div>' +
         '<div class="buoy-row-meta">' +
           '<span class="buoy-row-battery' + batteryClass + '">' + batteryIcon + ' ' + b.battery + '%</span>' +
           '<span class="buoy-row-signal">' + pressureText + '</span>' +
         '</div>' +
         '<div class="buoy-row-meta">' +
-          '<span class="buoy-row-signal">Current: ' + (b.current || 'n/a') + ' ' + (b.currentDir || '') + '</span>' +
-          '<span class="buoy-row-signal">' + b.lastSignal + '</span>' +
+          '<span class="buoy-row-signal">Current: ' + escapeHtml(b.current || 'n/a') + ' ' + escapeHtml(b.currentDir || '') + '</span>' +
+          '<span class="buoy-row-signal">' + escapeHtml(b.lastSignal) + '</span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -126,14 +131,14 @@
     list.innerHTML = buoyMonitorData.map(function (b) {
       var dotColor = b.status === 'online' ? '#2ecc71' : '#e74c3c';
       var offlineTag = b.status === 'offline'
-        ? ' <span class="bh-offline-tag">Offline, last seen ' + b.lastSignal + '</span>'
+        ? ' <span class="bh-offline-tag">Offline, last seen ' + escapeHtml(b.lastSignal) + '</span>'
         : '';
       var pressTag = b.pressure != null
         ? ' <span class="bh-press" style="color:' + (b.pressureTrend <= -2.5 ? '#e67e22' : 'inherit') + ';">' + b.pressure.toFixed(1) + ' hPa</span>'
         : '';
       return '<div class="bh-row' + (b.status === 'offline' ? ' bh-offline' : '') + '" data-lat="' + b.lat + '" data-lng="' + b.lng + '">' +
         '<span class="bh-dot" style="background:' + dotColor + ';"></span>' +
-        '<span class="bh-name">' + b.name + '</span>' +
+        '<span class="bh-name">' + escapeHtml(b.name) + '</span>' +
         '<span class="bh-battery">' + b.battery + '%</span>' +
         pressTag +
         offlineTag +
