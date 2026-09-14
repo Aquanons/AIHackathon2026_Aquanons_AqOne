@@ -35,7 +35,8 @@
   var classifyFreshness = dashboardUtils.classifyFreshness;
   var freshnessLabel = dashboardUtils.freshnessLabel;
   var alertBadge = dashboardUtils.alertBadge || function (isLive) {
-    return isLive
+    if (isLive === 'unknown') return { text: 'UNKNOWN', cssClass: 'alert-unknown-badge' };
+    return (isLive === true || isLive === 'real' || isLive === 'live')
       ? { text: 'LIVE', cssClass: 'alert-live-badge' }
       : { text: 'DEMO', cssClass: 'alert-demo-badge' };
   };
@@ -93,6 +94,7 @@
   function clearSession() {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem('aqoneDemoBypassActive');
   }
 
   function redirectToLogin() {
@@ -274,7 +276,7 @@
   const vesselLayer    = L.layerGroup();
   const coverageLayer  = L.layerGroup();
   const meshLayer      = L.layerGroup();
-  const squallLayer    = L.layerGroup();
+  const squallLayer    = (typeof L !== 'undefined' && typeof L.featureGroup === 'function') ? L.featureGroup() : L.layerGroup();
   const driftLayer     = L.layerGroup();
   const hotspotLayer   = L.layerGroup();
 
@@ -319,19 +321,10 @@
   ns.formatAuditAction = formatAuditAction;
   ns.OPS_CENTER = OPS_CENTER;
   ns.OPS_ZOOM = OPS_ZOOM;
-  ns.TILES = TILES;
-  ns.PIN_POLL_INTERVAL_MS = PIN_POLL_INTERVAL_MS;
   ns.API_BASE = API_BASE;
-  ns.TOKEN_KEY = TOKEN_KEY;
-  ns.USER_KEY = USER_KEY;
-  ns.LOGIN_URL = LOGIN_URL;
-  ns.getToken = getToken;
   ns.clearSession = clearSession;
-  ns.redirectToLogin = redirectToLogin;
   ns.authFetch = authFetch;
   ns.CURRENT_USER = CURRENT_USER;
-  ns.PIN_PALETTE = PIN_PALETTE;
-  ns.hashUserId = hashUserId;
   ns.CURRENT_USER_COLOR = CURRENT_USER_COLOR;
   ns.shoreStations = shoreStations;
   ns.initialBuoys = initialBuoys;

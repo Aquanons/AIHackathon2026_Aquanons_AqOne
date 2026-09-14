@@ -202,13 +202,13 @@
 
       return '<div class="advisory-card" data-id="' + a.id + '">' +
         '<div class="advisory-card-top">' +
-          '<span class="advisory-priority-badge ' + priorityClass + '">' + a.priority + '</span>' +
-          '<span class="advisory-card-title">' + _escHtml(a.title) + '</span>' +
+          '<span class="advisory-priority-badge ' + priorityClass + '">' + escapeHtml(a.priority) + '</span>' +
+          '<span class="advisory-card-title">' + escapeHtml(a.title) + '</span>' +
         '</div>' +
         '<div class="advisory-card-meta">' +
-          '<span>' + _escHtml(a.municipality) + '</span>' +
-          '<span class="advisory-card-status ' + statusClass + '">' + statusDot + ' ' + a.status + '</span>' +
-          '<span>' + a.publishDate + '</span>' +
+          '<span>' + escapeHtml(a.municipality) + '</span>' +
+          '<span class="advisory-card-status ' + statusClass + '">' + statusDot + ' ' + escapeHtml(a.status) + '</span>' +
+          '<span>' + escapeHtml(a.publishDate) + '</span>' +
         '</div>' +
         '<div class="advisory-card-actions">' +
           '<button class="adv-action-btn adv-edit" data-id="' + a.id + '">' +
@@ -241,14 +241,6 @@
         deleteOverlay.classList.add('active');
       });
     });
-  }
-
-  // Delegates to the shared, DOM-free implementation
-  // (web/js/dashboard-utils.js) so there is exactly one escaping function in
-  // this codebase, not two that can silently drift apart. Kept under its
-  // original name because ~15 call sites already use it.
-  function _escHtml(str) {
-    return escapeHtml(str);
   }
 
   function closeDeleteModal() {
@@ -315,24 +307,24 @@
      }
    }
 
-   function renderSeaCondition(current) {
-     if (!seaConditionCurrent) return;
-     var status = current.status || 'Unknown';
-     var reason = current.reason || '';
-     var setByName = current.set_by_name || '--';
-     var createdAt = current.created_at || '';
-     var color = SEA_STATUS_COLORS[status] || '#7f8c8d';
-     var statusClass = status === 'Safe to Go Out' ? 'sc-safe' : (status === 'Caution — Check Advisories' ? 'sc-caution' : 'sc-danger');
+    function renderSeaCondition(current) {
+      if (!seaConditionCurrent) return;
+      var status = current.status || 'Unknown';
+      var reason = current.reason || '';
+      var setByName = current.set_by_name || '--';
+      var createdAt = current.created_at || '';
+      var color = SEA_STATUS_COLORS[status] || '#7f8c8d';
+      var statusClass = status === 'Safe to Go Out' ? 'sc-safe' : (status === 'Caution — Check Advisories' ? 'sc-caution' : 'sc-danger');
 
-     var html =
-       '<div class="sc-status" style="color:' + color + ';">' + status + '</div>';
-     if (reason) {
-       html += '<div class="sc-reason">"' + reason + '"</div>';
-     }
-     html += '<div class="sc-meta">Last set by ' + setByName + ' at ' + formatSeaConditionTime(createdAt) + '</div>';
+      var html =
+        '<div class="sc-status" style="color:' + color + ';">' + escapeHtml(status) + '</div>';
+      if (reason) {
+        html += '<div class="sc-reason">"' + escapeHtml(reason) + '"</div>';
+      }
+      html += '<div class="sc-meta">Last set by ' + escapeHtml(setByName) + ' at ' + escapeHtml(formatSeaConditionTime(createdAt)) + '</div>';
 
-     seaConditionCurrent.innerHTML = html;
-   }
+      seaConditionCurrent.innerHTML = html;
+    }
 
    if (seaConditionSetBtn) {
      seaConditionSetBtn.addEventListener('click', function () {
@@ -400,51 +392,14 @@
    // (lastSosSuccessMs), so a second writer here could only drift from it.
 
   ns.emergencyOverlay = emergencyOverlay;
-  ns.emergencyClose = emergencyClose;
-  ns.emergencyBtn = emergencyBtn;
   ns.openEmergencyModal = openEmergencyModal;
   ns.closeEmergencyModal = closeEmergencyModal;
-  ns.advisoryPanelClose = advisoryPanelClose;
-  ns.advisoryListEl = advisoryListEl;
-  ns.btnCreateAdvisory = btnCreateAdvisory;
   ns.advisoryOverlay = advisoryOverlay;
-  ns.advisoryModalClose = advisoryModalClose;
-  ns.advBtnCancel = advBtnCancel;
-  ns.advBtnSave = advBtnSave;
-  ns.advisoryModalTitle = advisoryModalTitle;
-  ns.advTitleInput = advTitleInput;
-  ns.advCategorySelect = advCategorySelect;
-  ns.advDescriptionInput = advDescriptionInput;
-  ns.advMunicipalitySelect = advMunicipalitySelect;
-  ns.advPrioritySelect = advPrioritySelect;
-  ns.advPublishDateInput = advPublishDateInput;
-  ns.advExpirationDateInput = advExpirationDateInput;
-  ns.advCoverImageInput = advCoverImageInput;
-  ns.advStatusSelect = advStatusSelect;
-  ns.advTitleError = advTitleError;
-  ns.advDescriptionError = advDescriptionError;
-  ns.advMunicipalityError = advMunicipalityError;
-  ns.deleteOverlay = deleteOverlay;
-  ns.deleteClose = deleteClose;
-  ns.deleteCancelBtn = deleteCancelBtn;
-  ns.deleteConfirmBtn = deleteConfirmBtn;
-  ns.deleteNameEl = deleteNameEl;
-  ns.editingAdvisoryId = editingAdvisoryId;
-  ns.deletingAdvisoryId = deletingAdvisoryId;
-  ns.clearAdvisoryErrors = clearAdvisoryErrors;
-  ns.validateAdvisoryForm = validateAdvisoryForm;
-  ns.resetAdvisoryForm = resetAdvisoryForm;
   ns.openAdvisoryModal = openAdvisoryModal;
   ns.closeAdvisoryModal = closeAdvisoryModal;
-  ns.renderAdvisoryList = renderAdvisoryList;
+  ns.deleteOverlay = deleteOverlay;
   ns.closeDeleteModal = closeDeleteModal;
-  ns.seaConditionCurrent = seaConditionCurrent;
-  ns.seaConditionSetBtn = seaConditionSetBtn;
-  ns.seaConditionReason = seaConditionReason;
-  ns.seaConditionSelectedStatus = seaConditionSelectedStatus;
-  ns.SEA_STATUS_COLORS = SEA_STATUS_COLORS;
-  ns.formatSeaConditionTime = formatSeaConditionTime;
-  ns.fetchSeaCondition = fetchSeaCondition;
+  ns.renderAdvisoryList = renderAdvisoryList;
   ns.renderSeaCondition = renderSeaCondition;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

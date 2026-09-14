@@ -80,7 +80,7 @@ def _beat(index: int) -> BeatDefinition:
 
 
 def _stable_noise(buoy_id: str, observed_at: datetime) -> float:
-    key = f'{buoy_id}:{observed_at.isoformat()}'.encode('utf-8')
+    key = f'{buoy_id}:{observed_at.isoformat()}'.encode()
     value = int.from_bytes(hashlib.sha256(key).digest()[:4], 'big') / 2**32
     return (value * 2.0 - 1.0) * 0.16
 
@@ -132,11 +132,10 @@ async def reset(pool, run_id: str) -> dict[str, int | str]:
         'advisories',
         'vessels',
     )
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            for table in tables:
-                result = await conn.execute(f'DELETE FROM {table} WHERE demo_tag = $1', run_id)
-                deleted[table] = int(result.rsplit(' ', 1)[-1])
+    async with pool.acquire() as conn, conn.transaction():
+        for table in tables:
+            result = await conn.execute(f'DELETE FROM {table} WHERE demo_tag = $1', run_id)
+            deleted[table] = int(result.rsplit(' ', 1)[-1])
 
     state = get_state()
     if state.run_id == run_id:
@@ -457,7 +456,7 @@ async def fire_beat(index: int) -> dict[str, object]:
         raise ValueError('clear-day has baseline beat 0 only')
     if index in state.fired and state.beat == index:
         return state.response()
-    _beat(index)
+    beat = _beat(index)
     pool = get_pool()
     await _write_pressure_window(pool, state.run_id, beat, state.scenario)
     if index == 3 and state.scenario == 'squall-fleet':

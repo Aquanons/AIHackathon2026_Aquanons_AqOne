@@ -216,7 +216,8 @@ async def active_sos(_: dict = Depends(require_user)) -> dict[str, object]:
                    client_ts, delivered_direct, delivered_via_buoy,
                    buoy_id, created_at, acknowledged_at, acked_by,
                    eta_at, responder_status, responder_note,
-                   fisher_reply, fisher_replied_at, resolved_at
+                   fisher_reply, fisher_replied_at, resolved_at,
+                   is_synthetic
             FROM sos_events
             WHERE resolved_at IS NULL
             ORDER BY created_at DESC

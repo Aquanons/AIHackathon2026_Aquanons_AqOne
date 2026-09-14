@@ -9,6 +9,34 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-14 — Operations Console Audit Remediation: Complete Implementation & Verification
+
+Recorded per `docs/WEB_REMEDIATION_IMPLEMENTATION_PLAN.md` and `docs/WEB_AUDIT_2026-09-13.md`.
+Environment: Windows 11, Node.js (native test runner), Python 3.11.9, pytest-9.1.1.
+
+**Remediation and Corrective Changes:**
+- **Phase 1 (Security & Honest Actions):** Sanitized DOM injection sinks in incident feeds, pin popups, sea condition, and AI cards via `escapeHtml`; removed misleading broadcast/check-in success messages; redirected standalone advisory to the integrated dashboard workflow; isolated authenticated operator profiles without cross-account cache leaks.
+- **Phase 2 (Module Wiring & Session State):** Fixed confidence score ReferenceError in `openIncidentDrawer`; mapped squall/drift layer toggles to rendered AI groups; unified single map export handler; sorted overdue vessels (priority 0) ahead of normal vessels; sanitized password whitespace and cleared demo bypass state on valid login.
+- **Phase 3 (Data Freshness, Validation, & Demo Provenance):** Demoted stale/missing weather data and validated non-negative physical readings; isolated danger-zone overrides to the current session; badged synthetic demo rows distinctly from live SOS records; displayed honest offline/stale indicators when services are unreachable.
+- **Phase 4 (Asynchronous Ordering & Keyboard Stabilization):** Added request generation counters (`activeSosReqSeq`, `lastAcceptedSosSeq`) to enforce poll response ordering; retired SOS drawers when incidents leave authoritative active feeds; locked acknowledgment modal targets to prevent background case swapping; suppressed single-key shortcuts while typing in editable elements; enforced Escape key hierarchy; snapshotted audit search filters for pagination and export consistency.
+- **Phase 5 (Dead Code Removal & Geographic Test Gate):** Removed unused `web/js/jss.js` (171 lines), `web/css/profile.css` (673 lines), and vendored Leaflet fullscreen add-on (192 lines + 2 HTML tags + 2 image assets); trimmed dead assignment-only namespace exports; repaired `backend/tests/test_dashboard_coords.py` to scan all `web/js/dashboard/*.js` files (26/26 coordinates verified within water polygon or shore stations); documented web verification and browser smoke workflows in `README.md`.
+
+**Build and Verification Evidence:**
+- **Automated Verification Gate:**
+  - `node --test web/test/*.test.js`: **114/114 tests passed** (including helper tests and all runtime regression tests for Phases 1–5).
+  - JavaScript syntax checks across all `web/js/` and `web/test/` files: **Clean (exit code 0)**.
+  - Python tests: `python -m pytest backend/tests/test_dashboard_coords.py backend/tests/test_sos_ingest.py backend/tests/test_responder_loop.py` — **24 passed, 0 failed**.
+  - Python lint: `python -m ruff check backend/tests/test_dashboard_coords.py backend/app/api/sos.py backend/tests/test_sos_ingest.py` — **Clean, 0 errors**.
+  - `git diff --check`: **Clean, 0 whitespace issues**.
+- **Browser & UI Acceptance Flow:**
+  - **Auth & Session:** Verified login, session clear on logout, and profile page rendering authenticated credentials.
+  - **Live Incident Handling:** Verified SOS drawer open, target lock during acknowledgment modal, focus containment and return, and automatic drawer retirement upon resolution.
+  - **Audit Logging:** Verified search query snapshotting ensures pagination and CSV/JSON export adhere strictly to submitted filters rather than active form input state.
+  - **Accessibility:** Verified single-letter hotkeys are ignored when typing in inputs; verified Escape key dismisses modals first, drawers second, panels third.
+- **Direct Observations & Honest Caveats:**
+  - **Hardware / Handset Verification:** Physical buoy hardware and field handset verification remain separate critical-path work. Local web verification confirms dashboard software correctness, security, and protocol contract alignment, but does not substitute for outdoor LoRa range tests.
+  - **Deployment Limit:** Hosted Railway deployment remains inactive; all tests were verified in local developer runtime environments.
+
 ## 2026-09-13 — Phase 4: Localized Fishing Weather Window & Audit Corrections Verification
 
 Recorded per `IMPLEMENTATION_PLAN.md` and `docs/GEMINI_FISHING_WINDOW_AUDIT.md`.

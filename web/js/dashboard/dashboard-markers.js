@@ -19,6 +19,11 @@
   var squallLayer = ns.squallLayer;
   var driftLayer = ns.driftLayer;
   var dangerZoneLayer = ns.dangerZoneLayer;
+  var escapeHtml = ns.escapeHtml || (window.AqOneDashboardUtils && window.AqOneDashboardUtils.escapeHtml) || function (val) {
+    return String(val == null ? '' : val)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
 
   // ===== MARKER CREATION =====
   function createMarkerIcon(type) {
@@ -64,12 +69,12 @@
   }
 
   function makePopup(title, rows, badge) {
-    let html = `<div class="popup-title">${title}</div>`;
+    let html = `<div class="popup-title">${escapeHtml(title)}</div>`;
     rows.forEach(([label, val]) => {
-      html += `<div class="popup-row"><span>${label}</span><span>${val}</span></div>`;
+      html += `<div class="popup-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(val)}</span></div>`;
     });
     if (badge) {
-      html += `<div style="margin-top:6px"><span class="popup-badge badge-${badge.cls}">${badge.text}</span></div>`;
+      html += `<div style="margin-top:6px"><span class="popup-badge badge-${escapeHtml(badge.cls)}">${escapeHtml(badge.text)}</span></div>`;
     }
     return html;
   }
@@ -286,15 +291,6 @@
     }
   }
 
-  function escapeDangerZoneText(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   function renderDangerZones(result) {
     var predictions = result.predictions;
     var alertPredictions = predictions.filter(function (prediction) {
@@ -326,10 +322,10 @@
         interactive: true,
         zIndexOffset: 700
       });
-      var reasons = prediction.reasons.map(escapeDangerZoneText).join(' &middot; ');
+      var reasons = prediction.reasons.map(escapeHtml).join(' &middot; ');
       var popup = '<div class="popup-title" style="color:' + prediction.color + ';">' +
-        escapeDangerZoneText(prediction.label) + ' Zone</div>' +
-        '<div class="popup-row"><span>Area</span><span>' + escapeDangerZoneText(prediction.name) + '</span></div>' +
+        escapeHtml(prediction.label) + ' Zone</div>' +
+        '<div class="popup-row"><span>Area</span><span>' + escapeHtml(prediction.name) + '</span></div>' +
         '<div class="popup-row"><span>Coordinates</span><span>' + prediction.lat.toFixed(3) + '\u00b0, ' + prediction.lng.toFixed(3) + '\u00b0</span></div>' +
         '<div class="popup-row"><span>Hazard probability</span><span style="font-weight:800;color:' + prediction.color + ';">' + prediction.score + '%</span></div>' +
         '<div class="popup-row"><span>Model probability</span><span>' + prediction.modelProbability + '%</span></div>' +
@@ -337,17 +333,17 @@
         '<div class="popup-row"><span>Live wave / period</span><span>' + Number(prediction.features.wave_height).toFixed(2) + ' m / ' + Number(prediction.features.wave_period).toFixed(1) + ' s</span></div>' +
         '<div class="popup-row"><span>GEBCO depth</span><span>' + prediction.depthM.toFixed(0) + ' m</span></div>' +
         '<div class="popup-row"><span>Radius</span><span>' + (prediction.radius / 1000).toFixed(1) + ' km</span></div>' +
-        '<div class="popup-row"><span>Warning trigger</span><span>' + escapeDangerZoneText(prediction.trigger) + '</span></div>' +
+        '<div class="popup-row"><span>Warning trigger</span><span>' + escapeHtml(prediction.trigger) + '</span></div>' +
         '<div class="popup-divider"></div>' +
         '<div style="font-size:11px;line-height:1.45;color:#d1d5db;">' + reasons + '</div>' +
-        '<div style="margin-top:7px;font-size:10px;color:#9ca3af;">' + escapeDangerZoneText(prediction.source) + '<br>' +
-        escapeDangerZoneText(result.modelType) + ' · ' + escapeDangerZoneText(result.modelVersion) + '<br>' +
-        '2025 holdout F1: ' + Number(result.metrics.f1).toFixed(3) + ' · ' + escapeDangerZoneText(result.buoySource) + '</div>' +
+        '<div style="margin-top:7px;font-size:10px;color:#9ca3af;">' + escapeHtml(prediction.source) + '<br>' +
+        escapeHtml(result.modelType) + ' · ' + escapeHtml(result.modelVersion) + '<br>' +
+        '2025 holdout F1: ' + Number(result.metrics.f1).toFixed(3) + ' · ' + escapeHtml(result.buoySource) + '</div>' +
         '<div style="margin-top:7px"><span class="popup-badge badge-danger">EXPERIMENTAL · NOT FOR NAVIGATION</span></div>';
 
       circle.bindPopup(popup);
       marker.bindPopup(popup);
-      circle.bindTooltip(prediction.name + ' · ' + prediction.score + '%', {
+      circle.bindTooltip(escapeHtml(prediction.name) + ' · ' + prediction.score + '%', {
         direction: 'top',
         sticky: true
       });
@@ -371,8 +367,9 @@
     }
     if (statusText) {
       var scanUpdatedAt = new Date(result.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var scanProvenance = result.is_synthetic ? 'DEMO ' : 'Live ';
       statusText.textContent = result.dangerCount + ' danger · ' + result.watchCount + ' watch · ' +
-        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · Live ' + scanUpdatedAt;
+        result.scannedCount + ' near-shore cells scanned · strongest ' + result.strongestProbability + '% · ' + scanProvenance + scanUpdatedAt;
     }
   }
 
@@ -446,26 +443,8 @@
   ns.createMarkerIcon = createMarkerIcon;
   ns.createOverdueIcon = createOverdueIcon;
   ns.makePopup = makePopup;
-  ns.coverageCircles = coverageCircles;
   ns.pulseCoverageCircle = pulseCoverageCircle;
-  ns.meshPolylines = meshPolylines;
-  ns.findNode = findNode;
-  ns.gatewayBuoy = gatewayBuoy;
-  ns.meshPath = meshPath;
-  ns.meshDot = meshDot;
-  ns.dotIdx = dotIdx;
-  ns.meshDotInterval = meshDotInterval;
   ns.incidentDrawerData = incidentDrawerData;
-  ns.incidentMarkers = incidentMarkers;
-  ns.apiBuoys = apiBuoys;
-  ns.dangerZoneRequestId = dangerZoneRequestId;
-  ns.lastDangerZoneResult = lastDangerZoneResult;
-  ns.dangerZoneCacheKey = dangerZoneCacheKey;
-  ns.readCachedDangerZoneResult = readCachedDangerZoneResult;
-  ns.cacheDangerZoneResult = cacheDangerZoneResult;
-  ns.escapeDangerZoneText = escapeDangerZoneText;
-  ns.renderDangerZones = renderDangerZones;
   ns.refreshDangerZones = refreshDangerZones;
-  ns.boundaryPoly = boundaryPoly;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

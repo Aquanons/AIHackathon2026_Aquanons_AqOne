@@ -7,7 +7,6 @@
   <title>AqOne - SAR Operations Console</title>
   <link rel="icon" href="../assets/icons/favicon.png" />
   <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="../vendor/leaflet/leaflet.fullscreen.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
 
 </head>
@@ -126,7 +125,7 @@
     <article class="metric-card">
       <div class="metric-card-topline">
         <span class="metric-label">LIVE SOS</span>
-        <span class="metric-status metric-status-clear" id="stats-sos-status">ALL CLEAR</span>
+        <span class="metric-status metric-status-clear" id="stats-sos-status">NO UNACKNOWLEDGED SOS</span>
       </div>
       <div class="metric-card-main">
         <strong class="metric-value" id="banner-alert-count">0</strong>
@@ -436,7 +435,7 @@
             <div class="buoy-drawer-body">
               <div class="buoy-list" id="buoy-list"></div>
             </div>
-            <div class="buoy-drawer-footer" id="buoy-drawer-footer">Last synced: 0 seconds ago</div>
+            <div class="buoy-drawer-footer" id="buoy-drawer-footer">Sample buoy network baseline (unpolled offline data)</div>
           </div>
 
           <div class="rail-panel-content" id="panel-advisories">
@@ -793,7 +792,7 @@
   <div class="sos-drawer" id="sos-drawer">
     <div class="sos-drawer-header" id="sos-drawer-header">
       <span class="sos-drawer-title" id="sos-drawer-title">MANUAL SOS TRIGGERED</span>
-      <button class="sos-drawer-close" id="sos-drawer-close">&times;</button>
+      <button class="sos-drawer-close" id="sos-drawer-close" aria-label="Close incident drawer">&times;</button>
     </div>
     <div class="sos-drawer-body">
       <div class="sos-section sos-details">
@@ -849,8 +848,8 @@
       <div class="sos-section sos-actions">
         <button class="sos-btn sos-btn-acknowledge" id="sos-btn-acknowledge">Acknowledge</button>
         <button class="sos-btn sos-btn-resolve" id="sos-btn-resolve">Resolve Incident</button>
-        <button class="sos-btn sos-btn-broadcast" id="sos-btn-broadcast">Broadcast to Nearby Vessels</button>
-        <button class="sos-btn sos-btn-checkin" id="sos-btn-checkin">Request Silent Check-in</button>
+        <button class="sos-btn sos-btn-broadcast" id="sos-btn-broadcast" disabled title="Broadcast to nearby vessels is not supported in this release">Broadcast to Nearby Vessels (Unavailable)</button>
+        <button class="sos-btn sos-btn-checkin" id="sos-btn-checkin" disabled title="Silent check-in is not supported in this release">Request Silent Check-in (Unavailable)</button>
         <button class="sos-btn sos-btn-activity" id="sos-btn-activity">View Activity</button>
         <div class="sos-broadcast-msg" id="sos-broadcast-msg"></div>
       </div>
@@ -863,7 +862,7 @@
       <div class="ack-modal" role="dialog" aria-modal="true" aria-labelledby="ack-modal-title">
         <div class="ack-modal-header">
           <span id="ack-modal-title">Acknowledge distress call</span>
-          <button type="button" class="ack-modal-close" id="ack-modal-close" aria-label="Cancel">&times;</button>
+          <button type="button" class="ack-modal-close" id="ack-modal-close" aria-label="Close acknowledgment modal">&times;</button>
         </div>
         <div class="ack-modal-body">
           <p class="ack-modal-vessel" id="ack-modal-vessel">&mdash;</p>
@@ -914,7 +913,7 @@
   <div class="sos-drawer activity-drawer" id="activity-drawer">
     <div class="sos-drawer-header" id="activity-drawer-header">
       <span class="sos-drawer-title" id="activity-drawer-title">Case Activity</span>
-      <button class="sos-drawer-close" id="activity-drawer-close">&times;</button>
+      <button class="sos-drawer-close" id="activity-drawer-close" aria-label="Close case activity drawer">&times;</button>
     </div>
     <div class="sos-drawer-body">
       <div class="sos-section" id="activity-drawer-content"></div>
@@ -934,7 +933,7 @@
           <div class="emergency-modal-title">Emergency Contacts</div>
           <div class="emergency-modal-subtitle">Quick access for SAR duty officers</div>
         </div>
-        <button class="emergency-modal-close" id="emergency-modal-close">&times;</button>
+        <button class="emergency-modal-close" id="emergency-modal-close" aria-label="Close emergency contacts modal">&times;</button>
       </div>
       <div class="emergency-modal-body">
         <div class="emergency-card" style="border-left-color: #2E86AB;">
@@ -1106,7 +1105,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <script src="../vendor/leaflet/leaflet.js"></script>
-  <script src="../vendor/leaflet/leaflet.fullscreen.js"></script>
   <script src="../js/advisoryService.js"></script>
   <script src="../js/dangerZoneModel.js"></script>
   <script src="../js/dangerZonePredictor.js"></script>

@@ -17,30 +17,6 @@
     });
   }
 
-
-  // ===== EXPORT =====
-  const btnExport = document.getElementById('btn-export');
-  if (btnExport) {
-    btnExport.addEventListener('click', function () {
-      const data = {
-        center: map.getCenter(),
-        zoom: map.getZoom(),
-        facilities: facilities.length,
-        buoys: initialBuoys.length,
-        incidents: incidents.length,
-        timestamp: new Date().toISOString()
-      };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'aqone-dashboard-export.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  }
-
-
   // ===== EXIT LOADING =====
   function hideLoadingOverlay() {
     var overlay = document.getElementById('loading-overlay');
@@ -317,7 +293,6 @@
     applyLanguage(savedLang);
   })();
   ns.userProfilePill = userProfilePill;
-  ns.btnExport = btnExport;
   ns.hideLoadingOverlay = hideLoadingOverlay;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

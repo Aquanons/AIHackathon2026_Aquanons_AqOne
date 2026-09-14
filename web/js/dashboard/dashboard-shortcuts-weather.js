@@ -12,44 +12,95 @@
   var closePanel = ns.closePanel;
   var sosDrawer = ns.sosDrawer;
   var closeSOSDrawer = ns.closeSOSDrawer;
-  var updateStats = ns.updateStats;
-  var alertData = ns.alertData;
+  var updateStats = typeof ns.updateStats === 'function' ? ns.updateStats : function () {};
+  var alertData = Array.isArray(ns.alertData) ? ns.alertData : [];
+
+  function isEditable(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el.isContentEditable;
+  }
 
   // ===== KEYBOARD SHORTCUTS =====
   document.addEventListener('keydown', function (e) {
+    var activeEl = document.activeElement;
+    var inEditable = isEditable(activeEl);
+
     if (e.key === 'Escape') {
-      if (sosDrawer.classList.contains('open')) { closeSOSDrawer(); return; }
-      if (ns.emergencyOverlay.classList.contains('active')) { ns.closeEmergencyModal(); return; }
-      if (ns.advisoryOverlay.classList.contains('active')) { ns.closeAdvisoryModal(); return; }
-      if (ns.deleteOverlay.classList.contains('active')) { ns.closeDeleteModal(); return; }
-      if (ns.pinModeActive)    { deactivatePinMode(); activatePanMode(); return; }
-      if (ns.measureActive)    { deactivateMeasureMode(); measureClearAll(); closePanel(); activatePanMode(); return; }
-      if (ns.activePanel)      { closePanel(); }
+      // 1. Topmost dialogs / modals
+      if (ns.ackOverlay && ns.ackOverlay.hidden === false) {
+        if (typeof ns.closeAckModal === 'function') ns.closeAckModal();
+        else ns.ackOverlay.hidden = true;
+        e.preventDefault();
+        return;
+      }
+      if (ns.emergencyOverlay && ns.emergencyOverlay.classList.contains('active')) {
+        ns.closeEmergencyModal();
+        e.preventDefault();
+        return;
+      }
+      if (ns.advisoryOverlay && ns.advisoryOverlay.classList.contains('active')) {
+        ns.closeAdvisoryModal();
+        e.preventDefault();
+        return;
+      }
+      if (ns.deleteOverlay && ns.deleteOverlay.classList.contains('active')) {
+        ns.closeDeleteModal();
+        e.preventDefault();
+        return;
+      }
+      // 2. Case activity drawer
+      if (ns.activityDrawer && ns.activityDrawer.classList.contains('open')) {
+        if (typeof ns.closeActivityDrawer === 'function') ns.closeActivityDrawer();
+        e.preventDefault();
+        return;
+      }
+      // 3. SOS drawer
+      if (sosDrawer && sosDrawer.classList.contains('open')) {
+        closeSOSDrawer();
+        e.preventDefault();
+        return;
+      }
+      // 4. Pin / measure modes & panels
+      if (ns.pinModeActive) { deactivatePinMode(); activatePanMode(); e.preventDefault(); return; }
+      if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); closePanel(); activatePanMode(); e.preventDefault(); return; }
+      if (ns.activePanel) { closePanel(); e.preventDefault(); return; }
+      return;
     }
-    if (e.key === 'f' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
-      document.getElementById('btn-fullscreen').click();
-    }
-    if (e.key === 'b' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+
+    if (inEditable) return;
+
+    var hasOpenModal = (ns.ackOverlay && ns.ackOverlay.hidden === false) ||
+      (ns.emergencyOverlay && ns.emergencyOverlay.classList.contains('active')) ||
+      (ns.advisoryOverlay && ns.advisoryOverlay.classList.contains('active')) ||
+      (ns.deleteOverlay && ns.deleteOverlay.classList.contains('active'));
+    if (hasOpenModal) return;
+
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    if (e.key === 'f') {
+      var fsBtn = document.getElementById('btn-fullscreen');
+      if (fsBtn) fsBtn.click();
+    } else if (e.key === 'b') {
       if (ns.activePanel === 'layers') { closePanel(); } else { openPanel('layers'); }
-    }
-    if (e.key === 'h' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+    } else if (e.key === 'h') {
       if (!ns.panModeActive) {
         if (ns.pinModeActive) { deactivatePinMode(); }
         if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); if (ns.activePanel === 'measure') closePanel(); }
         activatePanMode();
       }
-    }
-    if (e.key === 'p' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+    } else if (e.key === 'p') {
       if (ns.pinModeActive) { deactivatePinMode(); activatePanMode(); } else {
         if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); if (ns.activePanel === 'measure') closePanel(); }
         activatePinMode();
       }
-    }
-    if (e.key === 'm' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+    } else if (e.key === 'm') {
       if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); closePanel(); activatePanMode(); }
-      else               { if (ns.pinModeActive) { deactivatePinMode(); } openPanel('measure'); activateMeasureMode(); }
+      else { if (ns.pinModeActive) { deactivatePinMode(); } openPanel('measure'); activateMeasureMode(); }
     }
   });
+
+  ns.isEditable = isEditable;
 
   updateStats();
 
@@ -73,20 +124,31 @@
     unknown:  { label: 'CONDITIONS UNKNOWN',     cls: 'wc-safety-unknown',  color: '#7f8c8d' }
   };
 
-  function classifySafety(windKmh, waveM) {
-    if (windKmh === null && waveM === null) return SAFETY_TIERS.unknown;
-    var w = windKmh !== null ? windKmh : 0;
-    var h = waveM !== null ? waveM : 0;
+  function classifySafety(windKmh, waveM, weatherCode) {
+    var hasWind = typeof windKmh === 'number' && Number.isFinite(windKmh) && windKmh >= 0;
+    var hasWave = typeof waveM === 'number' && Number.isFinite(waveM) && waveM >= 0;
+    var isThunderstorm = typeof weatherCode === 'number' && weatherCode >= 95;
     var t = SAFETY_THRESHOLDS;
-    if (windKmh === null || waveM === null) {
-      if (w >= t.advisory.windMax || h >= t.advisory.waveMax) return SAFETY_TIERS.danger;
-      if (w >= t.caution.windMax  || h >= t.caution.waveMax)  return SAFETY_TIERS.advisory;
-      if (w >= t.safe.windMax     || h >= t.safe.waveMax)     return SAFETY_TIERS.caution;
+
+    var w = hasWind ? windKmh : 0;
+    var h = hasWave ? waveM : 0;
+
+    // Highest severity condition first
+    if ((hasWind && w >= t.advisory.windMax) || (hasWave && h >= t.advisory.waveMax)) {
+      return SAFETY_TIERS.danger;
+    }
+    if ((hasWind && w >= t.caution.windMax) || (hasWave && h >= t.caution.waveMax)) {
+      return SAFETY_TIERS.advisory;
+    }
+    if ((hasWind && w >= t.safe.windMax) || (hasWave && h >= t.safe.waveMax) || isThunderstorm) {
+      return SAFETY_TIERS.caution;
+    }
+
+    // If neither wind nor wave is complete, missing inputs cannot certify lower risk
+    if (!hasWind || !hasWave) {
       return SAFETY_TIERS.unknown;
     }
-    if (w >= t.advisory.windMax || h >= t.advisory.waveMax) return SAFETY_TIERS.danger;
-    if (w >= t.caution.windMax  || h >= t.caution.waveMax)  return SAFETY_TIERS.advisory;
-    if (w >= t.safe.windMax     || h >= t.safe.waveMax)     return SAFETY_TIERS.caution;
+
     return SAFETY_TIERS.safe;
   }
 
@@ -151,29 +213,103 @@
     '</div>';
   }
 
+  function parseStrictFinite(val) {
+    if (typeof val === 'number') {
+      return Number.isFinite(val) ? val : null;
+    }
+    if (typeof val === 'string' && val.trim() !== '') {
+      var n = Number(val);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  function parseStrictNonNegative(val) {
+    var n = parseStrictFinite(val);
+    return (n !== null && n >= 0) ? n : null;
+  }
+
   function renderWeatherCard(data, marineData, meta) {
-    var current = data.current || {};
-    var marineCurrent = marineData && marineData.current ? marineData.current : {};
-    var code = current.weather_code;
+    var current = (data && data.current) || {};
+    var marineCurrent = (marineData && marineData.current) || {};
+    var code = parseStrictFinite(current.weather_code);
     var icon = wmoIcon(code);
-    var temp = Math.round(current.temperature_2m);
-    var feelsLike = Math.round(current.apparent_temperature);
-    var windKmh = Number(current.wind_speed_10m);
-    var gustKmh = Number(current.wind_gusts_10m);
-    var windDir = degToCompass(current.wind_direction_10m || 0);
-    var waveM = Number.isFinite(Number(marineCurrent.wave_height)) ? Number(marineCurrent.wave_height) : null;
-    var wavePeriod = Number.isFinite(Number(marineCurrent.wave_period)) ? Number(marineCurrent.wave_period) : null;
-    var pressure = Number.isFinite(Number(current.pressure_msl)) ? Number(current.pressure_msl) : null;
-    var seaLevel = Number.isFinite(Number(marineCurrent.sea_level_height_msl)) ? Number(marineCurrent.sea_level_height_msl) : null;
-    var condText = WMO_MAP[code] ? WMO_MAP[code].label : 'Unknown';
-    var safety = classifySafety(Math.max(windKmh || 0, gustKmh || 0), waveM);
+    var rawTemp = parseStrictFinite(current.temperature_2m);
+    var temp = rawTemp !== null ? Math.round(rawTemp) : '--';
+    var rawFeels = parseStrictFinite(current.apparent_temperature);
+    var feelsLike = rawFeels !== null ? Math.round(rawFeels) : '--';
+    var windKmh = parseStrictNonNegative(current.wind_speed_10m);
+    var gustKmh = parseStrictNonNegative(current.wind_gusts_10m);
+    var maxWind = (windKmh !== null && gustKmh !== null) ? Math.max(windKmh, gustKmh) : (windKmh !== null ? windKmh : gustKmh);
+    var rawDir = parseStrictFinite(current.wind_direction_10m);
+    var windDir = rawDir !== null ? degToCompass(rawDir) : '';
+    var waveM = parseStrictNonNegative(marineCurrent.wave_height);
+    var wavePeriod = parseStrictNonNegative(marineCurrent.wave_period);
+    var pressure = parseStrictNonNegative(current.pressure_msl);
+    var seaLevel = parseStrictFinite(marineCurrent.sea_level_height_msl);
+    var condText = (code !== null && WMO_MAP[code]) ? WMO_MAP[code].label : 'Unknown';
+    var safety = classifySafety(maxWind, waveM, code);
     var monitorAlerts = meta && Array.isArray(meta.alerts) ? meta.alerts : [];
+
+    var WEATHER_MAX_OBS_AGE_MS = 3 * 3600 * 1000;
+    var WEATHER_FETCH_STALE_MS = 15 * 60 * 1000;
     var stale = Boolean(meta && meta.stale);
+    var nowMs = (meta && typeof meta.nowMs === 'number') ? meta.nowMs : Date.now();
+
+    function isObsFresh(t) {
+      if (!t) return false;
+      var ms = new Date(t).getTime();
+      if (!isFinite(ms)) return false;
+      var ageMs = nowMs - ms;
+      return isFinite(ageMs) && ageMs <= WEATHER_MAX_OBS_AGE_MS && ageMs >= -600000;
+    }
+
+    if (!stale) {
+      if (!isObsFresh(current.time) || !isObsFresh(marineCurrent.time)) {
+        stale = true;
+      }
+    }
+
+    if (!stale && meta && meta.fetchedAt) {
+      var fetchAgeMs = nowMs - new Date(meta.fetchedAt).getTime();
+      if (!isFinite(fetchAgeMs) || fetchAgeMs > WEATHER_FETCH_STALE_MS) {
+        stale = true;
+      }
+    }
+
+    if (stale && safety.cls === 'wc-safety-safe') {
+      safety = SAFETY_TIERS.unknown;
+    }
     var monitorClass = monitorAlerts.length ? 'wc-monitor-danger' : stale ? 'wc-monitor-stale' : 'wc-monitor-safe';
     var monitorText = monitorAlerts.length ?
       monitorAlerts.length + ' incoming severe-weather risk' + (monitorAlerts.length === 1 ? '' : 's') + ' detected' :
-      stale ? 'Live monitor paused \u00b7 showing last-known conditions' : '72-hour monitor \u00b7 no severe thresholds detected';
+      stale ? 'Live monitor paused \u00b7 showing last-known conditions' :
+      (waveM === null || windKmh === null) ? 'Monitor active \u00b7 partial observation data' :
+      '72-hour monitor \u00b7 no severe thresholds detected';
     var observedAt = current.time ? new Date(current.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
+
+    var windVal = '\u2014';
+    if (windKmh !== null && gustKmh !== null) {
+      windVal = windKmh.toFixed(1) + ' / ' + gustKmh.toFixed(1) + ' km/h' + (windDir ? ' ' + windDir : '');
+    } else if (windKmh !== null) {
+      windVal = windKmh.toFixed(1) + ' km/h' + (windDir ? ' ' + windDir : '');
+    } else if (gustKmh !== null) {
+      windVal = 'Gusts ' + gustKmh.toFixed(1) + ' km/h' + (windDir ? ' ' + windDir : '');
+    }
+
+    var waveVal = '\u2014';
+    if (waveM !== null && wavePeriod !== null) {
+      waveVal = waveM.toFixed(2) + ' m / ' + wavePeriod.toFixed(1) + ' s';
+    } else if (waveM !== null) {
+      waveVal = waveM.toFixed(2) + ' m / \u2014';
+    } else if (wavePeriod !== null) {
+      waveVal = '\u2014 / ' + wavePeriod.toFixed(1) + ' s';
+    }
+
+    var rawHum = parseStrictFinite(current.relative_humidity_2m);
+    var humidityVal = (rawHum !== null && rawHum >= 0) ? rawHum + '%' : '\u2014';
+    var rawRain = parseStrictNonNegative(current.precipitation);
+    var rainVal = rawRain !== null ? rawRain.toFixed(1) + ' mm' : '\u2014';
 
     wcBody.innerHTML =
       safetyBadgeHTML(safety) +
@@ -188,13 +324,13 @@
       '</div>' +
       '<div class="wc-details">' +
         '<div class="wc-detail">' +
-          '<span>Wind</span><span class="wc-detail-val">' + windKmh.toFixed(1) + ' / ' + gustKmh.toFixed(1) + ' km/h ' + windDir + '</span>' +
+          '<span>Wind</span><span class="wc-detail-val">' + windVal + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<span>Waves</span><span class="wc-detail-val">' + (waveM !== null ? waveM.toFixed(2) + ' m / ' + wavePeriod.toFixed(1) + ' s' : '\u2014') + '</span>' +
+          '<span>Waves</span><span class="wc-detail-val">' + waveVal + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<span>Humidity</span><span class="wc-detail-val">' + current.relative_humidity_2m + '%</span>' +
+          '<span>Humidity</span><span class="wc-detail-val">' + humidityVal + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
           '<span>Pressure</span><span class="wc-detail-val">' + (pressure !== null ? pressure.toFixed(0) + ' hPa' : '\u2014') + '</span>' +
@@ -203,7 +339,7 @@
           '<span>Sea level</span><span class="wc-detail-val">' + (seaLevel !== null ? seaLevel.toFixed(2) + ' m MSL' : '\u2014') + '</span>' +
         '</div>' +
         '<div class="wc-detail">' +
-          '<span>Rain now</span><span class="wc-detail-val">' + Number(current.precipitation || 0).toFixed(1) + ' mm</span>' +
+          '<span>Rain now</span><span class="wc-detail-val">' + rainVal + '</span>' +
         '</div>' +
       '</div>' +
       '<div class="wc-forecast-monitor ' + monitorClass + '">' + monitorText + '</div>' +
@@ -354,13 +490,16 @@
   }
 
   function replaceForecastAlerts(forecastAlerts) {
-    for (var index = alertData.length - 1; index >= 0; index--) {
-      if (alertData[index].source === 'forecast-monitor') alertData.splice(index, 1);
+    var list = Array.isArray(alertData) ? alertData : [];
+    for (var index = list.length - 1; index >= 0; index--) {
+      if (list[index].source === 'forecast-monitor') list.splice(index, 1);
     }
     for (var alertIndex = forecastAlerts.length - 1; alertIndex >= 0; alertIndex--) {
-      alertData.unshift(forecastAlerts[alertIndex]);
+      list.unshift(forecastAlerts[alertIndex]);
     }
-    ns.syncAlertIndicators();
+    if (typeof ns.syncAlertIndicators === 'function') {
+      ns.syncAlertIndicators();
+    }
 
     var signature = forecastAlerts.map(function (alert) { return alert.type + ':' + alert.time; }).join('|');
     var previousSignature = localStorage.getItem('aqone-forecast-alert-signature') || '';
@@ -371,8 +510,12 @@
   }
 
   function displayWeatherSnapshot(snapshot, stale, alerts) {
-    renderWeatherCard(snapshot.weather, snapshot.marine, { stale: stale, alerts: alerts || [] });
-    if (snapshot.weather.daily) {
+    renderWeatherCard(snapshot.weather, snapshot.marine, {
+      stale: stale,
+      alerts: alerts || [],
+      fetchedAt: snapshot.fetchedAt
+    });
+    if (snapshot.weather && snapshot.weather.daily) {
       renderForecast(snapshot.weather.daily);
       renderRainfall(snapshot.weather.daily);
     }
@@ -403,7 +546,8 @@
       .catch(function (error) {
         var cached = readWeatherCache();
         if (cached) {
-          var existingAlerts = alertData.filter(function (alert) { return alert.source === 'forecast-monitor'; });
+          var list = Array.isArray(alertData) ? alertData : [];
+          var existingAlerts = list.filter(function (alert) { return alert.source === 'forecast-monitor'; });
           displayWeatherSnapshot(cached, true, existingAlerts);
         } else {
           wcBody.innerHTML = '<div class="wc-error">Live weather unavailable. Check connection and PAGASA advisories.</div>';

@@ -3,6 +3,7 @@
   if (!ns.ready) return;
   var CURRENT_USER = ns.CURRENT_USER;
   var CURRENT_USER_COLOR = ns.CURRENT_USER_COLOR;
+  var escapeHtml = ns.escapeHtml;
   var map = ns.map;
   var tileLayers = ns.tileLayers;
   var currentBase = ns.currentBase;
@@ -44,9 +45,10 @@
     const id = 'local-' + Date.now();
     const color = CURRENT_USER_COLOR;
     const createdAt = Date.now();
+    const userName = (CURRENT_USER && CURRENT_USER.name) ? CURRENT_USER.name : 'User';
     const popupHtml =
       `<div class="popup-title">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px;border:2px solid rgba(255,255,255,0.7);"></span>${CURRENT_USER.name}
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px;border:2px solid rgba(255,255,255,0.7);"></span>${escapeHtml(userName)}
       </div>
       <div class="popup-row"><span>Pinned</span><span>just now</span></div>
       <div class="popup-row"><span>Lat</span><span>${latlng.lat.toFixed(5)}</span></div>
@@ -131,16 +133,7 @@
   const MEASURE_PREVIEW = 'rgba(46,204,113,0.55)';
 
   function haversineKm(a, b) {
-    const R = 6371;
-    const dLat = (b.lat - a.lat) * Math.PI / 180;
-    const dLng = (b.lng - a.lng) * Math.PI / 180;
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const c = sinDLat * sinDLat +
-              Math.cos(a.lat * Math.PI / 180) *
-              Math.cos(b.lat * Math.PI / 180) *
-              sinDLng * sinDLng;
-    return R * 2 * Math.atan2(Math.sqrt(c), Math.sqrt(1 - c));
+    return map.distance(a, b) / 1000;
   }
 
   function fmtKm(km) { return km.toFixed(3) + ' km'; }
@@ -386,9 +379,8 @@
     toolPanelTitle.textContent = PANEL_TITLES[panelId] || 'Tool Panel';
     toolPanelCard.classList.remove('collapsed');
     activePanel = panelId;
-    if (panelId === 'advisories') ns.renderAdvisoryList();
-    if (panelId === 'buoys') ns.updateBuoySync();
-    if (panelId === 'audit') ns.renderAuditPanel();
+    if (panelId === 'advisories' && typeof ns.renderAdvisoryList === 'function') ns.renderAdvisoryList();
+    if (panelId === 'audit' && typeof ns.renderAuditPanel === 'function') ns.renderAuditPanel();
   }
 
   function closePanel() {
@@ -488,11 +480,25 @@
 
 
   // ===== TOGGLE LAYERS =====
-  function toggleLayer(checkboxId, layer) {
+  function toggleLayer(checkboxId, getLayer) {
     const el = document.getElementById(checkboxId);
     if (!el) return;
     el.addEventListener('change', function () {
-      if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
+      var target = (typeof getLayer === 'function') ? getLayer() : getLayer;
+      var layers = Array.isArray(target) ? target : [target];
+      for (var i = 0; i < layers.length; i++) {
+        var layer = layers[i];
+        if (!layer) continue;
+        if (this.checked) {
+          if (typeof map.hasLayer === 'function' ? !map.hasLayer(layer) : true) {
+            layer.addTo(map);
+          }
+        } else {
+          if (typeof map.hasLayer === 'function' ? map.hasLayer(layer) : true) {
+            map.removeLayer(layer);
+          }
+        }
+      }
     });
   }
 
@@ -503,8 +509,8 @@
   toggleLayer('toggle-buoys',     buoyLayer);
   toggleLayer('toggle-coverage',  coverageLayer);
   toggleLayer('toggle-mesh',      meshLayer);
-  toggleLayer('toggle-squall',    squallLayer);
-  toggleLayer('toggle-drift',     driftLayer);
+  toggleLayer('toggle-squall',    function () { return ns.aiSquallLayer || squallLayer; });
+  toggleLayer('toggle-drift',     function () { return [ns.aiContoursLayer || driftLayer, ns.aiDrawLayer]; });
   toggleLayer('toggle-boundary',  boundaryLayer);
   toggleLayer('toggle-pins',      pinLayer);
   toggleLayer('toggle-hotspots', hotspotLayer);
@@ -522,60 +528,14 @@
     measureActive: { get: function () { return measureActive; } },
     activePanel: { get: function () { return activePanel; } }
   });
-  ns.pinBtn = pinBtn;
-  ns.panBtn = panBtn;
-  ns.mapEl = mapEl;
-  ns.pinMarkers = pinMarkers;
-  ns.createPinIcon = createPinIcon;
-  ns.dropLocalPin = dropLocalPin;
   ns.activatePinMode = activatePinMode;
   ns.deactivatePinMode = deactivatePinMode;
   ns.activatePanMode = activatePanMode;
   ns.deactivatePanMode = deactivatePanMode;
-  ns.MEASURE_COLOR = MEASURE_COLOR;
-  ns.MEASURE_PREVIEW = MEASURE_PREVIEW;
-  ns.haversineKm = haversineKm;
-  ns.fmtKm = fmtKm;
-  ns.measureFinished = measureFinished;
-  ns.measurePts = measurePts;
-  ns.measureLayer = measureLayer;
-  ns.mPolyline = mPolyline;
-  ns.mPreview = mPreview;
-  ns.mTooltips = mTooltips;
-  ns.mVertices = mVertices;
-  ns.measureBtn = measureBtn;
-  ns.measureHud = measureHud;
-  ns.hudTotal = hudTotal;
-  ns.panelTotal = panelTotal;
-  ns.panelCount = panelCount;
-  ns.btnFinish = btnFinish;
-  ns.btnClear = btnClear;
-  ns.mDblClickGuard = mDblClickGuard;
-  ns.measureUpdateUI = measureUpdateUI;
-  ns.measureAddVertexMarker = measureAddVertexMarker;
-  ns.measureAddSegmentLabel = measureAddSegmentLabel;
-  ns.measureRedrawPolyline = measureRedrawPolyline;
-  ns.measureClearLabels = measureClearLabels;
-  ns.measureClearVertices = measureClearVertices;
-  ns.measureRebuildLabels = measureRebuildLabels;
-  ns.measureAddPoint = measureAddPoint;
-  ns.measureClearPreview = measureClearPreview;
-  ns.measureUpdatePreview = measureUpdatePreview;
-  ns.measureClearAll = measureClearAll;
-  ns.measureFinish = measureFinish;
   ns.activateMeasureMode = activateMeasureMode;
   ns.deactivateMeasureMode = deactivateMeasureMode;
-  ns.onMeasureMouseMove = onMeasureMouseMove;
-  ns.switchLayer = switchLayer;
-  ns.toolPanelCard = toolPanelCard;
-  ns.toolPanelTitle = toolPanelTitle;
-  ns.railBtns = railBtns;
-  ns.panelContents = panelContents;
-  ns.panelCloseBtns = panelCloseBtns;
-  ns.PANEL_TITLES = PANEL_TITLES;
+  ns.measureClearAll = measureClearAll;
   ns.openPanel = openPanel;
   ns.closePanel = closePanel;
-  ns.toggleLayer = toggleLayer;
-  ns.dangerZoneRefresh = dangerZoneRefresh;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

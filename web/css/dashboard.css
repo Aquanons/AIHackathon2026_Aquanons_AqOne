@@ -1307,7 +1307,8 @@ body {
   margin-top: 2px;
 }
 
-.alert-status.status-active { background: rgba(231,76,60,0.25); color: #e74c3c; }
+.alert-status.status-active,
+.alert-status.status-danger { background: rgba(231,76,60,0.25); color: #e74c3c; }
 .alert-status.status-acknowledged { background: rgba(241,196,15,0.25); color: #f1c40f; }
 .alert-status.status-resolved { background: rgba(46,204,113,0.2); color: #2ecc71; }
 
@@ -1322,6 +1323,12 @@ body {
   font-size: 11px;
   opacity: 0.6;
   text-align: center;
+}
+
+.trip-checks-unavailable,
+.ai-unavailable-state {
+  color: #b7791f;
+  font-style: italic;
 }
 
 .trip-check-row {
@@ -3014,11 +3021,13 @@ body {
 
 .sos-btn-acknowledge { background: #f39c12; color: #1a1a2e; }
 .sos-btn-acknowledge:hover { background: #e67e22; }
+.sos-btn:disabled,
 .sos-btn-acknowledge:disabled {
   background: var(--border);
   color: var(--text-dim);
   cursor: not-allowed;
   pointer-events: none;
+  opacity: 0.6;
 }
 
 .sos-btn-resolve { background: #2ecc71; color: #1a1a2e; }
@@ -5014,7 +5023,8 @@ h3.buoy-drawer-title {
   white-space: nowrap;
 }
 
-.metric-status-watch {
+.metric-status-watch,
+.metric-status-caution {
   border-color: #f5dfb6;
   background: #fff8e8;
   color: #b7791f;
@@ -5447,6 +5457,19 @@ h3.buoy-drawer-title {
   vertical-align: middle;
 }
 
+.alert-unknown-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #64748b;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
+
 /* Non-SOS rows (demo scaffolding and model-derived forecast alerts) stay
    legible but visibly secondary to a live distress call. */
 .alert-row-secondary { opacity: 0.78; }
@@ -5609,6 +5632,7 @@ h3.buoy-drawer-title {
 
 [data-theme="dark"] .rail-btn.pin-mode-active,
 [data-theme="dark"] .metric-status-watch,
+[data-theme="dark"] .metric-status-caution,
 [data-theme="dark"] .metric-status-stale,
 [data-theme="dark"] .squall-status.squall-watch,
 [data-theme="dark"] .squall-hero {

@@ -115,8 +115,13 @@
   function liveAlertFromEvent(ev) {
     const boat = ev.boat || ev.vessel_id || 'Unidentified vessel';
     const hasFix = typeof ev.latitude === 'number' && typeof ev.longitude === 'number';
+    const provenance = ev.is_synthetic === false ? 'real' : (ev.is_synthetic === true ? 'synthetic' : 'unknown');
+    const isRealLive = provenance === 'real';
+    const isSynthetic = provenance === 'synthetic';
     const alert = {
-      isLive: true,
+      isLive: isRealLive,
+      isSynthetic: isSynthetic,
+      provenance: provenance,
       sosEventId: ev.id,
       type: 'sos',
       desc: 'SOS — ' + boat + (ev.note ? ' — “' + ev.note + '”' : ''),
@@ -128,12 +133,17 @@
       confidence: null,
       stage: 'DISTRESS CALL — ' + deliveryPath(ev),
       // Read by dashboard-vessels-alerts.js's [data-eta-at] countdown span.
-      etaAt: ev.eta_at || null
+      etaAt: ev.eta_at || null,
+      fisherReply: ev.fisher_reply || null
     };
     alert.drawerData = {
       alertType: 'sos',
-      headerText: 'SOS — DISTRESS CALL RECEIVED',
+      headerText: provenance === 'real'
+        ? 'SOS — DISTRESS CALL RECEIVED'
+        : (provenance === 'synthetic' ? 'DEMO SOS — SIMULATED DISTRESS CALL' : 'SOS — DISTRESS CALL (PROVENANCE UNKNOWN)'),
       sosEventId: ev.id,
+      isSynthetic: isSynthetic,
+      provenance: provenance,
       vesselId: ev.vessel_id || 'Unknown',
       owner: boat,
       position: sosPosition(ev),
@@ -191,17 +201,32 @@
     });
   }
 
+  let activeSosReqSeq = 0;
+  let lastAcceptedSosSeq = 0;
+
   function loadActiveSos() {
+    const seq = ++activeSosReqSeq;
     return authFetch('/api/sos/active')
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
       .then(function (data) {
-        const events = (data && data.events) || [];
-        liveAlerts.splice(0, liveAlerts.length);
-        Array.prototype.push.apply(liveAlerts, events.map(liveAlertFromEvent));
+        if (!data || !Array.isArray(data.events)) {
+          throw new Error('Malformed SOS feed payload');
+        }
+        const mapped = data.events.map(liveAlertFromEvent);
 
+        // Discard responses that were superseded by a newer accepted response
+        if (seq < lastAcceptedSosSeq) {
+          return;
+        }
+        lastAcceptedSosSeq = seq;
+
+        liveAlerts.splice(0, liveAlerts.length);
+        Array.prototype.push.apply(liveAlerts, mapped);
+
+        const events = data.events;
         // Announce genuinely new calls, but never on the first load - a
         // dispatcher opening the dashboard should not be hit with a klaxon for
         // events they already handled before the page refreshed.
@@ -242,6 +267,7 @@
         // STALE/OFFLINE on its own once enough time has passed without a
         // fresh lastSosSuccessMs, which this call makes immediate instead of
         // waiting up to a second for the next tick.
+        if (seq < lastAcceptedSosSeq) return;
         console.warn('[AqOne] Live SOS poll failed:', err.message);
         updateSyncStatus();
       });
@@ -256,7 +282,6 @@
   ns.liveSosMarkers = liveSosMarkers;
   ns.liveSosFirstLoad = liveSosFirstLoad;
   ns.knownSosIds = knownSosIds;
-  ns.lastSosSuccessMs = lastSosSuccessMs;
   ns.syncStatusEl = syncStatusEl;
   ns.syncTextEl = syncTextEl;
   ns.bannerTimeEl = bannerTimeEl;

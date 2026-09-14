@@ -1,13 +1,21 @@
 """Standalone calibration harness — reproduces app/demo/scenarios.py pressure
 staging and runs the REAL squall model against each beat."""
-import hashlib, math, sys
+import hashlib
+import math
+import sys
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
 
 sys.path.insert(0, '.')
-from app.ai.squall import (DEFAULT_THRESHOLD, build_buoys, build_history,
-                           detect_squall, extract_pressure_features, load_bundle)
+from app.ai.squall import (
+    DEFAULT_THRESHOLD,
+    build_buoys,
+    build_history,
+    detect_squall,
+    extract_pressure_features,
+    load_bundle,
+)
 from app.simulation.generator import _build_buoys, _event_pressure_at, _offset
 
 # --- verbatim copies of the constants and helpers in app/demo/scenarios.py ---
@@ -22,7 +30,7 @@ BEAT_AGE = {0: 0, 1: 60, 2: 75, 3: 90, 4: 90, 5: 90, 6: 90}
 
 
 def _stable_noise(buoy_id, observed_at):
-    key = f'{buoy_id}:{observed_at.isoformat()}'.encode('utf-8')
+    key = f'{buoy_id}:{observed_at.isoformat()}'.encode()
     value = int.from_bytes(hashlib.sha256(key).digest()[:4], 'big') / 2**32
     return (value * 2.0 - 1.0) * 0.16
 
@@ -84,7 +92,7 @@ for beat in (0, 1, 2, 3):
     det = detect_squall(fb, buoy_meta, bundle)
     pressures = [r['pressure_hpa'] for r in rows]
     base = [r['pressure_hpa'] for r in window_rows(buoy_rows, 0, as_of)]
-    drop = max(b - p for b, p in zip(base, pressures))
+    drop = max(b - p for b, p in zip(base, pressures, strict=False))
     prob = det.probability if det else None
     results[beat] = prob
     shown = f'{prob:.4f}' if prob is not None else 'below thresh'

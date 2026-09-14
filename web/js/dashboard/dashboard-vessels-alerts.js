@@ -1,13 +1,13 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
-  var escapeHtml = ns.escapeHtml;
-  var alertBadge = ns.alertBadge;
+  var escapeHtml = ns.escapeHtml || function (s) { return s == null ? '' : String(s); };
+  var alertBadge = ns.alertBadge || function () { return { cssClass: '', text: '' }; };
   var map = ns.map;
   var vesselLayer = ns.vesselLayer;
   var createMarkerIcon = ns.createMarkerIcon;
   var createOverdueIcon = ns.createOverdueIcon;
-  var makePopup = ns.makePopup;
+  var makePopup = ns.makePopup || function () { return ''; };
 
   // ===== VESSEL DATA (phone–buoy contact events) =====
   const vessels = [
@@ -77,7 +77,7 @@
     const filtered = filter === 'all' ? vessels : vessels.filter(v => v.status === filter);
     var statusPriority = { 'overdue': 0, 'in-coverage': 1, 'out-of-coverage': 2 };
     var sorted = filtered.slice().sort(function (a, b) {
-      return (statusPriority[a.status] || 9) - (statusPriority[b.status] || 9);
+      return (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9);
     });
     list.innerHTML = sorted.map(v => `
       <div class="vessel-row${v.status === 'overdue' ? ' vessel-overdue' : ''}" data-vessel-id="${v.id}">
@@ -126,11 +126,11 @@
 
   // ===== ALERT DATA (confidence-scored, escalation ladder) =====
   const alertData = [
-    { type: 'overdue-vessel', desc: 'Overdue \u2014 "San Pedro" (V-002) missed expected contact at Buoy-C', time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 88, stage: 'STAGE 3 \u2014 SCORED ALERT' },
-    { type: 'sos',             desc: 'Manual SOS \u2014 Vessel "San Pedro" (V-002)',                       time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 92, stage: 'STAGE 3 \u2014 SCORED ALERT' },
-    { type: 'wave-zone',       desc: 'Squall Nowcast \u2014 RETURN NOW on Buoy-B / Buoy-C',                time: '12 minutes ago',  lat: 11.7029, lng: 122.5107, status: 'active', vesselId: null, confidence: 88, stage: 'SQUALL \u2014 45 MIN LEAD' },
-    { type: 'overdue-vessel',  desc: 'Overdue \u2014 "Maria Gracia" (V-005) check-in request outstanding', time: '1 hour 12 minutes ago', lat: 11.6768, lng: 122.4757, status: 'acknowledged', vesselId: 'V-005', confidence: 64, stage: 'STAGE 2 \u2014 CHECK-IN' },
-    { type: 'capsizing-risk',  desc: 'Resolved \u2014 false alarm from single-vessel deviation',            time: '2 hours ago',     lat: 11.6563, lng: 122.5327, status: 'resolved', vesselId: null, confidence: 41, stage: 'STAGE 1 \u2014 SILENT CHECK-IN' },
+    { type: 'overdue-vessel', desc: 'Overdue \u2014 "San Pedro" (V-002) missed expected contact at Buoy-C', time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 88, stage: 'STAGE 3 \u2014 SCORED ALERT', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'sos',             desc: 'Manual SOS \u2014 Vessel "San Pedro" (V-002)',                       time: '14 minutes ago',  lat: 11.7141, lng: 122.4166, status: 'active', vesselId: 'V-002', confidence: 92, stage: 'STAGE 3 \u2014 SCORED ALERT', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'wave-zone',       desc: 'Squall Nowcast \u2014 RETURN NOW on Buoy-B / Buoy-C',                time: '12 minutes ago',  lat: 11.7029, lng: 122.5107, status: 'active', vesselId: null, confidence: 88, stage: 'SQUALL \u2014 45 MIN LEAD', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'overdue-vessel',  desc: 'Overdue \u2014 "Maria Gracia" (V-005) check-in request outstanding', time: '1 hour 12 minutes ago', lat: 11.6768, lng: 122.4757, status: 'acknowledged', vesselId: 'V-005', confidence: 64, stage: 'STAGE 2 \u2014 CHECK-IN', isLive: false, isSynthetic: true, provenance: 'synthetic' },
+    { type: 'capsizing-risk',  desc: 'Resolved \u2014 false alarm from single-vessel deviation',            time: '2 hours ago',     lat: 11.6563, lng: 122.5327, status: 'resolved', vesselId: null, confidence: 41, stage: 'STAGE 1 \u2014 SILENT CHECK-IN', isLive: false, isSynthetic: true, provenance: 'synthetic' },
   ];
 
   // Real SOS events from the backend. Kept in a separate array from the demo
@@ -156,7 +156,10 @@
     return `<div class="alert-icon ${colors[type] || 'icon-yellow'}">${icons[type] || ''}</div>`;
   }
 
-  function alertStatusPill(status) {
+  function alertStatusPill(status, fisherReply) {
+    if (fisherReply === 1) {
+      return '<span class="alert-status status-danger">Still in Danger</span>';
+    }
     const map = { active: 'status-active', acknowledged: 'status-acknowledged', resolved: 'status-resolved' };
     return `<span class="alert-status ${map[status] || ''}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>`;
   }
@@ -167,20 +170,20 @@
     return '#f1c40f';
   }
 
-  // A live SOS shows no confidence score. The other alert types are model
+  // An SOS shows no confidence score. The other alert types are model
   // output and a percentage is meaningful; a person pressing the button is a
   // fact, and dressing it in a fabricated confidence number would be a lie in
   // the one place on this dashboard where lying costs the most.
   function alertConfidenceRow(a) {
-    if (a.isLive) {
+    if (a.type === 'sos' || a.confidence == null) {
       return `<div class="aq-alert-conf">
-            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
+            <span class="aq-stage-mini">${escapeHtml(a.stage || '')}</span>
           </div>`;
     }
     return `<div class="aq-alert-conf">
             <span class="aq-conf-mini" style="color:${confidenceColor(a.confidence)};">${a.confidence}% conf</span>
             <span class="aq-conf-bar"><span class="aq-conf-fill" style="width:${a.confidence}%;background:${confidenceColor(a.confidence)};"></span></span>
-            <span class="aq-stage-mini">${escapeHtml(a.stage)}</span>
+            <span class="aq-stage-mini">${escapeHtml(a.stage || '')}</span>
           </div>`;
   }
 
@@ -188,12 +191,18 @@
     const list = document.getElementById('alert-list');
     const rows = allAlerts();
     list.innerHTML = rows.map((a, i) => `
-      <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}">
+      <div class="alert-row${(a.isLive || a.provenance === 'unknown') ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}" tabindex="0" role="button" aria-label="Incident: ${escapeHtml(a.desc)}">
         ${alertIcon(a.type)}
         <div class="alert-info">
           <div class="alert-desc">${(function () {
-            var badge = alertBadge(a.isLive);
-            var title = a.isLive ? '' : ' title="Scripted sample data, not a real incident"';
+            var prov = a.provenance || (a.isLive ? 'real' : (a.isSynthetic ? 'synthetic' : (a.type === 'sos' ? 'unknown' : 'demo')));
+            var badge = alertBadge(prov);
+            var title = '';
+            if (prov === 'synthetic' || prov === 'demo' || (!a.isLive && prov !== 'unknown')) {
+              title = ' title="Scripted sample data, not a real incident"';
+            } else if (prov === 'unknown') {
+              title = ' title="Distress call with unknown provenance"';
+            }
             return '<span class="' + badge.cssClass + '"' + title + '>' + badge.text + '</span>';
           })()}${escapeHtml(a.desc)}</div>
           <div class="alert-meta">${a.time} &middot; ${
@@ -203,12 +212,12 @@
           }${a.etaAt ? ' &middot; <span data-eta-at="' + escapeHtml(a.etaAt) + '"></span>' : ''}</div>
           ${alertConfidenceRow(a)}
         </div>
-        ${alertStatusPill(a.status)}
+        ${alertStatusPill(a.status, a.fisherReply != null ? a.fisherReply : (a.drawerData && a.drawerData.fisherReply))}
       </div>
     `).join('');
 
     list.querySelectorAll('.alert-row').forEach(row => {
-      row.addEventListener('click', () => {
+      function activateAlert() {
         var a = rows[row.dataset.alertIndex];
         if (!a) return;
         // An SOS sent without a GPS fix is still a real distress call and must
@@ -216,35 +225,31 @@
         if (a.lat != null && a.lng != null) {
           map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
         }
-        if (a.isLive && a.drawerData) {
-          ns.openIncidentDrawer(a.drawerData, ns.liveSosMarkers[a.sosEventId] || null);
+        if (a.drawerData && (a.sosEventId != null || a.type === 'sos')) {
+          ns.openIncidentDrawer(a.drawerData, (ns.liveSosMarkers && a.sosEventId != null && ns.liveSosMarkers[a.sosEventId]) || null);
           return;
         }
         if (a.vesselId) {
           var vm = vesselMarkers[a.vesselId];
           if (vm) vm.openPopup();
         }
+      }
+      row.addEventListener('click', activateAlert);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          activateAlert();
+        }
       });
     });
   }
 
-  renderAlerts();
-
-  const activeAlertCount = liveAlerts.filter(a => a.status === 'active').length;
-  document.getElementById('badge-alerts').textContent = activeAlertCount;
-
   const liveBanner = document.getElementById('live-alert-banner');
   const bannerCountEl = document.getElementById('banner-alert-count');
-  const sosStatusEl = document.getElementById('stats-sos-status');
-  if (bannerCountEl) bannerCountEl.textContent = activeAlertCount;
-  if (sosStatusEl) {
-    sosStatusEl.textContent = activeAlertCount ? 'ACTION NEEDED' : 'ALL CLEAR';
-    sosStatusEl.className = 'metric-status metric-status-' + (activeAlertCount ? 'danger' : 'clear');
-  }
-  if (liveBanner) liveBanner.classList.toggle('has-alerts', activeAlertCount > 0);
-
   const squallCountEl = document.getElementById('banner-squall-count');
   if (squallCountEl) squallCountEl.textContent = 0;
+
+  let activeAlertCount = 0;
 
   // Recomputes the alert badge and banner after alertData changes.
   //
@@ -254,20 +259,43 @@
   // ReferenceError on that path. This is the branch's logic minus the hotspot
   // parts, reusing the elements resolved just above.
   function syncAlertIndicators() {
-    const activeCount = liveAlerts.filter(function (alert) {
+    const unackedCount = liveAlerts.filter(function (alert) {
       return alert.status === 'active';
     }).length;
+    activeAlertCount = unackedCount;
+    ns.activeAlertCount = activeAlertCount;
+    const unresolvedCount = liveAlerts.filter(function (alert) {
+      return alert.status !== 'resolved';
+    }).length;
+    const dangerReplyCount = liveAlerts.filter(function (alert) {
+      const reply = alert.fisherReply != null ? alert.fisherReply : (alert.drawerData && alert.drawerData.fisherReply);
+      return reply === 1 && alert.status !== 'resolved';
+    }).length;
+
     const alertBadge = document.getElementById('badge-alerts');
     const sosStatus = document.getElementById('stats-sos-status');
-    if (alertBadge) alertBadge.textContent = activeCount;
-    if (bannerCountEl) bannerCountEl.textContent = activeCount;
+    if (alertBadge) alertBadge.textContent = unackedCount;
+    if (bannerCountEl) bannerCountEl.textContent = unackedCount;
     if (sosStatus) {
-      sosStatus.textContent = activeCount ? 'ACTION NEEDED' : 'ALL CLEAR';
-      sosStatus.className = 'metric-status metric-status-' + (activeCount ? 'danger' : 'clear');
+      if (unackedCount > 0) {
+        sosStatus.textContent = unackedCount === 1 ? '1 UNACKNOWLEDGED SOS' : unackedCount + ' UNACKNOWLEDGED SOS';
+        sosStatus.className = 'metric-status metric-status-danger';
+      } else if (dangerReplyCount > 0) {
+        sosStatus.textContent = 'STILL IN DANGER (' + dangerReplyCount + ' unresolved)';
+        sosStatus.className = 'metric-status metric-status-danger';
+      } else if (unresolvedCount > 0) {
+        sosStatus.textContent = unresolvedCount === 1 ? '1 UNRESOLVED (ACKNOWLEDGED)' : unresolvedCount + ' UNRESOLVED (ACKNOWLEDGED)';
+        sosStatus.className = 'metric-status metric-status-caution';
+      } else {
+        sosStatus.textContent = 'NO UNACKNOWLEDGED SOS';
+        sosStatus.className = 'metric-status metric-status-clear';
+      }
     }
-    if (liveBanner) liveBanner.classList.toggle('has-alerts', activeCount > 0);
+    if (liveBanner) liveBanner.classList.toggle('has-alerts', unackedCount > 0 || unresolvedCount > 0);
     renderAlerts();
   }
+
+  syncAlertIndicators();
 
   ns.vessels = vessels;
   ns.vesselStatusBadge = vesselStatusBadge;

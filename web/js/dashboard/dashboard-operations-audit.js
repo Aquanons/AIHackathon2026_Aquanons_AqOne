@@ -16,6 +16,8 @@
   var activityDrawerContent = document.getElementById('activity-drawer-content');
   var activityDrawerUnavailable = document.getElementById('activity-drawer-unavailable');
 
+  var currentActivitySeq = 0;
+
   function closeActivityDrawer() {
     if (activityDrawer) activityDrawer.classList.remove('open');
   }
@@ -28,7 +30,9 @@
   // that the case itself changed state (plan item 5).
   function openActivityDrawer(resourceType, resourceId, title) {
     if (!activityDrawer || !activityDrawerContent) return;
-    activityDrawerTitle.textContent = title || 'Case Activity';
+    var seq = ++currentActivitySeq;
+    var requestedTitle = title || 'Case Activity';
+    activityDrawerTitle.textContent = requestedTitle;
     activityDrawerContent.innerHTML = '<div class="audit-timeline-loading">Loading…</div>';
     if (activityDrawerUnavailable) activityDrawerUnavailable.hidden = true;
     activityDrawer.classList.add('open');
@@ -42,9 +46,12 @@
         return res.json();
       })
       .then(function (data) {
+        if (seq !== currentActivitySeq) return;
+        activityDrawerTitle.textContent = requestedTitle;
         activityDrawerContent.innerHTML = auditTimelineHtml(data.events);
       })
       .catch(function (err) {
+        if (seq !== currentActivitySeq) return;
         console.warn('[AqOne] Case timeline unavailable:', err.message);
         activityDrawerContent.innerHTML = '';
         if (activityDrawerUnavailable) activityDrawerUnavailable.hidden = false;
@@ -88,11 +95,15 @@
     };
   }
 
-  function buildAuditQuery(extra) {
-    var filters = currentAuditFilters();
+  var currentAuditSearchSeq = 0;
+  var auditIsLoading = false;
+  var appliedAuditFilters = null;
+
+  function buildAuditQuery(filters, extra) {
+    var active = filters || currentAuditFilters();
     var params = new URLSearchParams();
-    Object.keys(filters).forEach(function (key) {
-      if (filters[key]) params.set(key, filters[key]);
+    Object.keys(active).forEach(function (key) {
+      if (active[key]) params.set(key, active[key]);
     });
     if (extra) {
       Object.keys(extra).forEach(function (key) { params.set(key, extra[key]); });
@@ -117,9 +128,17 @@
   }
 
   // Appends on "Load more" rather than replacing - never loads the complete
-  // history into the browser at once (plan item 3).
-  function fetchAuditPage(cursor) {
-    var qs = buildAuditQuery(cursor ? { cursor: cursor } : null);
+  // history into the browser at once (plan item 3). Uses the snapshotted
+  // appliedAuditFilters so modifying form inputs without submitting does
+  // not corrupt pagination.
+  function fetchAuditPage(cursor, requestedFilters) {
+    var seq = ++currentAuditSearchSeq;
+    auditIsLoading = true;
+    if (auditLoadMoreBtn) auditLoadMoreBtn.disabled = true;
+
+    var isNewSearch = !cursor;
+    var filters = isNewSearch ? (requestedFilters || currentAuditFilters()) : (appliedAuditFilters || currentAuditFilters());
+    var qs = buildAuditQuery(filters, cursor ? { cursor: cursor } : null);
     if (auditErrorEl) auditErrorEl.hidden = true;
 
     return authFetch('/api/ops/audit' + (qs ? '?' + qs : ''))
@@ -132,12 +151,15 @@
         return res.json();
       })
       .then(function (data) {
+        if (seq !== currentAuditSearchSeq) return;
+        appliedAuditFilters = data.applied_filters || filters;
         auditEvents = cursor ? auditEvents.concat(data.events || []) : (data.events || []);
         auditNextCursor = data.next_cursor;
         renderAuditResults();
-        renderAppliedFilters(data.applied_filters);
+        renderAppliedFilters(appliedAuditFilters);
       })
       .catch(function (err) {
+        if (seq !== currentAuditSearchSeq) return;
         console.warn('[AqOne] Audit search failed:', err.message);
         if (auditErrorEl) {
           auditErrorEl.hidden = false;
@@ -147,13 +169,18 @@
             ? "You don't have permission to view the audit log."
             : 'Audit search unavailable right now.';
         }
+      })
+      .finally(function () {
+        if (seq === currentAuditSearchSeq) {
+          auditIsLoading = false;
+          if (auditLoadMoreBtn) auditLoadMoreBtn.disabled = false;
+        }
       });
   }
 
   function renderAuditPanel() {
-    auditEvents = [];
-    auditNextCursor = null;
-    fetchAuditPage(null);
+    var targetFilters = currentAuditFilters();
+    return fetchAuditPage(null, targetFilters);
   }
 
   if (auditFilterForm) {
@@ -165,7 +192,7 @@
 
   if (auditLoadMoreBtn) {
     auditLoadMoreBtn.addEventListener('click', function () {
-      if (auditNextCursor) fetchAuditPage(auditNextCursor);
+      if (!auditIsLoading && auditNextCursor) fetchAuditPage(auditNextCursor);
     });
   }
 
@@ -176,8 +203,10 @@
   // Same Blob/createObjectURL/<a download> technique as the existing
   // client-side "Export Map Snapshot" button (dashboard-profile-pill.js) -
   // here downloading server-returned bytes instead of client-built JSON.
+  // Uses appliedAuditFilters so export matches what is currently searched.
   function downloadAuditExport(format) {
-    var qs = buildAuditQuery({ format: format });
+    var filters = appliedAuditFilters || currentAuditFilters();
+    var qs = buildAuditQuery(filters, { format: format });
     authFetch('/api/ops/audit/export?' + qs)
       .then(function (res) {
         if (!res.ok) {
@@ -214,6 +243,8 @@
     auditExportJsonBtn.addEventListener('click', function () { downloadAuditExport('json'); });
   }
 
+  ns.activityDrawer = activityDrawer;
+  ns.closeActivityDrawer = closeActivityDrawer;
   ns.openActivityDrawer = openActivityDrawer;
   ns.renderAuditPanel = renderAuditPanel;
 
