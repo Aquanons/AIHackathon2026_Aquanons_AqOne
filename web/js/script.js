@@ -1,11 +1,13 @@
-const API_BASE = window.location.origin;
+const API_BASE = (typeof window !== 'undefined' && window.location) ? window.location.origin : '';
 const LAST_EMAIL_KEY = 'aqoneLastEmail';
 
 function showMessage(message, isError = false) {
   if (isError) {
     console.error(message);
   }
-  alert(message);
+  if (typeof alert === 'function') {
+    alert(message);
+  }
 }
 
 async function postJson(path, payload) {
@@ -37,7 +39,7 @@ async function handleLogin(event) {
   event.preventDefault();
 
   const email = document.getElementById('email')?.value.trim() || '';
-  const password = document.getElementById('password')?.value.trim() || '';
+  const password = document.getElementById('password')?.value || '';
 
   if (!email || !password) {
     showMessage('Please enter your email and password.');
@@ -47,6 +49,7 @@ async function handleLogin(event) {
   try {
     const result = await postJson('/api/login', { email, password });
     sessionStorage.setItem(LAST_EMAIL_KEY, email);
+    sessionStorage.removeItem('aqoneDemoBypassActive');
     if (result.token) {
       sessionStorage.setItem('aqoneToken', result.token);
     }
@@ -87,4 +90,14 @@ function initAuthForms() {
   }
 }
 
-window.addEventListener('DOMContentLoaded', initAuthForms);
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('DOMContentLoaded', initAuthForms);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    handleLogin: handleLogin,
+    handleDemoBypass: handleDemoBypass,
+    postJson: postJson
+  };
+}

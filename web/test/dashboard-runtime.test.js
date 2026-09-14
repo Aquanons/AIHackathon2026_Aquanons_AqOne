@@ -74,10 +74,14 @@ function createStubElement(tag = 'div', id = '') {
     },
     dispatchEvent(event) {
       const type = typeof event === 'string' ? event : event.type;
-      (listeners[type] || []).forEach(fn => fn(event));
+      const ev = typeof event === 'string' ? { type: event, target: this } : event;
+      (listeners[type] || []).forEach(fn => fn.call(this, ev));
     },
     click() {
       this.dispatchEvent({ type: 'click', target: this });
+    },
+    closest(selector) {
+      return null;
     },
     querySelectorAll() {
       return [];
@@ -137,6 +141,8 @@ function createDOMContext(elements = {}, ns = { ready: true }) {
     setInterval() { return 1; },
     clearInterval() {},
     setTimeout(fn) { return 1; },
+    addEventListener() {},
+    removeEventListener() {},
     Date: Date,
     JSON: JSON,
     Number: Number,
@@ -459,6 +465,379 @@ test('Phase 1 - F10: Profile displays authenticated session and prevents origin-
     assert.ok(
       !profileHtml.includes('btn-edit-avatar'),
       'Systemprofile.html must not contain unsupported change photo button'
+    );
+  });
+});
+
+test('Phase 2 - F03 & F04: Module wiring and AI panel integration', async (t) => {
+  await t.test('openIncidentDrawer renders scored confidence without ReferenceError', () => {
+    const confValue = createStubElement('span', 'sos-confidence-value');
+    const confFill = createStubElement('span', 'sos-confidence-fill');
+    const confBlock = createStubElement('div', 'sos-conf');
+    confValue.closest = (sel) => (sel === '.sos-conf' ? confBlock : null);
+    const stageEl = createStubElement('span', 'sos-stage');
+    const nextContactEl = createStubElement('span', 'sos-next-contact');
+    const timerEl = createStubElement('span', 'sos-timer');
+    const drawer = createStubElement('div', 'sos-drawer');
+
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml,
+      authFetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }),
+      confidenceColor: (c) => (c >= 80 ? '#e74c3c' : '#f1c40f'),
+      responderStatusHtml: () => '',
+      formatEta: () => '',
+      showToast() {}
+    };
+
+    const elements = {
+      'sos-confidence-value': confValue,
+      'sos-confidence-fill': confFill,
+      'sos-conf': confBlock,
+      'sos-stage': stageEl,
+      'sos-next-contact': nextContactEl,
+      'sos-timer': timerEl,
+      'sos-drawer': drawer,
+      'sos-drawer-header': createStubElement('div', 'sos-drawer-header'),
+      'sos-drawer-title': createStubElement('span', 'sos-drawer-title'),
+      'sos-drawer-close': createStubElement('button', 'sos-drawer-close'),
+      'sos-btn-zoom': createStubElement('button', 'sos-btn-zoom'),
+      'sos-btn-acknowledge': createStubElement('button', 'sos-btn-acknowledge'),
+      'sos-btn-resolve': createStubElement('button', 'sos-btn-resolve'),
+      'sos-btn-broadcast': createStubElement('button', 'sos-btn-broadcast'),
+      'sos-btn-checkin': createStubElement('button', 'sos-btn-checkin'),
+      'sos-btn-activity': createStubElement('button', 'sos-btn-activity'),
+      'sos-broadcast-msg': createStubElement('div', 'sos-broadcast-msg'),
+      'sos-timer-label': createStubElement('span', 'sos-timer-label'),
+      'sos-vessel-id': createStubElement('span', 'sos-vessel-id'),
+      'sos-owner': createStubElement('span', 'sos-owner'),
+      'sos-position': createStubElement('span', 'sos-position'),
+      'sos-buoy': createStubElement('span', 'sos-buoy'),
+      'sos-coverage': createStubElement('span', 'sos-coverage'),
+      'sos-responder-block': createStubElement('div', 'sos-responder-block')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-incidents.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    assert.equal(typeof ns.openIncidentDrawer, 'function');
+    ns.openIncidentDrawer({
+      id: 'SOS-TEST',
+      vesselName: 'Bangka One',
+      confidence: 85,
+      stage: 'STAGE 2 - alert'
+    });
+
+    assert.equal(confValue.textContent, '85%');
+    assert.equal(confValue.style.color, '#e74c3c');
+    assert.equal(confFill.style.width, '85%');
+    assert.equal(confFill.style.background, '#e74c3c');
+  });
+
+  await t.test('populated AI risk rows render without ns._escHtml exception and escape content', () => {
+    const riskList = createStubElement('div', 'ai-risk-list');
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml,
+      squallStatusHtml: () => '',
+      authFetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }),
+      aiStatusClass: () => 'status-watch',
+      showToast() {}
+    };
+
+    const { window, document } = createDOMContext({ 'ai-risk-list': riskList }, ns);
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {} }) }),
+      featureGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {}, getBounds: () => ({ isValid: () => false }) }) })
+    };
+
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-ai-ops.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    assert.equal(typeof ns.renderRiskFeed, 'function');
+    ns.renderRiskFeed([
+      {
+        vessel_id: '<img src=x>V-999',
+        trip_id: 'TRIP-42',
+        expected_next_buoy_id: 'B-02',
+        status: 'watch',
+        score: 0.75,
+        factors: [{ name: 'distance', contribution: 0.35, explanation: 'far from shore' }]
+      }
+    ]);
+
+    assert.ok(riskList.innerHTML.includes('TRIP-42'), 'risk row was rendered');
+    assert.ok(!riskList.innerHTML.includes('<img src=x>'), 'vessel_id must not have raw <img>');
+    assert.ok(riskList.innerHTML.includes('&lt;img src=x&gt;V-999'), 'vessel_id was safely escaped');
+  });
+
+  await t.test('squall watch handles detection with geometry and calls getBounds on featureGroup', () => {
+    let fitBoundsCalled = false;
+    let getBoundsCalled = false;
+    const fakeBounds = {
+      isValid: () => true,
+      pad: () => fakeBounds
+    };
+    const squallFeatureGroup = {
+      addTo: () => squallFeatureGroup,
+      clearLayers: () => {},
+      addLayer: () => {},
+      getBounds: () => {
+        getBoundsCalled = true;
+        return fakeBounds;
+      }
+    };
+    const fakeMap = {
+      fitBounds: () => { fitBoundsCalled = true; },
+      createPane: () => ({ style: {} }),
+      getPane: () => ({ style: {} }),
+      on: () => {},
+      setView: () => {}
+    };
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {}, getLayers: () => [] }) }),
+      featureGroup: () => squallFeatureGroup,
+      geoJSON: () => ({ addTo: () => {} }),
+      polyline: () => ({ addTo: () => {} })
+    };
+
+    const squallSummary = createStubElement('div', 'ai-squall-summary');
+    const squallStatus = createStubElement('div', 'ai-squall-status');
+    const ns = {
+      ready: true,
+      escapeHtml: escapeHtml,
+      authFetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }),
+      squallStatusHtml: () => '<span>LIVE</span>',
+      map: fakeMap,
+      squallLayer: squallFeatureGroup
+    };
+
+    const { window, document } = createDOMContext({ 'ai-squall-summary': squallSummary, 'ai-squall-status': squallStatus }, ns);
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-ai-ops.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    assert.equal(typeof ns.renderSquallWatch, 'function');
+    // Test with active polygon
+    ns.renderSquallWatch({
+      level: 'warning',
+      detections: [{
+        as_of: new Date().toISOString(),
+        affected_polygon: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } }
+      }]
+    }, []);
+
+    assert.ok(getBoundsCalled, 'getBounds was called on squall featureGroup');
+    assert.ok(fitBoundsCalled, 'map.fitBounds was invoked with valid bounds');
+
+    // Test detection without geometry (null polygon) - must not crash
+    let noGeomBoundsCalled = false;
+    squallFeatureGroup.getBounds = () => {
+      noGeomBoundsCalled = true;
+      return { isValid: () => false };
+    };
+    fitBoundsCalled = false;
+    ns.renderSquallWatch({
+      level: 'advisory',
+      detections: [{
+        as_of: new Date().toISOString(),
+        affected_polygon: null
+      }]
+    }, []);
+    assert.ok(noGeomBoundsCalled, 'getBounds called on empty geometry');
+    assert.ok(!fitBoundsCalled, 'fitBounds not called when bounds are invalid');
+  });
+});
+
+test('Phase 2 - F11 & F14: Secondary UI wiring and real session behavior', async (t) => {
+  await t.test('squall and drift layer toggles control actual AI groups', () => {
+    let squallAdded = false, squallRemoved = false;
+    let driftAdded = false, driftRemoved = false;
+    let drawAdded = false, drawRemoved = false;
+
+    const mockAiSquallLayer = {
+      addTo() { squallAdded = true; squallRemoved = false; },
+      remove() {}
+    };
+    const mockAiContoursLayer = {
+      addTo() { driftAdded = true; driftRemoved = false; },
+      remove() {}
+    };
+    const mockAiDrawLayer = {
+      addTo() { drawAdded = true; drawRemoved = false; },
+      remove() {}
+    };
+
+    const mockMap = {
+      hasLayer: (l) => {
+        if (l === mockAiSquallLayer) return squallAdded;
+        if (l === mockAiContoursLayer) return driftAdded;
+        if (l === mockAiDrawLayer) return drawAdded;
+        return true;
+      },
+      removeLayer(l) {
+        if (l === mockAiSquallLayer) { squallRemoved = true; squallAdded = false; }
+        if (l === mockAiContoursLayer) { driftRemoved = true; driftAdded = false; }
+        if (l === mockAiDrawLayer) { drawRemoved = true; drawAdded = false; }
+      },
+      on() {}
+    };
+
+    const toggleSquall = createStubElement('input', 'toggle-squall');
+    toggleSquall.checked = true;
+    const toggleDrift = createStubElement('input', 'toggle-drift');
+    toggleDrift.checked = true;
+
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {} }) }),
+      featureGroup: () => ({ addTo: () => ({ clearLayers: () => {}, addLayer: () => {} }) })
+    };
+
+    const ns = {
+      ready: true,
+      map: mockMap,
+      aiSquallLayer: mockAiSquallLayer,
+      aiContoursLayer: mockAiContoursLayer,
+      aiDrawLayer: mockAiDrawLayer,
+      pinLayer: { addLayer() {}, removeLayer() {} }
+    };
+
+    const { window, document } = createDOMContext({
+      'toggle-squall': toggleSquall,
+      'toggle-drift': toggleDrift
+    }, ns);
+
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-tools.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    // Initial state: simulated added
+    squallAdded = true;
+    driftAdded = true;
+    drawAdded = true;
+
+    // Toggle squall off
+    toggleSquall.checked = false;
+    toggleSquall.dispatchEvent('change');
+    assert.ok(squallRemoved, 'aiSquallLayer was removed when toggle unchecked');
+
+    // Toggle squall on
+    toggleSquall.checked = true;
+    toggleSquall.dispatchEvent('change');
+    assert.ok(squallAdded, 'aiSquallLayer was re-added when toggle checked');
+
+    // Toggle drift off
+    toggleDrift.checked = false;
+    toggleDrift.dispatchEvent('change');
+    assert.ok(driftRemoved, 'aiContoursLayer was removed when toggle unchecked');
+    assert.ok(drawRemoved, 'aiDrawLayer was removed when toggle unchecked');
+  });
+
+  await t.test('btn-export has exactly one working handler and does not reference undefined facilities', () => {
+    const profilePillCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-profile-pill.js'), 'utf8');
+    assert.ok(!profilePillCode.includes('facilities.length'), 'dashboard-profile-pill.js must not contain duplicate broken export handler');
+    assert.ok(!profilePillCode.includes("getElementById('btn-export')"), 'btn-export handler must not be duplicated in profile pill');
+    assert.ok(!profilePillCode.includes('aqone-dashboard-export.json'), 'duplicate export json must not be in profile pill');
+
+    const buoyHealthCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-buoy-health.js'), 'utf8');
+    assert.ok(buoyHealthCode.includes('btn-export'), 'dashboard-buoy-health.js preserves functioning export handler');
+    assert.ok(buoyHealthCode.includes('aqone-sar-console-export.json'), 'dashboard-buoy-health.js exports console JSON');
+  });
+
+  await t.test('overdue vessel (priority 0) sorts first before in-coverage and out-of-coverage', () => {
+    const vesselList = createStubElement('div', 'vessel-list');
+    const fakeMarker = {
+      addTo: () => fakeMarker,
+      bindPopup: () => fakeMarker,
+      on: () => fakeMarker,
+      openPopup: () => fakeMarker
+    };
+    const fakeL = {
+      divIcon: () => ({}),
+      marker: () => fakeMarker,
+      layerGroup: () => ({ addLayer: () => {} })
+    };
+
+    const ns = {
+      ready: true,
+      map: { on() {}, setView() {} },
+      vesselLayer: { addLayer() {} },
+      createOverdueIcon: () => ({}),
+      createMarkerIcon: () => ({}),
+      makePopup: () => '',
+      allAlerts: () => [],
+      alertBadge: () => ({ cssClass: '', text: '' })
+    };
+
+    const { window, document } = createDOMContext({
+      'vessel-list': vesselList,
+      'alert-list': createStubElement('div', 'alert-list')
+    }, ns);
+    const code = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-vessels-alerts.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(code, context);
+
+    assert.equal(typeof ns.renderVessels, 'function');
+    ns.renderVessels('all');
+
+    // Check row order in HTML
+    const html = vesselList.innerHTML;
+    const overduePos = html.indexOf('vessel-overdue');
+    assert.ok(overduePos !== -1, 'overdue vessel row rendered');
+    const firstRowEnd = html.indexOf('</div>\n      </div>');
+    assert.ok(overduePos < firstRowEnd, 'overdue vessel must be the very first row in vessel list');
+  });
+
+  await t.test('script.js preserves password spaces and clears demo state upon real login', async () => {
+    const script = require('../js/script.js');
+    let postedData = null;
+
+    global.fetch = async (url, options) => {
+      postedData = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ token: 'REAL-TOKEN', user: { id: 'u1', name: 'Officer' } })
+      };
+    };
+
+    const emailEl = createStubElement('input', 'email');
+    emailEl.value = '  officer@mdrrmo.gov.ph  ';
+    const passEl = createStubElement('input', 'password');
+    passEl.value = '  secret Pass 123  ';
+
+    const testSessionStorage = {
+      data: new Map([['aqoneDemoBypassActive', '1']]),
+      getItem(k) { return this.data.get(k); },
+      setItem(k, v) { this.data.set(k, String(v)); },
+      removeItem(k) { this.data.delete(k); }
+    };
+
+    global.document = {
+      getElementById(id) {
+        if (id === 'email') return emailEl;
+        if (id === 'password') return passEl;
+        return null;
+      }
+    };
+    global.sessionStorage = testSessionStorage;
+    global.window = { location: { href: '' } };
+
+    await script.handleLogin({ preventDefault() {} });
+
+    assert.equal(postedData.email, 'officer@mdrrmo.gov.ph', 'email is trimmed');
+    assert.equal(postedData.password, '  secret Pass 123  ', 'password spaces must be preserved');
+    assert.equal(testSessionStorage.getItem('aqoneDemoBypassActive'), undefined, 'demo bypass flag was removed on real login');
+    assert.equal(testSessionStorage.getItem('aqoneToken'), 'REAL-TOKEN', 'real token set');
+  });
+
+  await t.test('dashboard-core.js clearSession removes aqoneDemoBypassActive', () => {
+    const coreCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-core.js'), 'utf8');
+    assert.ok(
+      coreCode.includes("sessionStorage.removeItem('aqoneDemoBypassActive');"),
+      'clearSession must remove aqoneDemoBypassActive'
     );
   });
 });

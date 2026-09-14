@@ -1,13 +1,13 @@
 (function (ns) {
   'use strict';
   if (!ns.ready) return;
-  var escapeHtml = ns.escapeHtml;
-  var alertBadge = ns.alertBadge;
+  var escapeHtml = ns.escapeHtml || function (s) { return s == null ? '' : String(s); };
+  var alertBadge = ns.alertBadge || function () { return { cssClass: '', text: '' }; };
   var map = ns.map;
   var vesselLayer = ns.vesselLayer;
   var createMarkerIcon = ns.createMarkerIcon;
   var createOverdueIcon = ns.createOverdueIcon;
-  var makePopup = ns.makePopup;
+  var makePopup = ns.makePopup || function () { return ''; };
 
   // ===== VESSEL DATA (phone–buoy contact events) =====
   const vessels = [
@@ -77,7 +77,7 @@
     const filtered = filter === 'all' ? vessels : vessels.filter(v => v.status === filter);
     var statusPriority = { 'overdue': 0, 'in-coverage': 1, 'out-of-coverage': 2 };
     var sorted = filtered.slice().sort(function (a, b) {
-      return (statusPriority[a.status] || 9) - (statusPriority[b.status] || 9);
+      return (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9);
     });
     list.innerHTML = sorted.map(v => `
       <div class="vessel-row${v.status === 'overdue' ? ' vessel-overdue' : ''}" data-vessel-id="${v.id}">

@@ -93,6 +93,7 @@
   function clearSession() {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem('aqoneDemoBypassActive');
   }
 
   function redirectToLogin() {
@@ -274,7 +275,7 @@
   const vesselLayer    = L.layerGroup();
   const coverageLayer  = L.layerGroup();
   const meshLayer      = L.layerGroup();
-  const squallLayer    = L.layerGroup();
+  const squallLayer    = (typeof L !== 'undefined' && typeof L.featureGroup === 'function') ? L.featureGroup() : L.layerGroup();
   const driftLayer     = L.layerGroup();
   const hotspotLayer   = L.layerGroup();
 

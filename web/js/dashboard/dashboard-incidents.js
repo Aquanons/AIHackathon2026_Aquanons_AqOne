@@ -13,6 +13,12 @@
   var syncAlertIndicators = ns.syncAlertIndicators;
   var responderStatusHtml = ns.responderStatusHtml;
   var formatEta = ns.formatEta;
+  var confidenceColor = function (c) {
+    if (typeof ns.confidenceColor === 'function') return ns.confidenceColor(c);
+    if (c >= 80) return '#e74c3c';
+    if (c >= 60) return '#e67e22';
+    return '#f1c40f';
+  };
 
   // ===== INCIDENT DRAWER (scored alert / escalation ladder) =====
   const sosDrawer          = document.getElementById('sos-drawer');
@@ -446,5 +452,6 @@
   ns.ackQuick = ackQuick;
   ns.renderResponderSection = renderResponderSection;
   ns.refreshOpenDrawer = refreshOpenDrawer;
+  ns.confidenceColor = ns.confidenceColor || confidenceColor;
 
 })(window.AqOneDashboard = window.AqOneDashboard || {});

@@ -494,11 +494,25 @@
 
 
   // ===== TOGGLE LAYERS =====
-  function toggleLayer(checkboxId, layer) {
+  function toggleLayer(checkboxId, getLayer) {
     const el = document.getElementById(checkboxId);
     if (!el) return;
     el.addEventListener('change', function () {
-      if (this.checked) { layer.addTo(map); } else { map.removeLayer(layer); }
+      var target = (typeof getLayer === 'function') ? getLayer() : getLayer;
+      var layers = Array.isArray(target) ? target : [target];
+      for (var i = 0; i < layers.length; i++) {
+        var layer = layers[i];
+        if (!layer) continue;
+        if (this.checked) {
+          if (typeof map.hasLayer === 'function' ? !map.hasLayer(layer) : true) {
+            layer.addTo(map);
+          }
+        } else {
+          if (typeof map.hasLayer === 'function' ? map.hasLayer(layer) : true) {
+            map.removeLayer(layer);
+          }
+        }
+      }
     });
   }
 
@@ -509,8 +523,8 @@
   toggleLayer('toggle-buoys',     buoyLayer);
   toggleLayer('toggle-coverage',  coverageLayer);
   toggleLayer('toggle-mesh',      meshLayer);
-  toggleLayer('toggle-squall',    squallLayer);
-  toggleLayer('toggle-drift',     driftLayer);
+  toggleLayer('toggle-squall',    function () { return ns.aiSquallLayer || squallLayer; });
+  toggleLayer('toggle-drift',     function () { return [ns.aiContoursLayer || driftLayer, ns.aiDrawLayer]; });
   toggleLayer('toggle-boundary',  boundaryLayer);
   toggleLayer('toggle-pins',      pinLayer);
   toggleLayer('toggle-hotspots', hotspotLayer);

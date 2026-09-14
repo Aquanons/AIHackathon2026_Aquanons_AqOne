@@ -137,30 +137,30 @@ Wait for explicit user sign-off before Phase 2.
 
 ### Tasks
 
-- [ ] Task 2.1: Reproduce scored-drawer and populated AI-row failures, then bind `ns.confidenceColor` in `dashboard-incidents.js` and replace missing `ns._escHtml` references with `ns.escapeHtml` in `dashboard-ai-ops.js`.
-- [ ] Task 2.2: Use Leaflet `featureGroup` for the squall collection that requires `getBounds`.
+- [x] Task 2.1: Reproduce scored-drawer and populated AI-row failures, then bind `ns.confidenceColor` in `dashboard-incidents.js` and replace missing `ns._escHtml` references with `ns.escapeHtml` in `dashboard-ai-ops.js`.
+- [x] Task 2.2: Use Leaflet `featureGroup` for the squall collection that requires `getBounds`.
   Test both a warning polygon and a detection without geometry.
-- [ ] Task 2.3: Make squall/drift layer toggles in `dashboard-tools.js` control the same groups the AI renderer uses.
+- [x] Task 2.3: Make squall/drift layer toggles in `dashboard-tools.js` control the same groups the AI renderer uses.
   Prefer reuse of existing groups or runtime lookup; do not add a registry or another state layer.
-- [ ] Task 2.4: Delete the duplicate export handler in `dashboard-profile-pill.js`; preserve the functioning handler in `dashboard-buoy-health.js`.
+- [x] Task 2.4: Delete the duplicate export handler in `dashboard-profile-pill.js`; preserve the functioning handler in `dashboard-buoy-health.js`.
   Correct the overdue-priority zero fallback in `dashboard-vessels-alerts.js`.
-- [ ] Task 2.5: Preserve password bytes in `script.js`, and clear demo state when establishing/clearing a real session in `script.js` and `dashboard-core.js`.
+- [x] Task 2.5: Preserve password bytes in `script.js`, and clear demo state when establishing/clearing a real session in `script.js` and `dashboard-core.js`.
   Do not loosen backend 401/403 enforcement.
-- [ ] Task 2.6: Extend the runtime regression file to cover scored drawers, populated AI sections, a squall detection, layer toggles, one export click, sort order, and demo-to-real session transitions.
+- [x] Task 2.6: Extend the runtime regression file to cover scored drawers, populated AI sections, a squall detection, layer toggles, one export click, sort order, and demo-to-real session transitions.
 
 ### Verification Gate
 
-- [ ] Run shared web checks; all must pass.
-- [ ] Populate the risk list, drift metadata, searched-sector notes, squall polygon and scored drawer without console exceptions.
-- [ ] Each AI layer toggle hides/shows the actual overlay, including after refresh.
-- [ ] Export produces exactly one download and no exception; overdue rows sort before less urgent rows.
-- [ ] A password containing leading/trailing spaces is sent unchanged; a real session entered after demo mode redirects appropriately when it later receives 401.
-- [ ] Existing real SOS acknowledge/resolve behavior is preserved under successful responses and 403 failures.
+- [x] Run shared web checks; all must pass.
+- [x] Populate the risk list, drift metadata, searched-sector notes, squall polygon and scored drawer without console exceptions.
+- [x] Each AI layer toggle hides/shows the actual overlay, including after refresh.
+- [x] Export produces exactly one download and no exception; overdue rows sort before less urgent rows.
+- [x] A password containing leading/trailing spaces is sent unchanged; a real session entered after demo mode redirects appropriately when it later receives 401.
+- [x] Existing real SOS acknowledge/resolve behavior is preserved under successful responses and 403 failures.
 
 ### Review Gate (Ponytail)
 
-- [ ] Reused the helpers and native/library functionality already present.
-- [ ] Preserved `dashboard-tools.js`'s working tool-state getters; did not “fix” an issue the audit excluded.
+- [x] Reused the helpers and native/library functionality already present.
+- [x] Preserved `dashboard-tools.js`'s working tool-state getters; did not “fix” an issue the audit excluded.
 
 ### Git Checkpoint
 
@@ -343,8 +343,8 @@ Do not deploy or declare physical SOS readiness from local acceptance; deploymen
 
 | Phase | State | Commit | Verification evidence |
 |---|---|---|---|
-| 1 | Completed | Pending commit | 89/89 node --test passed; node --check clean; browser static & DOM checks confirmed |
-| 2 | Not started | None | Pending |
+| 1 | Completed | c7ef8505c00e6d10cb0970c56e54852dc196eb84 | 89/89 node --test passed; node --check clean; browser static & DOM checks confirmed |
+| 2 | Completed | Pending commit | 99/99 node --test passed; node --check clean; browser runtime and integration checks confirmed |
 | 3 | Not started | None | Pending |
 | 4 | Not started | None | Pending |
 | 5 | Not started | None | Pending |

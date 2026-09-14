@@ -5,10 +5,19 @@
   var incidents = ns.incidents;
   var map = ns.map;
   var showToast = ns.showToast || function () {};
+  var escapeHtml = ns.escapeHtml;
+  if (!escapeHtml) {
+    escapeHtml = function (s) {
+      if (s == null) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    };
+  }
 
   // ===== AI OPERATIONS =====
-  var aiContoursLayer = L.layerGroup().addTo(map);
-  var aiSquallLayer = L.layerGroup().addTo(map);
+  var aiContoursLayer = ns.driftLayer || (typeof L !== 'undefined' && typeof L.layerGroup === 'function' ? L.layerGroup().addTo(map) : null);
+  var aiSquallLayer = (ns.squallLayer && typeof ns.squallLayer.getBounds === 'function')
+    ? ns.squallLayer
+    : (typeof L !== 'undefined' && typeof L.featureGroup === 'function' ? L.featureGroup().addTo(map) : (typeof L !== 'undefined' && typeof L.layerGroup === 'function' ? L.layerGroup().addTo(map) : null));
   var aiRefreshTimer = null;
 
   // Responder-approved detection-method presets (docs/40 Phase 3 item 2,
@@ -137,10 +146,10 @@
       // present on a Phase 3 protected report - a legacy/demo sector has none.
       var when = sector.searched_at ? new Date(sector.searched_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
       var tooltip = 'Searched — ' + pod +
-        (sector.method_label ? '<br>' + ns._escHtml(sector.method_label) : '') +
-        (sector.reported_by ? '<br>Reported by ' + ns._escHtml(sector.reported_by) : '') +
+        (sector.method_label ? '<br>' + escapeHtml(sector.method_label) : '') +
+        (sector.reported_by ? '<br>Reported by ' + escapeHtml(sector.reported_by) : '') +
         (when ? '<br>' + when : '') +
-        (sector.notes ? '<br>"' + ns._escHtml(sector.notes) + '"' : '');
+        (sector.notes ? '<br>"' + escapeHtml(sector.notes) + '"' : '');
       box.bindTooltip(tooltip, { sticky: true, direction: 'center', className: 'drift-incident-label' });
     });
   }
@@ -227,7 +236,7 @@
     var bits = [];
 
     if (isOk && payload.prediction && payload.prediction.object_class) {
-      bits.push('Drift class: <strong>' + ns._escHtml(String(payload.prediction.object_class).replace(/_/g, ' ')) + '</strong>');
+      bits.push('Drift class: <strong>' + escapeHtml(String(payload.prediction.object_class).replace(/_/g, ' ')) + '</strong>');
     }
     if (typeof payload.observation_fraction === 'number') {
       var pct = Math.round(payload.observation_fraction * 100);
@@ -236,7 +245,7 @@
         : 'Currents: <strong>simulated</strong> (no buoy observations yet)');
     }
     if (isOk && payload.prediction && payload.prediction.wind_source) {
-      bits.push('Wind: ' + ns._escHtml(payload.prediction.wind_source) +
+      bits.push('Wind: ' + escapeHtml(payload.prediction.wind_source) +
         (payload.prediction.degraded ? ' <span class="drift-degraded">(degraded — live wind unavailable)</span>' : ''));
     }
     bits.push('Nearby buoys: <strong>' + (payload.nearby_buoy_count || 0) + '</strong>' +
@@ -250,12 +259,12 @@
     var statusLine = isOk
       ? 'Snapshot computed ' + computedAt + ' · run ' + payload.run_number
       : '<span class="ai-insufficient-badge">INSUFFICIENT ENVIRONMENTAL DATA</span><br>' +
-        'Reason: ' + ns._escHtml(payload.insufficiency_reason || 'unknown') + ' · run ' + payload.run_number;
+        'Reason: ' + escapeHtml(payload.insufficiency_reason || 'unknown') + ' · run ' + payload.run_number;
 
     metaEl.innerHTML =
-      '<strong>Case #' + incident.id + '</strong> · Vessel ' + ns._escHtml(incident.vessel_id) +
-      ' · <span class="ai-case-state">' + ns._escHtml(incident.case_state) + '</span><br>' +
-      'Last contact: ' + incidentTime + ' · source: ' + ns._escHtml(incident.source_type) + '<br>' +
+      '<strong>Case #' + incident.id + '</strong> · Vessel ' + escapeHtml(incident.vessel_id) +
+      ' · <span class="ai-case-state">' + escapeHtml(incident.case_state) + '</span><br>' +
+      'Last contact: ' + incidentTime + ' · source: ' + escapeHtml(incident.source_type) + '<br>' +
       statusLine + '<br>' +
       (bits.length ? bits.join(' · ') : '') +
       '<br><button type="button" class="action-btn ai-drift-activity-btn" id="ai-drift-activity-btn">View Activity</button>';
@@ -357,7 +366,7 @@
       var bits = [];
 
       if (prediction && prediction.object_class) {
-        bits.push('Drift class: <strong>' + ns._escHtml(String(prediction.object_class).replace(/_/g, ' ')) + '</strong>');
+        bits.push('Drift class: <strong>' + escapeHtml(String(prediction.object_class).replace(/_/g, ' ')) + '</strong>');
       }
       if (typeof payload.observation_fraction === 'number') {
         var pct = Math.round(payload.observation_fraction * 100);
@@ -368,7 +377,7 @@
         );
       }
       if (prediction && prediction.wind_source) {
-        bits.push('Wind: ' + ns._escHtml(prediction.wind_source) +
+        bits.push('Wind: ' + escapeHtml(prediction.wind_source) +
           (prediction.degraded ? ' <span class="drift-degraded">(degraded — live wind unavailable)</span>' : ''));
       }
       var searched = (payload && payload.search_sectors) || [];
@@ -381,8 +390,8 @@
         (incident.is_synthetic
           ? '<span class="drift-replay-badge">REPLAY — SYNTHETIC INCIDENT</span><br>'
           : '') +
-        '<strong>Incident #' + incident.id + '</strong> · Vessel ' + ns._escHtml(incident.vessel_id) + '<br>' +
-        'Last contact: ' + incidentTime + ' · ' + ns._escHtml(incident.abnormal_reason || 'unknown') + '<br>' +
+        '<strong>Incident #' + incident.id + '</strong> · Vessel ' + escapeHtml(incident.vessel_id) + '<br>' +
+        'Last contact: ' + incidentTime + ' · ' + escapeHtml(incident.abnormal_reason || 'unknown') + '<br>' +
         (bits.length ? bits.join(' · ') + '<br>' : '') +
         // The backend only ever includes ground_truth_track on a synthetic
         // incident's payload (app/api/drift.py) - this line must not claim a
@@ -413,7 +422,7 @@
 
     var eligibility = eligibleForSearchReport(payload);
     if (!eligibility.ok) {
-      container.innerHTML = '<div class="ai-search-disabled-note">Search reporting unavailable — ' + ns._escHtml(eligibility.reason) + '</div>';
+      container.innerHTML = '<div class="ai-search-disabled-note">Search reporting unavailable — ' + escapeHtml(eligibility.reason) + '</div>';
       return;
     }
 
@@ -497,7 +506,7 @@
     if (!container) return;
 
     var methodOptions = DETECTION_METHODS.map(function (m) {
-      return '<option value="' + m.value + '">' + ns._escHtml(m.label) + '</option>';
+      return '<option value="' + m.value + '">' + escapeHtml(m.label) + '</option>';
     }).join('');
 
     container.innerHTML =
@@ -624,17 +633,17 @@
         '<details class="ai-risk-item"' + (index === 0 ? ' open' : '') + '>' +
           '<summary>' +
             '<div class="ai-risk-main">' +
-              '<div class="ai-risk-title">' + ns._escHtml(row.vessel_id) + ' · Trip ' + ns._escHtml(row.trip_id) + '</div>' +
-              '<div class="ai-risk-meta">Expected buoy ' + ns._escHtml(expectedBuoy) + ' · Last contact ' + ns._escHtml(lastSeen) + '</div>' +
+              '<div class="ai-risk-title">' + escapeHtml(row.vessel_id) + ' · Trip ' + escapeHtml(row.trip_id) + '</div>' +
+              '<div class="ai-risk-meta">Expected buoy ' + escapeHtml(expectedBuoy) + ' · Last contact ' + escapeHtml(lastSeen) + '</div>' +
             '</div>' +
             '<div class="ai-risk-score">' + score + '<span class="ai-risk-status ' + aiStatusClass(row.status) + '">' + statusLabel + '</span></div>' +
           '</summary>' +
           '<div class="ai-risk-details">' +
             '<div class="ai-factor-list">' + factors.map(function (factor) {
               return '<div class="ai-factor-row">' +
-                '<div class="ai-factor-name">' + ns._escHtml(factor.name || 'factor') + '</div>' +
+                '<div class="ai-factor-name">' + escapeHtml(factor.name || 'factor') + '</div>' +
                 '<div class="ai-factor-value">' + Number(factor.contribution || 0).toFixed(3) + '</div>' +
-                '<div class="ai-factor-explainer">' + ns._escHtml(factor.explanation || '') + '</div>' +
+                '<div class="ai-factor-explainer">' + escapeHtml(factor.explanation || '') + '</div>' +
               '</div>';
             }).join('') + '</div>' +
           '</div>' +
@@ -716,7 +725,7 @@
     chart.innerHTML = svg.join('');
 
     legend.innerHTML = traceSeries.map(function (series) {
-      return '<div class="ai-trace-legend-item"><span class="ai-trace-swatch" style="background:' + series.color + '"></span><span>' + ns._escHtml(series.label) + '</span></div>';
+      return '<div class="ai-trace-legend-item"><span class="ai-trace-swatch" style="background:' + series.color + '"></span><span>' + escapeHtml(series.label) + '</span></div>';
     }).join('');
     updateSquallLegendVisibility();
   }
@@ -736,7 +745,7 @@
 
     var p = payload || {};
     var detections = Array.isArray(p.detections) ? p.detections : [];
-    if (statusHost) statusHost.innerHTML = ns.squallStatusHtml(p);
+    if (statusHost) statusHost.innerHTML = typeof ns.squallStatusHtml === 'function' ? ns.squallStatusHtml(p) : '';
     updateSquallBanner(p);
 
     // `unknown` is the neutral insufficient-data state (docs/39 Phase 2/3) -
@@ -923,20 +932,31 @@
       var currentSelect = document.getElementById('ai-drift-select');
       if (currentSelect && currentSelect.value) loadDriftIncidentDetail(currentSelect.value);
     }, 60000);
+    if (aiRefreshTimer && typeof aiRefreshTimer.unref === 'function') {
+      aiRefreshTimer.unref();
+    }
   }
 
   initAIOperations();
 
 
   // ===== EXIT LOADING =====
-  window.addEventListener('load', function () {
-    setTimeout(function () {
-      document.getElementById('loading-overlay').classList.add('hidden');
-    }, 800);
-  });
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.classList.add('hidden');
+      }, 800);
+    });
+  }
 
   ns.aiContoursLayer = aiContoursLayer;
   ns.aiSquallLayer = aiSquallLayer;
+  ns.aiDrawLayer = aiDrawLayer;
+  ns.squallLayer = aiSquallLayer;
+  ns.driftLayer = aiContoursLayer;
+  ns.escapeHtml = escapeHtml;
+  ns._escHtml = escapeHtml;
   ns.aiRefreshTimer = aiRefreshTimer;
   ns.aiColors = aiColors;
   ns.aiFetchJson = aiFetchJson;
