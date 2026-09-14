@@ -5,6 +5,9 @@ It keeps active delivery work separate from reference material and historical pl
 
 ## Start Here
 
+Agents should begin with the fast [SPEC_INDEX.md](SPEC_INDEX.md), then use this
+page for naming, status, and authoring rules.
+
 | Need | Document |
 |---|---|
 | Current product priorities | [`../README.md`](../README.md) |

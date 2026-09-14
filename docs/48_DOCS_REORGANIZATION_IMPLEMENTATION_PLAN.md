@@ -1,0 +1,90 @@
+# Implementation Plan: Documentation organization
+
+> **Status:** Phase 1 complete; awaiting sign-off for Phase 2
+> **Target Branch:** `codex/web-audit-remediation`
+> **Test Command:** repository reference scan plus Markdown link validation
+> **Lint/Check Command:** `git diff --check`
+> **Prepared:** 2026-09-14
+> **Owner:** Codex with team review
+
+## Overview
+
+Reduce the visual load of `docs/` while preserving stable contract paths and the permanent numbered project record.
+Use an index first, then move only dated audits and verified unreferenced completed plans.
+
+## Phase 1: Index and migration ledger
+
+**Goal:** Make the intended taxonomy discoverable without changing existing paths.
+
+- [x] Add `docs/SPEC_INDEX.md` for the Gemini entry point and contributor navigation.
+- [x] Record lifecycle-based move rules rather than inferring status from numeric ranges.
+- [x] Preserve `docs/README.md` as the detailed naming and status register.
+
+### Verification Gate
+
+- [x] Confirm every link in `SPEC_INDEX.md` resolves.
+- [x] Run `git diff --check`.
+
+### Review Gate (Ponytail)
+
+- [x] Reuse the existing documentation register; do not create a second taxonomy system.
+- [x] Add no dependency or custom link-checking framework.
+
+### Git Checkpoint
+
+```powershell
+git add docs/SPEC_INDEX.md docs/48_DOCS_REORGANIZATION_IMPLEMENTATION_PLAN.md
+git commit -m "docs: add documentation organization index"
+```
+
+### Hard Stop
+
+Phase 1 is complete and committed.
+Wait for explicit approval before moving audit or plan files.
+
+## Phase 2: Move dated audits
+
+**Goal:** Move only dated audit and verification records into `docs/audits/`.
+
+- [ ] Inventory every repository reference to each selected file.
+- [ ] Create `docs/audits/` and move only files with updated links.
+- [ ] Update README navigation and audit cross-links.
+- [ ] Run the reference scan and Markdown link checks.
+
+### Git Checkpoint
+
+```powershell
+git add docs README.md GEMINI.md
+git commit -m "docs: organize dated audit records"
+```
+
+## Phase 3: Archive completed plans
+
+**Goal:** Move only completed, unreferenced plans into `docs/archive/plans/`.
+
+- [ ] Check each candidate header and repository reference.
+- [ ] Leave active plans and referenced contract/history documents in place.
+- [ ] Update links and the documentation register.
+- [ ] Run the reference scan and Markdown link checks.
+
+### Git Checkpoint
+
+```powershell
+git add docs README.md AGENTS.md GEMINI.md
+git commit -m "docs: archive completed plans"
+```
+
+## Phase 4: Final verification
+
+**Goal:** Confirm the new layout is navigable and no active consumer points at an old path.
+
+- [ ] Verify `GEMINI.md`, `AGENTS.md`, root `README.md`, code comments, tests, and all moved documents.
+- [ ] Run `git diff --check` and the final repository reference scan.
+- [ ] Record the final moved-file list and any intentionally retained root records.
+
+### Git Checkpoint
+
+```powershell
+git add docs README.md AGENTS.md GEMINI.md
+git commit -m "docs: verify organized documentation tree"
+```
