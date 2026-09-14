@@ -4,7 +4,7 @@
 > **Target Branch:** `codex/web-audit-remediation` (active branch).
 > **Test Command:** `node --test web/test/*.test.js`; backend `python -m pytest backend/tests`.
 > **Lint/Check Command:** JavaScript syntax checks; backend `python -m ruff check backend`.
-> **Prepared:** 2026-09-14, from the [2026-09-13 audit](WEB_AUDIT_2026-09-13.md) and [2026-09-14 re-audit](WEB_GEMINI_REAUDIT_2026-09-14.md).
+> **Prepared:** 2026-09-14, from the [2026-09-13 audit](audits/WEB_AUDIT_2026-09-13.md) and [2026-09-14 re-audit](audits/WEB_GEMINI_REAUDIT_2026-09-14.md).
 > **Owners:** Jade for dashboard implementation, Lenard for backend/contracts, Doreen Kay for UI and wording review.
 > **Execution:** Sequential phases with verification, Ponytail review, atomic commits, and sign-off.
 

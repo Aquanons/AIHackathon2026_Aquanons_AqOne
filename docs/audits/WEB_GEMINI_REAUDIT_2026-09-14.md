@@ -139,7 +139,7 @@ Retain the existing response-order guard.
 
 ## Completion records need correction
 
-`docs/WEB_AUDIT_2026-09-13.md:310` says every finding is remediated, despite R1-R5 above.
+`docs/audits/WEB_AUDIT_2026-09-13.md:310` says every finding is remediated, despite R1-R5 above.
 Its closure table also relabels F11 as secondary UI wiring, although the original F11 is login/password handling.
 `docs/WEB_REMEDIATION_IMPLEMENTATION_PLAN.md:3` still says no implementation started, while every phase and acceptance gate is checked off.
 Its Phase 3 and Phase 5 ledger hashes refer to different existing commits from the ones on the reviewed HEAD history; update them to the actual reviewed checkpoints.
@@ -174,8 +174,8 @@ F07 has targeted ordering/target-capture improvements, but full authenticated pe
 Estimates below exclude required correctness fixes and the tests needed to verify them.
 Do not remove the actual internal state, required cross-module exports, or useful behavioral tests.
 
-1. `delete:` Remove approximately 20 lines of unused counter getters and externally writable test-only state exposure; drive tests through poll, drawer, and rendered-state behavior. [`dashboard-live-sos.js:279`](../web/js/dashboard/dashboard-live-sos.js), [`dashboard-incidents.js:502`](../web/js/dashboard/dashboard-incidents.js), [`dashboard-operations-audit.js:248`](../web/js/dashboard/dashboard-operations-audit.js).
-2. `shrink:` Remove approximately 15 lines of duplicate escaping and confidence fallback implementations; bind the helpers already supplied by the loaded core/vessels modules. [`dashboard-tools.js:6`](../web/js/dashboard/dashboard-tools.js), [`dashboard-ai-ops.js:8`](../web/js/dashboard/dashboard-ai-ops.js), [`dashboard-incidents.js:16`](../web/js/dashboard/dashboard-incidents.js).
-3. `native:` Remove approximately 13 lines of retained haversine fallback; the distance tool already has a Leaflet map, so use `map.distance(a, b) / 1000` and provide that operation in its test stub. [`dashboard-tools.js:139`](../web/js/dashboard/dashboard-tools.js).
+1. `delete:` Remove approximately 20 lines of unused counter getters and externally writable test-only state exposure; drive tests through poll, drawer, and rendered-state behavior. [`dashboard-live-sos.js:279`](../../web/js/dashboard/dashboard-live-sos.js), [`dashboard-incidents.js:502`](../../web/js/dashboard/dashboard-incidents.js), [`dashboard-operations-audit.js:248`](../../web/js/dashboard/dashboard-operations-audit.js).
+2. `shrink:` Remove approximately 15 lines of duplicate escaping and confidence fallback implementations; bind the helpers already supplied by the loaded core/vessels modules. [`dashboard-tools.js:6`](../../web/js/dashboard/dashboard-tools.js), [`dashboard-ai-ops.js:8`](../../web/js/dashboard/dashboard-ai-ops.js), [`dashboard-incidents.js:16`](../../web/js/dashboard/dashboard-incidents.js).
+3. `native:` Remove approximately 13 lines of retained haversine fallback; the distance tool already has a Leaflet map, so use `map.distance(a, b) / 1000` and provide that operation in its test stub. [`dashboard-tools.js:139`](../../web/js/dashboard/dashboard-tools.js).
 
 net: -48 lines, -0 deps possible.

@@ -32,7 +32,7 @@ The detailed naming, status, and authoring rules live in [`README.md`](README.md
 | Lifecycle | Location or starting point |
 |---|---|
 | Active work | [`README.md#current-register`](README.md#current-register) |
-| Audits and verification | `WEB_*.md`, `FLUTTER_*.md`, and `GEMINI_*_AUDIT.md` until Phase 2 moves them to `audits/` |
+| Audits and verification | [`audits/`](audits/) |
 | Completed plans | Numbered records whose header says `COMPLETE`; Phase 2 will move only records with no live path references to `archive/plans/` |
 | Engineering guides | [`guides/`](guides/) |
 | Design references | [`design-reference/`](design-reference/) |

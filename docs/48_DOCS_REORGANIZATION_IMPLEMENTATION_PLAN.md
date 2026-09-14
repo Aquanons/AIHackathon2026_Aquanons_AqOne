@@ -1,6 +1,6 @@
 # Implementation Plan: Documentation organization
 
-> **Status:** Phase 1 complete; awaiting sign-off for Phase 2
+> **Status:** Phase 2 complete; awaiting sign-off for Phase 3
 > **Target Branch:** `codex/web-audit-remediation`
 > **Test Command:** repository reference scan plus Markdown link validation
 > **Lint/Check Command:** `git diff --check`
@@ -46,10 +46,10 @@ Wait for explicit approval before moving audit or plan files.
 
 **Goal:** Move only dated audit and verification records into `docs/audits/`.
 
-- [ ] Inventory every repository reference to each selected file.
-- [ ] Create `docs/audits/` and move only files with updated links.
-- [ ] Update README navigation and audit cross-links.
-- [ ] Run the reference scan and Markdown link checks.
+- [x] Inventory every repository reference to each selected file.
+- [x] Create `docs/audits/` and move only files with updated links.
+- [x] Update README navigation and audit cross-links.
+- [x] Run the reference scan and Markdown link checks.
 
 ### Git Checkpoint
 
@@ -57,6 +57,11 @@ Wait for explicit approval before moving audit or plan files.
 git add docs README.md GEMINI.md
 git commit -m "docs: organize dated audit records"
 ```
+
+### Hard Stop
+
+Phase 2 is complete and committed.
+Wait for explicit approval before archiving completed plans.
 
 ## Phase 3: Archive completed plans
 

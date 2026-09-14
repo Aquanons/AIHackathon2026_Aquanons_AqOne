@@ -88,7 +88,8 @@ Remove it when the document becomes `COMPLETE`, `BLOCKED`, or `SUPERSEDED`.
 | Group | Files |
 |---|---|
 | Foundation and shared contracts | `00` to `08` |
-| Earlier planning, audits, and implementation records | `09`, `11` to `42` |
+| Earlier planning and implementation records | `09`, `11` to `42` |
+| Dated audits and verification | [`audits/`](audits/) |
 | Current pitch plan | `43` |
 | Reference guides | [`guides/`](guides/) |
 | Design references and workshop material | [`design-reference/`](design-reference/), [`dti-workshop/`](dti-workshop/) |
