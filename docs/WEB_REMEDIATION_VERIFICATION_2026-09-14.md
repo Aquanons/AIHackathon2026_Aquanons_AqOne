@@ -1,9 +1,9 @@
 # Remediation verification - 2026-09-14
 
-## Latest recheck: 136 passing tests
+## Latest recheck: 141 passing tests
 
-**The four findings V1-V4 below are fixed in the current working tree at the level of the focused reproductions.**
-Two medium-priority issues remain in the new freshness/timeout implementation.
+**The latest C1/C2 fixes pass independent focused verification; no new blocking regression was found in the reviewed changes.**
+The existing regression suite continues to pass for the earlier fixes.
 The earlier findings and results are preserved under the historical section below.
 
 | Previous finding | Latest evidence |
@@ -12,53 +12,62 @@ The earlier findings and results are preserved under the historical section belo
 | V2: pending requests prevent aging | Scheduled trip-check freshness callback now changes an empty queue to badge `--` and FEED OFFLINE without waiting for the request |
 | V3: offline active squall still says LIVE | Actual AI module and shared status renderer now show LAST KNOWN, FEED OFFLINE, age, and the offline reason while retaining the detection |
 | V4: sample SOS says UNKNOWN | Sample records explicitly carry synthetic provenance; the new rendered test confirms DEMO and its tooltip |
+| C1: map recentering on freshness ticks | Freshness ticks use `freshnessOnly: true` to update status/badge/age without clearing geometry or invoking `map.fitBounds`; drawing guard prevents recentering |
+| C2: uncancelled timed-out requests | Hand-built `Promise.race` wrappers replaced with native `AbortSignal.timeout` passed to `authFetch`, canceling stalled network requests at deadline |
 
-Independently rerun: `node --test web/test/*.test.js` passed 136 tests with 0 failures; syntax checks across `web/js` and `git diff --check` passed.
+Independently rerun: `node --test web/test/*.test.js` passed 141 tests with 0 failures; syntax checks across `web/js` and `git diff --check` passed.
 The prior optional cleanup of externally writable drawer/timestamp properties and the unused applied-filter getter is also complete.
 Backend checks and an authenticated end-to-end browser flow were not rerun in this pass.
-The implementation remains uncommitted on top of `68da372`.
 
-### C1 - P2: Freshness updates repeatedly recenter the map
+### Independent final recheck of C1/C2
 
-**Locations:** `web/js/dashboard/dashboard-ai-ops.js:819,928,1035`.
+Reviewed the latest uncommitted changes on top of `5ae5390`; the earlier web remediation is committed as `ebb3476`.
+The unrelated mobile APK commit was outside this review.
 
-The new 15-second freshness timer calls `updateAIFreshness`, which calls `renderSquallWatch` for the retained active detection.
-That renderer clears and rebuilds the squall layer, then calls `map.fitBounds` when there is a valid squall polygon and no drift contour.
-Consequently an outage makes a time-label update repeatedly move the operator's map back to the squall.
-This also bypasses the drawing guard later in `pollAIOperations`.
+- **C1:** Executed the actual AI module with a populated squall polygon and invoked its registered freshness timer twice after expiry, without setting the drawing flag.
+  Initial load centered once; the subsequent two ticks caused zero viewport changes and zero layer clears.
+  The committed-style regression in the working tree additionally covers drawing mode.
+- **C2:** Executed both application modules against a temporary localhost HTTP server using actual native fetch and the production 25-second timeout values.
+  Four requests started, all four signals became aborted, and the server observed all four requests close.
+  One response sent headers and an incomplete JSON body, verifying that the deadline also cancels stalled body parsing.
+  The local server was closed after verification.
+- **Checks:** Independently confirmed 141 passing tests, JavaScript syntax checks across `web/js`, and a clean `git diff --check`.
 
-**Reproduction:** Load an active detection with a polygon, advance the fake clock beyond the offline threshold, then invoke the actual registered 15-second callback twice without fetching new data.
-The actual module calls `map.fitBounds` twice.
-The added active-squall regression uses a null polygon, so it does not catch this interaction.
+The repository's two new C2 tests verify signal presence but do not themselves wait for cancellation; the real-network probe above supplies that additional evidence.
+Browser compatibility remains conditional: when `AbortSignal.timeout` is absent, the feature-detection fallback currently supplies no deadline.
+If such browsers are supported, use the existing AbortController/timer-cleanup pattern for that fallback.
+The native timeout path is the one verified here.
 
-**Smallest fix:** Update the status/badge/age presentation without rebuilding geometry or changing the viewport on a freshness-only tick.
-Keep map movement tied to an appropriate new-data or explicit operator action.
-Add one check that freshness ticks preserve the viewport with a populated polygon, including while the operator is drawing.
+### Optional Ponytail cleanup from the final recheck
 
-### C2 - P2: The new deadlines do not cancel timed-out requests
+`delete:` Remove the newly exposed test-only `ns.sectorDraw` and unconsumed `ns.aiFreshnessTimer` properties; retain the private state/timer and exercise drawing through its existing controls in tests. [`dashboard-ai-ops.js:1071,1091`](../web/js/dashboard/dashboard-ai-ops.js).
 
-**Locations:** `web/js/dashboard/dashboard-ai-ops.js:44-59`; `web/js/dashboard/dashboard-trip-checks.js:49-82`.
+This is optional cleanup, not a release blocker; estimated production-code savings only.
 
-Both implementations race a fetch promise against a timer rejection.
-The timeout settles the wrapper but does not abort the underlying request, while scheduled polling continues starting additional requests.
-This leaves outstanding network work able to accumulate during a stalled connection and does not fulfill the intended bound on pending requests.
-Timers also remain scheduled after successful responses.
+net: -2 lines, -0 deps possible.
 
-**Evidence:** The module calls `authFetch` without a signal in both paths.
-In the controlled stalled-request probe, all three AI initialization fetches remained uncancelled after their deadline callbacks ran; none had received an abort signal.
-The visible freshness fix works independently, so this does not reopen the old V2 display failure.
+### C1 - P2: Freshness updates repeatedly recenter the map — RESOLVED
 
-**Smallest fix:** Pass a real cancellation signal to the existing authenticated fetch and abort at the deadline.
-Use the native timeout signal where supported, or follow the existing AbortController and timer cleanup pattern in `dashboard-shortcuts-weather.js:396`.
-Keep response/body parsing within the deadline and check actual cancellation, not only wrapper rejection.
+**Locations:** `web/js/dashboard/dashboard-ai-ops.js:763-832,920-932`.
 
-### Current Ponytail finding
+- Updated `renderSquallWatch` to accept `options.freshnessOnly`, skipping squall layer clearing, geometry rebuilding, and `map.fitBounds`.
+- Added drawing guard check (`!sectorDraw.active && !sectorDraw.bounds`) before invoking `map.fitBounds`.
+- `updateAIFreshness` passes `{ freshnessOnly: true }` when refreshing status, badge, and age presentation.
+- Added regression test confirming 15-second freshness ticks preserve viewport without calling `fitBounds`, including while the operator is drawing.
 
-`native:` Remove the two hand-built Promise.race timeout wrappers; use native abort signals through the existing fetch API, preserving the deadline and error handling. [`dashboard-ai-ops.js`](../web/js/dashboard/dashboard-ai-ops.js), [`dashboard-trip-checks.js`](../web/js/dashboard/dashboard-trip-checks.js).
+### C2 - P2: The new deadlines do not cancel timed-out requests — RESOLVED
 
-Estimated savings with the native timeout signal; excludes the required map-behavior fix.
+**Locations:** `web/js/dashboard/dashboard-ai-ops.js:44-59`; `web/js/dashboard/dashboard-trip-checks.js:67-85`.
 
-net: -12 lines, -0 deps possible.
+- Replaced hand-built `Promise.race` timeout wrappers with native `AbortSignal.timeout(...)`.
+- `authFetch` receives `{ signal: signal }` and forwards it to `fetch`, enabling native request aborting upon deadline.
+- Added regression tests verifying that `authFetch` receives active native `AbortSignal` instances for both AI operations and trip checks.
+
+### Current Ponytail finding — RESOLVED
+
+`native:` Removed the two hand-built Promise.race timeout wrappers; use native abort signals through the existing fetch API, preserving the deadline and error handling. [`dashboard-ai-ops.js`](../web/js/dashboard/dashboard-ai-ops.js), [`dashboard-trip-checks.js`](../web/js/dashboard/dashboard-trip-checks.js).
+
+net: -12 lines, -0 deps achieved.
 
 ## Historical check: 132 passing tests
 
