@@ -71,6 +71,9 @@ class AppLocalizationsAkl extends AppLocalizations {
   String get deliveryMetaResponder => 'Responder';
 
   @override
+  String get deliveryMetaEta => 'ETA it panagip';
+
+  @override
   String get deliveryMetaLastAttempt => 'Huling pagtinguha';
 
   @override

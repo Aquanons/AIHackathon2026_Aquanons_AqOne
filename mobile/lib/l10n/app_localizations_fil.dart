@@ -71,6 +71,9 @@ class AppLocalizationsFil extends AppLocalizations {
   String get deliveryMetaResponder => 'Responder';
 
   @override
+  String get deliveryMetaEta => 'ETA ng pagsagip';
+
+  @override
   String get deliveryMetaLastAttempt => 'Huling subok';
 
   @override

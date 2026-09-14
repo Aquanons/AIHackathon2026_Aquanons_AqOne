@@ -19,6 +19,7 @@
   "deliveryMetaBuoy": "Buoy",
   "deliveryMetaNote": "Nota",
   "deliveryMetaResponder": "Responder",
+  "deliveryMetaEta": "ETA it panagip",
   "deliveryMetaLastAttempt": "Huling pagtinguha",
   "deliveryNoGpsFix": "Waeay narekord nga GPS",
   "seaStatusSafeHeadline": "Ligtas nga Magguwa",

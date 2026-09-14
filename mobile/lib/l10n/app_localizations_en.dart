@@ -70,6 +70,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deliveryMetaResponder => 'Responder';
 
   @override
+  String get deliveryMetaEta => 'Rescue ETA';
+
+  @override
   String get deliveryMetaLastAttempt => 'Last attempt';
 
   @override

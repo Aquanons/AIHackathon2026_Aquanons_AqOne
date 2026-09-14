@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aqone/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
@@ -103,6 +105,12 @@ class DeliveryStateTile extends StatelessWidget {
             _MetaLine(label: t.deliveryMetaNote, value: record.note!),
           if (record.ackedBy != null)
             _MetaLine(label: t.deliveryMetaResponder, value: record.ackedBy!),
+          if (record.etaAt != null)
+            _EtaCountdownLine(
+              label: t.deliveryMetaEta,
+              eta: record.etaTime!,
+              overdueLabel: t.responderDelayedStillOnWay,
+            ),
           if (record.state == DeliveryState.saved && record.lastError != null)
             _MetaLine(
               label: t.deliveryMetaLastAttempt,
@@ -163,6 +171,93 @@ class _MetaLine extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 fontFamily: monospace ? 'monospace' : null,
                 color: tone ?? palette.secondaryText,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The MDRRMO's promised rescue arrival time, counting down live.
+///
+/// A thumbnail of the responder dialog (responder_eta_dialog.dart): the
+/// promise must not vanish when the dialog closes and the fisher switches
+/// back to Home - the tile carries it on until the time passes. Never renders
+/// a negative number; once overdue it says the responder is delayed but still
+/// coming, matching the dialog.
+class _EtaCountdownLine extends StatefulWidget {
+  const _EtaCountdownLine({
+    required this.label,
+    required this.eta,
+    required this.overdueLabel,
+  });
+
+  final String label;
+  final DateTime eta;
+  final String overdueLabel;
+
+  @override
+  State<_EtaCountdownLine> createState() => _EtaCountdownLineState();
+}
+
+class _EtaCountdownLineState extends State<_EtaCountdownLine> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  String _countdown() {
+    final remaining = widget.eta.difference(DateTime.now());
+    if (remaining.isNegative) {
+      return widget.overdueLabel;
+    }
+    final minutes = remaining.inMinutes;
+    final seconds = remaining.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AqPalette.of(context);
+    final overdue = widget.eta.isBefore(DateTime.now());
+    final tone = overdue ? AqColors.warning : AqColors.success;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AqSpace.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 96,
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: palette.dimText,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              _countdown(),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'monospace',
+                color: tone,
               ),
             ),
           ),

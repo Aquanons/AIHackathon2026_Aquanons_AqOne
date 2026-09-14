@@ -214,6 +214,12 @@ abstract class AppLocalizations {
   /// **'Responder'**
   String get deliveryMetaResponder;
 
+  /// SAFETY CRITICAL. Row label next to the countdown the MDRRMO gave for rescue arrival. The number after it is the time until the rescue boat arrives.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescue ETA'**
+  String get deliveryMetaEta;
+
   /// Row label next to the reason the most recent send attempt failed.
   ///
   /// In en, this message translates to:

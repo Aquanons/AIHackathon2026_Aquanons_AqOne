@@ -76,6 +76,10 @@
   "@deliveryMetaResponder": {
     "description": "Row label next to the name of the MDRRMO responder who acknowledged the SOS."
   },
+  "deliveryMetaEta": "Rescue ETA",
+  "@deliveryMetaEta": {
+    "description": "SAFETY CRITICAL. Row label next to the countdown the MDRRMO gave for rescue arrival. The number after it is the time until the rescue boat arrives."
+  },
   "deliveryMetaLastAttempt": "Last attempt",
   "@deliveryMetaLastAttempt": {
     "description": "Row label next to the reason the most recent send attempt failed."

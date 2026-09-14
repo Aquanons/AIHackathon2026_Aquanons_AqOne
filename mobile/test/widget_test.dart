@@ -48,6 +48,7 @@ SosRecord _record({
   double? lon,
   int? seq,
   String? ackedBy,
+  String? etaAt,
 }) {
   return SosRecord(
     localId: 'local-1',
@@ -60,6 +61,7 @@ SosRecord _record({
     seq: seq,
     buoyId: seq == null ? null : 'BUOY01',
     ackedBy: ackedBy,
+    etaAt: etaAt,
   );
 }
 
@@ -164,6 +166,37 @@ void main() {
 
       expect(find.text('ranger-01'), findsOneWidget);
       expect(find.text('Responder acknowledged this SOS.'), findsOneWidget);
+    });
+
+    testWidgets('shows the rescue ETA countdown once the responder sets one',
+        (tester) async {
+      final eta = DateTime.now().add(const Duration(minutes: 2));
+      await tester.pumpWidget(
+        _host(
+          DeliveryStateTile(
+            record: _record(state: DeliveryState.acknowledged, etaAt: eta.toIso8601String()),
+          ),
+        ),
+      );
+
+      expect(find.text('Rescue ETA'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'[12]:\d{2}')), findsOneWidget);
+    });
+
+    testWidgets('marks the rescue ETA delayed once it passes', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          DeliveryStateTile(
+            record: _record(
+              state: DeliveryState.acknowledged,
+              etaAt: DateTime.now().subtract(const Duration(minutes: 1)).toIso8601String(),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Rescue ETA'), findsOneWidget);
+      expect(find.text('Delayed — still on the way'), findsOneWidget);
     });
   });
 }

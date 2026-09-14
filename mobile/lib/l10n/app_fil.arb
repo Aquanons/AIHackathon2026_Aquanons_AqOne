@@ -19,6 +19,7 @@
   "deliveryMetaBuoy": "Buoy",
   "deliveryMetaNote": "Tala",
   "deliveryMetaResponder": "Responder",
+  "deliveryMetaEta": "ETA ng pagsagip",
   "deliveryMetaLastAttempt": "Huling subok",
   "deliveryNoGpsFix": "Walang naitalang GPS",
   "seaStatusSafeHeadline": "Ligtas Lumabas",
