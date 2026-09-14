@@ -11,7 +11,7 @@
 
 ## 2026-09-14 — Operations Console Audit Remediation: Complete Implementation & Verification
 
-Recorded per `docs/WEB_REMEDIATION_IMPLEMENTATION_PLAN.md` and `docs/WEB_AUDIT_2026-09-13.md`.
+Recorded per `docs/WEB_REMEDIATION_IMPLEMENTATION_PLAN.md` and `docs/audits/WEB_AUDIT_2026-09-13.md`.
 Environment: Windows 11, Node.js (native test runner), Python 3.11.9, pytest-9.1.1.
 
 **Remediation and Corrective Changes:**
@@ -39,7 +39,7 @@ Environment: Windows 11, Node.js (native test runner), Python 3.11.9, pytest-9.1
 
 ## 2026-09-13 — Phase 4: Localized Fishing Weather Window & Audit Corrections Verification
 
-Recorded per `IMPLEMENTATION_PLAN.md` and `docs/GEMINI_FISHING_WINDOW_AUDIT.md`.
+Recorded per `IMPLEMENTATION_PLAN.md` and `docs/audits/GEMINI_FISHING_WINDOW_AUDIT.md`.
 Environment: Windows 11, Flutter 3.44.7 (channel stable), Python 3.11.9.
 
 **Audit Resolution and Corrective Changes:**

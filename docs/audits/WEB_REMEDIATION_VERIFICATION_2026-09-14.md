@@ -40,7 +40,7 @@ The native timeout path is the one verified here.
 
 ### Optional Ponytail cleanup from the final recheck
 
-`delete:` Remove the newly exposed test-only `ns.sectorDraw` and unconsumed `ns.aiFreshnessTimer` properties; retain the private state/timer and exercise drawing through its existing controls in tests. [`dashboard-ai-ops.js:1071,1091`](../web/js/dashboard/dashboard-ai-ops.js).
+`delete:` Remove the newly exposed test-only `ns.sectorDraw` and unconsumed `ns.aiFreshnessTimer` properties; retain the private state/timer and exercise drawing through its existing controls in tests. [`dashboard-ai-ops.js:1071,1091`](../../web/js/dashboard/dashboard-ai-ops.js).
 
 This is optional cleanup, not a release blocker; estimated production-code savings only.
 
@@ -65,7 +65,7 @@ net: -2 lines, -0 deps possible.
 
 ### Current Ponytail finding — RESOLVED
 
-`native:` Removed the two hand-built Promise.race timeout wrappers; use native abort signals through the existing fetch API, preserving the deadline and error handling. [`dashboard-ai-ops.js`](../web/js/dashboard/dashboard-ai-ops.js), [`dashboard-trip-checks.js`](../web/js/dashboard/dashboard-trip-checks.js).
+`native:` Removed the two hand-built Promise.race timeout wrappers; use native abort signals through the existing fetch API, preserving the deadline and error handling. [`dashboard-ai-ops.js`](../../web/js/dashboard/dashboard-ai-ops.js), [`dashboard-trip-checks.js`](../../web/js/dashboard/dashboard-trip-checks.js).
 
 net: -12 lines, -0 deps achieved.
 
@@ -162,6 +162,6 @@ Match test names and completion statements to their actual assertions.
 
 ## Ponytail follow-up
 
-`delete:` About 16 lines of test-oriented namespace exposure remain: writable drawer/timestamp properties and the applied-filter getter; keep state private and assert rendered or requested behavior through existing actions. [`dashboard-incidents.js`](../web/js/dashboard/dashboard-incidents.js), [`dashboard-live-sos.js`](../web/js/dashboard/dashboard-live-sos.js), [`dashboard-operations-audit.js`](../web/js/dashboard/dashboard-operations-audit.js).
+`delete:` About 16 lines of test-oriented namespace exposure remain: writable drawer/timestamp properties and the applied-filter getter; keep state private and assert rendered or requested behavior through existing actions. [`dashboard-incidents.js`](../../web/js/dashboard/dashboard-incidents.js), [`dashboard-live-sos.js`](../../web/js/dashboard/dashboard-live-sos.js), [`dashboard-operations-audit.js`](../../web/js/dashboard/dashboard-operations-audit.js).
 
 net: -16 lines, -0 deps possible.

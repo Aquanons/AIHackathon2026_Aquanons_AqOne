@@ -5,6 +5,9 @@ It keeps active delivery work separate from reference material and historical pl
 
 ## Start Here
 
+Agents should begin with the fast [SPEC_INDEX.md](SPEC_INDEX.md), then use this
+page for naming, status, and authoring rules.
+
 | Need | Document |
 |---|---|
 | Current product priorities | [`../README.md`](../README.md) |
@@ -45,7 +48,7 @@ Use uppercase words separated by underscores.
 
 Only one implementation plan may be `ACTIVE` at a time.
 Add it to the current register below when work begins.
-Keep completed plans in `docs/` as the permanent delivery record.
+Keep completed plans in `docs/archive/plans/` as the permanent delivery record.
 
 ## Required Header for New Work Documents
 
@@ -85,8 +88,13 @@ Remove it when the document becomes `COMPLETE`, `BLOCKED`, or `SUPERSEDED`.
 | Group | Files |
 |---|---|
 | Foundation and shared contracts | `00` to `08` |
-| Earlier planning, audits, and implementation records | `09`, `11` to `42` |
+| Earlier planning and implementation records | `09`, `11` to `42`, `46` |
+| Dated audits and verification | [`audits/`](audits/) |
 | Current pitch plan | `43` |
+| Visual design guide | `47` |
+| Documentation organization plan | [`48_DOCS_REORGANIZATION_IMPLEMENTATION_PLAN.md`](48_DOCS_REORGANIZATION_IMPLEMENTATION_PLAN.md) |
+| Web remediation plan | [`WEB_REMEDIATION_IMPLEMENTATION_PLAN.md`](WEB_REMEDIATION_IMPLEMENTATION_PLAN.md) |
+| Archived completed plans | [`archive/plans/`](archive/plans/) |
 | Reference guides | [`guides/`](guides/) |
 | Design references and workshop material | [`design-reference/`](design-reference/), [`dti-workshop/`](dti-workshop/) |
 | Canonical PRD | [`Aqone_PRD (2).md`](Aqone_PRD%20(2).md) |
