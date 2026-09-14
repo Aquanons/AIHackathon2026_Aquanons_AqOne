@@ -33,13 +33,25 @@
   const sosBtnCheckin      = document.getElementById('sos-btn-checkin');
   const sosBtnActivity     = document.getElementById('sos-btn-activity');
   const sosBroadcastMsg    = document.getElementById('sos-broadcast-msg');
+  const ackOverlay         = document.getElementById('ack-modal-overlay');
+  if (ackOverlay) {
+    ackOverlay.hidden = true;
+  }
 
   let sosTimerInterval  = null;
   let sosAlertStartTime = null;
   let currentDrawerMarker  = null;
   let currentDrawerData    = null;
 
+  function isAckModalOpen() {
+    return !!(ackOverlay && ackOverlay.hidden === false);
+  }
+
   function openIncidentDrawer(data, marker) {
+    if (isAckModalOpen()) {
+      // Prevent background case switching while acknowledgment modal is open
+      return;
+    }
     currentDrawerData   = data;
     currentDrawerMarker = marker;
 
@@ -153,11 +165,20 @@
     var updated = allAlerts().find(function (a) {
       return a.sosEventId === currentDrawerData.sosEventId;
     });
-    if (!updated || !updated.drawerData) return;
+    if (!updated || !updated.drawerData) {
+      // Event left the authoritative active list (e.g. resolved in another session)
+      closeSOSDrawer();
+      if (isAckModalOpen()) closeAckModal();
+      showToast('Incident closed', 'This distress call has been resolved or closed.', false);
+      return;
+    }
     currentDrawerData = updated.drawerData;
     if (currentDrawerData.acknowledgedAt) {
       sosBtnAcknowledge.disabled = true;
       sosBtnAcknowledge.textContent = 'Acknowledged';
+    } else {
+      sosBtnAcknowledge.disabled = false;
+      sosBtnAcknowledge.textContent = 'Acknowledge';
     }
     renderResponderSection(currentDrawerData);
   }
@@ -187,25 +208,38 @@
   //
   // Minutes are collected here; the backend converts to an absolute arrival
   // time so the handset's countdown stays correct however slow delivery is.
-  const ackOverlay = document.getElementById('ack-modal-overlay');
   const ackVesselEl = document.getElementById('ack-modal-vessel');
   const ackStatusEl = document.getElementById('ack-status');
   const ackEtaEl = document.getElementById('ack-eta');
   const ackNoteEl = document.getElementById('ack-note');
   const ackConfirmBtn = document.getElementById('ack-btn-confirm');
 
+  let ackTriggerEl = null;
+  let ackTargetData = null;
+
   function closeAckModal() {
     if (ackOverlay) ackOverlay.hidden = true;
+    ackTargetData = null;
+    if (ackTriggerEl && typeof ackTriggerEl.focus === 'function') {
+      try { ackTriggerEl.focus(); } catch (e) {}
+      ackTriggerEl = null;
+    }
   }
 
   function openAckModal() {
     if (!ackOverlay) return;
-    const label = currentDrawerData
-      ? (currentDrawerData.desc || currentDrawerData.vesselId || 'Distress call')
+    ackTriggerEl = document.activeElement;
+    ackTargetData = currentDrawerData ? Object.assign({}, currentDrawerData) : null;
+    const label = ackTargetData
+      ? (ackTargetData.desc || ackTargetData.vesselId || 'Distress call')
       : 'Distress call';
     if (ackVesselEl) ackVesselEl.textContent = label;
     ackOverlay.hidden = false;
-    if (ackEtaEl) ackEtaEl.focus();
+    if (ackEtaEl) {
+      ackEtaEl.focus();
+    } else if (ackStatusEl) {
+      ackStatusEl.focus();
+    }
   }
 
   // Quick picks and the free-entry field stay in step with each other.
@@ -230,6 +264,31 @@
     });
   }
 
+  // Focus containment inside acknowledgment dialog
+  if (ackOverlay) {
+    ackOverlay.addEventListener('keydown', function (e) {
+      if (e.key !== 'Tab') return;
+      var focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      var focusable = Array.prototype.slice.call(ackOverlay.querySelectorAll(focusableSelector)).filter(function (el) {
+        return el.offsetParent !== null || el.offsetWidth > 0 || el.offsetHeight > 0 || !el.hidden;
+      });
+      if (!focusable.length) return;
+      var firstEl = focusable[0];
+      var lastEl = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl || !ackOverlay.contains(document.activeElement)) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else {
+        if (document.activeElement === lastEl || !ackOverlay.contains(document.activeElement)) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    });
+  }
+
   ['ack-modal-close', 'ack-btn-cancel'].forEach(function (id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('click', closeAckModal);
@@ -247,7 +306,8 @@
       const etaMinutes = Math.max(1, Math.min(720, parseInt(ackEtaEl && ackEtaEl.value, 10) || 20));
       const status = parseInt(ackStatusEl && ackStatusEl.value, 10) || 1;
       const note = (ackNoteEl && ackNoteEl.value.trim()) || null;
-      const eventId = currentDrawerData && currentDrawerData.sosEventId;
+      const target = ackTargetData || currentDrawerData;
+      const eventId = target && target.sosEventId;
 
       ackConfirmBtn.disabled = true;
 
@@ -257,7 +317,7 @@
       if (!eventId) {
         sosBtnAcknowledge.disabled = true;
         sosBtnAcknowledge.textContent = 'Acknowledged';
-        if (currentDrawerData) {
+        if (currentDrawerData && (!target || currentDrawerData.vesselId === target.vesselId)) {
           currentDrawerData.etaAt = new Date(Date.now() + etaMinutes * 60000).toISOString();
           currentDrawerData.responderStatus = status;
           const row = allAlerts().find(function (a) {
@@ -314,8 +374,7 @@
           } else {
             showToast('Not delivered', 'The fisherman may not have received the ETA.', true);
           }
-          // Roll back to the pre-attempt state rather than leaving the button
-          // stuck on "Acknowledging…".
+          // Roll back only if the drawer is still showing THIS event
           if (currentDrawerData && currentDrawerData.sosEventId === eventId) {
             sosBtnAcknowledge.disabled = !!currentDrawerData.acknowledgedAt;
             sosBtnAcknowledge.textContent = currentDrawerData.acknowledgedAt ? 'Acknowledged' : 'Acknowledge';
@@ -342,7 +401,8 @@
   }, 1000);
 
   sosBtnResolve.addEventListener('click', function () {
-    const eventId = currentDrawerData && currentDrawerData.sosEventId;
+    const target = currentDrawerData ? Object.assign({}, currentDrawerData) : null;
+    const eventId = target && target.sosEventId;
 
     // A demo row has no backend incident to resolve - keep the previous
     // local-only behaviour for it.
@@ -351,14 +411,14 @@
         incidentLayer.removeLayer(currentDrawerMarker);
         liveSosLayer.removeLayer(currentDrawerMarker);
       }
-      if (currentDrawerData) {
+      if (currentDrawerData && (!target || currentDrawerData.vesselId === target.vesselId)) {
         const row = allAlerts().find(function (a) {
           return a.vesselId === currentDrawerData.vesselId ||
                  (a.lat === currentDrawerData.lat && a.lng === currentDrawerData.lng);
         });
         if (row) { row.status = 'resolved'; syncAlertIndicators(); }
+        closeSOSDrawer();
       }
-      closeSOSDrawer();
       return;
     }
 
@@ -375,7 +435,10 @@
           httpErr.status = res.status;
           throw httpErr;
         }
-        closeSOSDrawer();
+        // Only close drawer if it is STILL showing the resolved event
+        if (currentDrawerData && currentDrawerData.sosEventId === eventId) {
+          closeSOSDrawer();
+        }
         // The event has actually left storage server-side now, so let the
         // next active-feed refresh remove its marker/row rather than
         // guessing which one to remove client-side.
@@ -436,8 +499,16 @@
   ns.sosBroadcastMsg = sosBroadcastMsg;
   ns.sosTimerInterval = sosTimerInterval;
   ns.sosAlertStartTime = sosAlertStartTime;
-  ns.currentDrawerMarker = currentDrawerMarker;
-  ns.currentDrawerData = currentDrawerData;
+  Object.defineProperty(ns, 'currentDrawerMarker', {
+    get: function () { return currentDrawerMarker; },
+    set: function (v) { currentDrawerMarker = v; },
+    configurable: true
+  });
+  Object.defineProperty(ns, 'currentDrawerData', {
+    get: function () { return currentDrawerData; },
+    set: function (v) { currentDrawerData = v; },
+    configurable: true
+  });
   ns.openIncidentDrawer = openIncidentDrawer;
   ns.closeSOSDrawer = closeSOSDrawer;
   ns.sosTickTimer = sosTickTimer;

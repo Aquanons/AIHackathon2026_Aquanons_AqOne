@@ -238,35 +238,35 @@ Wait for explicit user sign-off before Phase 4.
 
 ### Tasks
 
-- [ ] Task 4.1: Fix `loadActiveSos` ordering in `dashboard-live-sos.js` using serialized requests or a small request generation counter.
+- [x] Task 4.1: Fix `loadActiveSos` ordering in `dashboard-live-sos.js` using serialized requests or a small request generation counter.
   Validate and map an entire response before replacing alerts; update freshness only after accepting it.
   Coordinate action-triggered reloads with the same ordering rule.
-- [ ] Task 4.2: In `dashboard-incidents.js`, retire a drawer when its event leaves the authoritative active list, and capture the acknowledgment target when its modal opens.
+- [x] Task 4.2: In `dashboard-incidents.js`, retire a drawer when its event leaves the authoritative active list, and capture the acknowledgment target when its modal opens.
   Ensure a response for case A never closes or rewrites an unrelated case B drawer.
-- [ ] Task 4.3: Fix shortcut editable-element detection in `dashboard-shortcuts-weather.js` and modal handling in `dashboard-incidents.js`/`dashboard.html`.
+- [x] Task 4.3: Fix shortcut editable-element detection in `dashboard-shortcuts-weather.js` and modal handling in `dashboard-incidents.js`/`dashboard.html`.
   Add correct Escape priority, focus containment/return, and prevent background case switching during acknowledgment.
   Include native accessible names for touched controls and a keyboard-operable incident entry.
-- [ ] Task 4.4: Snapshot applied filters in `dashboard-operations-audit.js`; use them for pagination and export until another search is submitted.
+- [x] Task 4.4: Snapshot applied filters in `dashboard-operations-audit.js`; use them for pagination and export until another search is submitted.
   Prevent overlapping page appends and ignore obsolete search/timeline responses.
-- [ ] Task 4.5: Extend runtime tests with controlled delayed promises and keyboard events.
+- [x] Task 4.5: Extend runtime tests with controlled delayed promises and keyboard events.
   Keep the test harness small and reuse it rather than creating per-panel test infrastructure.
 
 ### Verification Gate
 
-- [ ] Run shared web checks; all must pass.
-- [ ] Resolve poll B before poll A: the older response must not overwrite the newest accepted SOS state or reset its freshness.
-- [ ] Return malformed/missing events after a successful poll: retain the last-known feed and display failure/staleness.
-- [ ] Resolve an open incident from another session: the first session retires its stale drawer when the feed updates.
-- [ ] Open acknowledgment for A, attempt background navigation, and confirm: only A may be submitted, or the action must be cancelled explicitly.
-- [ ] Type `f`, `p`, `m`, and `b` in notes without map actions; Escape closes the top dialog and returns focus to its trigger.
-- [ ] Edit audit filters without submitting: pagination and export still use the displayed applied filters.
-- [ ] Reverse the responses for two searches and two case timelines: only the newest requested view appears under its matching title.
+- [x] Run shared web checks; all must pass.
+- [x] Resolve poll B before poll A: the older response must not overwrite the newest accepted SOS state or reset its freshness.
+- [x] Return malformed/missing events after a successful poll: retain the last-known feed and display failure/staleness.
+- [x] Resolve an open incident from another session: the first session retires its stale drawer when the feed updates.
+- [x] Open acknowledgment for A, attempt background navigation, and confirm: only A may be submitted, or the action must be cancelled explicitly.
+- [x] Type `f`, `p`, `m`, and `b` in notes without map actions; Escape closes the top dialog and returns focus to its trigger.
+- [x] Edit audit filters without submitting: pagination and export still use the displayed applied filters.
+- [x] Reverse the responses for two searches and two case timelines: only the newest requested view appears under its matching title.
 
 ### Review Gate (Ponytail)
 
-- [ ] One small ordering mechanism per independently updated view; no global request manager.
-- [ ] Kept three-second SOS polling and existing server-confirmed acknowledge/resolve semantics.
-- [ ] Correctness assertions cover observable behavior, not implementation-specific counter values.
+- [x] One small ordering mechanism per independently updated view; no global request manager.
+- [x] Kept three-second SOS polling and existing server-confirmed acknowledge/resolve semantics.
+- [x] Correctness assertions cover observable behavior, not implementation-specific counter values.
 
 ### Git Checkpoint
 
@@ -346,7 +346,7 @@ Do not deploy or declare physical SOS readiness from local acceptance; deploymen
 | 1 | Completed | c7ef8505c00e6d10cb0970c56e54852dc196eb84 | 89/89 node --test passed; node --check clean; browser static & DOM checks confirmed |
 | 2 | Completed | 71be09d424b94f6f272a8427e0eaef0ea1a9cf58 | 99/99 node --test passed; node --check clean; browser runtime and integration checks confirmed |
 | 3 | Completed | 5878b40145be0e579b323a64ccdadb18d89134f8 | 106/106 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; safety data freshness, numerical validation, and demo provenance confirmed |
-| 4 | Not started | None | Pending |
+| 4 | Completed | f0bf405d64ff53542c2d67724ac241f40ce67b1c | 114/114 node --test passed; 22/22 pytest passed; ruff clean; node --check clean; SOS ordering, drawer retirement, modal target lock, editable shortcuts, and audit snapshot confirmed |
 | 5 | Not started | None | Pending |
 
 Check off tasks only after the relevant behavior has been verified.

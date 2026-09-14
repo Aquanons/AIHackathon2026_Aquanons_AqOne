@@ -195,17 +195,32 @@
     });
   }
 
+  let activeSosReqSeq = 0;
+  let lastAcceptedSosSeq = 0;
+
   function loadActiveSos() {
+    const seq = ++activeSosReqSeq;
     return authFetch('/api/sos/active')
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
       .then(function (data) {
-        const events = (data && data.events) || [];
-        liveAlerts.splice(0, liveAlerts.length);
-        Array.prototype.push.apply(liveAlerts, events.map(liveAlertFromEvent));
+        if (!data || !Array.isArray(data.events)) {
+          throw new Error('Malformed SOS feed payload');
+        }
+        const mapped = data.events.map(liveAlertFromEvent);
 
+        // Discard responses that were superseded by a newer accepted response
+        if (seq < lastAcceptedSosSeq) {
+          return;
+        }
+        lastAcceptedSosSeq = seq;
+
+        liveAlerts.splice(0, liveAlerts.length);
+        Array.prototype.push.apply(liveAlerts, mapped);
+
+        const events = data.events;
         // Announce genuinely new calls, but never on the first load - a
         // dispatcher opening the dashboard should not be hit with a klaxon for
         // events they already handled before the page refreshed.
@@ -246,6 +261,7 @@
         // STALE/OFFLINE on its own once enough time has passed without a
         // fresh lastSosSuccessMs, which this call makes immediate instead of
         // waiting up to a second for the next tick.
+        if (seq < lastAcceptedSosSeq) return;
         console.warn('[AqOne] Live SOS poll failed:', err.message);
         updateSyncStatus();
       });
@@ -260,7 +276,13 @@
   ns.liveSosMarkers = liveSosMarkers;
   ns.liveSosFirstLoad = liveSosFirstLoad;
   ns.knownSosIds = knownSosIds;
-  ns.lastSosSuccessMs = lastSosSuccessMs;
+  Object.defineProperty(ns, 'lastSosSuccessMs', {
+    get: function () { return lastSosSuccessMs; },
+    set: function (v) { lastSosSuccessMs = v; },
+    configurable: true
+  });
+  ns.getActiveSosReqSeq = function () { return activeSosReqSeq; };
+  ns.getLastAcceptedSosSeq = function () { return lastAcceptedSosSeq; };
   ns.syncStatusEl = syncStatusEl;
   ns.syncTextEl = syncTextEl;
   ns.bannerTimeEl = bannerTimeEl;

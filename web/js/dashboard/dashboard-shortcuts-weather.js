@@ -15,41 +15,92 @@
   var updateStats = typeof ns.updateStats === 'function' ? ns.updateStats : function () {};
   var alertData = ns.alertData;
 
+  function isEditable(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el.isContentEditable;
+  }
+
   // ===== KEYBOARD SHORTCUTS =====
   document.addEventListener('keydown', function (e) {
+    var activeEl = document.activeElement;
+    var inEditable = isEditable(activeEl);
+
     if (e.key === 'Escape') {
-      if (sosDrawer.classList.contains('open')) { closeSOSDrawer(); return; }
-      if (ns.emergencyOverlay.classList.contains('active')) { ns.closeEmergencyModal(); return; }
-      if (ns.advisoryOverlay.classList.contains('active')) { ns.closeAdvisoryModal(); return; }
-      if (ns.deleteOverlay.classList.contains('active')) { ns.closeDeleteModal(); return; }
-      if (ns.pinModeActive)    { deactivatePinMode(); activatePanMode(); return; }
-      if (ns.measureActive)    { deactivateMeasureMode(); measureClearAll(); closePanel(); activatePanMode(); return; }
-      if (ns.activePanel)      { closePanel(); }
+      // 1. Topmost dialogs / modals
+      if (ns.ackOverlay && ns.ackOverlay.hidden === false) {
+        if (typeof ns.closeAckModal === 'function') ns.closeAckModal();
+        else ns.ackOverlay.hidden = true;
+        e.preventDefault();
+        return;
+      }
+      if (ns.emergencyOverlay && ns.emergencyOverlay.classList.contains('active')) {
+        ns.closeEmergencyModal();
+        e.preventDefault();
+        return;
+      }
+      if (ns.advisoryOverlay && ns.advisoryOverlay.classList.contains('active')) {
+        ns.closeAdvisoryModal();
+        e.preventDefault();
+        return;
+      }
+      if (ns.deleteOverlay && ns.deleteOverlay.classList.contains('active')) {
+        ns.closeDeleteModal();
+        e.preventDefault();
+        return;
+      }
+      // 2. Case activity drawer
+      if (ns.activityDrawer && ns.activityDrawer.classList.contains('open')) {
+        if (typeof ns.closeActivityDrawer === 'function') ns.closeActivityDrawer();
+        e.preventDefault();
+        return;
+      }
+      // 3. SOS drawer
+      if (sosDrawer && sosDrawer.classList.contains('open')) {
+        closeSOSDrawer();
+        e.preventDefault();
+        return;
+      }
+      // 4. Pin / measure modes & panels
+      if (ns.pinModeActive) { deactivatePinMode(); activatePanMode(); e.preventDefault(); return; }
+      if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); closePanel(); activatePanMode(); e.preventDefault(); return; }
+      if (ns.activePanel) { closePanel(); e.preventDefault(); return; }
+      return;
     }
-    if (e.key === 'f' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
-      document.getElementById('btn-fullscreen').click();
-    }
-    if (e.key === 'b' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+
+    if (inEditable) return;
+
+    var hasOpenModal = (ns.ackOverlay && ns.ackOverlay.hidden === false) ||
+      (ns.emergencyOverlay && ns.emergencyOverlay.classList.contains('active')) ||
+      (ns.advisoryOverlay && ns.advisoryOverlay.classList.contains('active')) ||
+      (ns.deleteOverlay && ns.deleteOverlay.classList.contains('active'));
+    if (hasOpenModal) return;
+
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    if (e.key === 'f') {
+      var fsBtn = document.getElementById('btn-fullscreen');
+      if (fsBtn) fsBtn.click();
+    } else if (e.key === 'b') {
       if (ns.activePanel === 'layers') { closePanel(); } else { openPanel('layers'); }
-    }
-    if (e.key === 'h' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+    } else if (e.key === 'h') {
       if (!ns.panModeActive) {
         if (ns.pinModeActive) { deactivatePinMode(); }
         if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); if (ns.activePanel === 'measure') closePanel(); }
         activatePanMode();
       }
-    }
-    if (e.key === 'p' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+    } else if (e.key === 'p') {
       if (ns.pinModeActive) { deactivatePinMode(); activatePanMode(); } else {
         if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); if (ns.activePanel === 'measure') closePanel(); }
         activatePinMode();
       }
-    }
-    if (e.key === 'm' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+    } else if (e.key === 'm') {
       if (ns.measureActive) { deactivateMeasureMode(); measureClearAll(); closePanel(); activatePanMode(); }
-      else               { if (ns.pinModeActive) { deactivatePinMode(); } openPanel('measure'); activateMeasureMode(); }
+      else { if (ns.pinModeActive) { deactivatePinMode(); } openPanel('measure'); activateMeasureMode(); }
     }
   });
+
+  ns.isEditable = isEditable;
 
   updateStats();
 

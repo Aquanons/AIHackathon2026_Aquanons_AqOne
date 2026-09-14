@@ -48,9 +48,18 @@ function createStubElement(tag = 'div', id = '') {
     classList: classList,
     children: children,
     disabled: false,
+    hidden: false,
     value: '',
     _innerHTML: '',
     _textContent: '',
+    focus() {
+      if (this._ownerDocument) this._ownerDocument.activeElement = this;
+    },
+    blur() {
+      if (this._ownerDocument && this._ownerDocument.activeElement === this) {
+        this._ownerDocument.activeElement = null;
+      }
+    },
     get innerHTML() {
       return this._innerHTML;
     },
@@ -99,24 +108,44 @@ function createStubElement(tag = 'div', id = '') {
 
 function createDOMContext(elements = {}, ns = { ready: true }) {
   const elMap = new Map();
-  for (const [id, el] of Object.entries(elements)) {
-    elMap.set(id, el);
-  }
+  const docListeners = {};
 
   const documentStub = {
+    activeElement: null,
     getElementById(id) {
       if (elMap.has(id)) return elMap.get(id);
       const el = createStubElement('div', id);
+      el._ownerDocument = documentStub;
       elMap.set(id, el);
       return el;
     },
     querySelectorAll() { return []; },
     querySelector() { return null; },
-    createElement(tag) { return createStubElement(tag); },
+    createElement(tag) {
+      const el = createStubElement(tag);
+      el._ownerDocument = documentStub;
+      return el;
+    },
     body: createStubElement('body'),
     documentElement: createStubElement('html'),
-    addEventListener() {}
+    addEventListener(event, fn) {
+      docListeners[event] = docListeners[event] || [];
+      docListeners[event].push(fn);
+    },
+    dispatchEvent(event) {
+      const type = typeof event === 'string' ? event : event.type;
+      const ev = typeof event === 'string' ? { type: event, target: this } : event;
+      (docListeners[type] || []).forEach(fn => fn.call(this, ev));
+    }
   };
+  documentStub.body._ownerDocument = documentStub;
+  documentStub.documentElement._ownerDocument = documentStub;
+  documentStub.activeElement = documentStub.body;
+
+  for (const [id, el] of Object.entries(elements)) {
+    el._ownerDocument = documentStub;
+    elMap.set(id, el);
+  }
 
   const windowStub = {
     document: documentStub,
@@ -1221,5 +1250,516 @@ test('Phase 3 - Safety data freshness, numerical validation, and demo provenance
       buoyHealthCode.includes('Sample buoy network baseline (unpolled offline data)'),
       'dashboard-buoy-health.js must contain honest baseline label'
     );
+  });
+});
+
+test('Phase 4 - Incident actions, audit reads, and keyboard stabilization', async (t) => {
+  await t.test('loadActiveSos ordering: older poll resolving late does not overwrite newer state or freshness', async () => {
+    let callCount = 0;
+    let resolveFirst;
+    let resolveSecond;
+    const promise1 = new Promise((resolve) => { resolveFirst = resolve; });
+    const promise2 = new Promise((resolve) => { resolveSecond = resolve; });
+
+    const liveAlerts = [];
+    const syncStatusEl = createStubElement('div', 'sync-status');
+    const syncTextEl = createStubElement('span', 'sync-text');
+    const bannerTimeEl = createStubElement('span');
+    bannerTimeEl.className = 'banner-time';
+    const statsFeedStatusEl = createStubElement('span', 'stats-feed-status');
+
+    const ns = {
+      ready: true,
+      liveAlerts: liveAlerts,
+      escapeHtml: escapeHtml,
+      classifyFreshness: () => 'live',
+      freshnessLabel: () => 'LIVE',
+      authFetch: () => {
+        callCount++;
+        if (callCount === 1) return promise1;
+        return promise2;
+      },
+      map: { setView() {} },
+      showToast() {},
+      syncAlertIndicators() {},
+      renderIncidentFeed() {},
+      refreshOpenDrawer() {}
+    };
+
+    const { window, document } = createDOMContext({
+      'sync-status': syncStatusEl,
+      'sync-text': syncTextEl,
+      'stats-feed-status': statsFeedStatusEl
+    }, ns);
+    document.querySelector = (sel) => (sel === '.banner-time' ? bannerTimeEl : null);
+
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ addLayer: () => {}, removeLayer: () => {} }) }),
+      divIcon: () => ({}),
+      marker: () => ({ bindTooltip: () => {}, off: () => {}, on: () => {}, setLatLng: () => {} })
+    };
+
+    const liveSosCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-live-sos.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(liveSosCode, context);
+
+    // Call 1 was initiated by script load.
+    // Now trigger Call 2.
+    const poll2 = ns.loadActiveSos();
+
+    // Resolve Call 2 first with newer event SOS-2
+    resolveSecond({
+      ok: true,
+      json: () => Promise.resolve({
+        events: [{
+          id: 'SOS-2',
+          boat: 'Newer Vessel',
+          latitude: 11.7,
+          longitude: 122.4,
+          created_at: new Date().toISOString(),
+          is_synthetic: false
+        }]
+      })
+    });
+    await poll2;
+
+    assert.equal(ns.liveAlerts.length, 1);
+    assert.equal(ns.liveAlerts[0].sosEventId, 'SOS-2');
+    const acceptedTimestamp = ns.lastSosSuccessMs;
+    assert.ok(typeof acceptedTimestamp === 'number');
+
+    // Wait a brief tick to ensure Date.now() advances if called again
+    await new Promise(r => setTimeout(r, 10));
+
+    // Resolve Call 1 with older event SOS-1
+    resolveFirst({
+      ok: true,
+      json: () => Promise.resolve({
+        events: [{
+          id: 'SOS-1',
+          boat: 'Older Vessel',
+          latitude: 11.6,
+          longitude: 122.3,
+          created_at: new Date(Date.now() - 60000).toISOString(),
+          is_synthetic: false
+        }]
+      })
+    });
+    // Wait for promise chain to settle
+    await new Promise(r => setTimeout(r, 10));
+
+    // Must NOT have overwritten SOS-2 or updated lastSosSuccessMs
+    assert.equal(ns.liveAlerts.length, 1);
+    assert.equal(ns.liveAlerts[0].sosEventId, 'SOS-2', 'Newer accepted state must not be overwritten by older response');
+    assert.equal(ns.lastSosSuccessMs, acceptedTimestamp, 'Freshness timestamp must not be updated by superseded request');
+  });
+
+  await t.test('loadActiveSos rejects malformed payloads and preserves last-known live alerts', async () => {
+    const liveAlerts = [
+      { sosEventId: 'SOS-RETAINED', desc: 'Retained SOS', time: '1m ago', isLive: true }
+    ];
+    const ns = {
+      ready: true,
+      liveAlerts: liveAlerts,
+      escapeHtml: escapeHtml,
+      classifyFreshness: () => 'live',
+      freshnessLabel: () => 'LIVE',
+      authFetch: () => Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ missing_events: true }) // Not an array!
+      }),
+      map: { setView() {} },
+      showToast() {},
+      syncAlertIndicators() {},
+      renderIncidentFeed() {},
+      refreshOpenDrawer() {}
+    };
+
+    const { window, document } = createDOMContext({}, ns);
+    const fakeL = {
+      layerGroup: () => ({ addTo: () => ({ addLayer: () => {}, removeLayer: () => {} }) }),
+      divIcon: () => ({}),
+      marker: () => ({ bindTooltip: () => {}, off: () => {}, on: () => {}, setLatLng: () => {} })
+    };
+
+    const liveSosCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-live-sos.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, L: fakeL, AqOneDashboard: ns }));
+    vm.runInContext(liveSosCode, context);
+
+    await new Promise(r => setTimeout(r, 10));
+
+    // liveAlerts must still contain SOS-RETAINED and not be emptied
+    assert.equal(ns.liveAlerts.length, 1);
+    assert.equal(ns.liveAlerts[0].sosEventId, 'SOS-RETAINED');
+  });
+
+  await t.test('refreshOpenDrawer retires drawer when incident leaves authoritative active list', () => {
+    const drawer = createStubElement('div', 'sos-drawer');
+    drawer.classList.add('open');
+    const ackOverlay = createStubElement('div', 'ack-modal-overlay');
+    ackOverlay.hidden = false;
+
+    let toastTitle = '';
+    const ns = {
+      ready: true,
+      allAlerts: () => [], // Empty active feed!
+      showToast: (title) => { toastTitle = title; },
+      responderStatusHtml: () => '',
+      formatEta: () => '',
+      confidenceColor: () => '#e74c3c'
+    };
+
+    const elements = {
+      'sos-drawer': drawer,
+      'sos-drawer-header': createStubElement('div', 'sos-drawer-header'),
+      'sos-drawer-title': createStubElement('span', 'sos-drawer-title'),
+      'sos-drawer-close': createStubElement('button', 'sos-drawer-close'),
+      'sos-timer': createStubElement('span', 'sos-timer'),
+      'sos-timer-label': createStubElement('span', 'sos-timer-label'),
+      'sos-vessel-id': createStubElement('span', 'sos-vessel-id'),
+      'sos-owner': createStubElement('span', 'sos-owner'),
+      'sos-position': createStubElement('span', 'sos-position'),
+      'sos-buoy': createStubElement('span', 'sos-buoy'),
+      'sos-coverage': createStubElement('span', 'sos-coverage'),
+      'sos-stage': createStubElement('span', 'sos-stage'),
+      'sos-next-contact': createStubElement('span', 'sos-next-contact'),
+      'sos-confidence-value': createStubElement('span', 'sos-confidence-value'),
+      'sos-confidence-fill': createStubElement('span', 'sos-confidence-fill'),
+      'sos-btn-zoom': createStubElement('button', 'sos-btn-zoom'),
+      'sos-btn-acknowledge': createStubElement('button', 'sos-btn-acknowledge'),
+      'sos-btn-resolve': createStubElement('button', 'sos-btn-resolve'),
+      'sos-btn-broadcast': createStubElement('button', 'sos-btn-broadcast'),
+      'sos-btn-checkin': createStubElement('button', 'sos-btn-checkin'),
+      'sos-btn-activity': createStubElement('button', 'sos-btn-activity'),
+      'sos-broadcast-msg': createStubElement('div', 'sos-broadcast-msg'),
+      'sos-responder-block': createStubElement('div', 'sos-responder-block'),
+      'ack-modal-overlay': ackOverlay,
+      'ack-modal-vessel': createStubElement('p', 'ack-modal-vessel'),
+      'ack-status': createStubElement('select', 'ack-status'),
+      'ack-eta': createStubElement('input', 'ack-eta'),
+      'ack-note': createStubElement('input', 'ack-note'),
+      'ack-btn-confirm': createStubElement('button', 'ack-btn-confirm'),
+      'ack-btn-cancel': createStubElement('button', 'ack-btn-cancel'),
+      'ack-modal-close': createStubElement('button', 'ack-modal-close')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const incidentsCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-incidents.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(incidentsCode, context);
+
+    // Set drawer open with SOS-A
+    ns.currentDrawerData = { alertType: 'sos', sosEventId: 'SOS-A', headerText: 'SOS A' };
+    assert.ok(drawer.classList.contains('open'));
+
+    // Feed refreshes, SOS-A is missing from allAlerts()
+    ns.refreshOpenDrawer();
+
+    assert.equal(drawer.classList.contains('open'), false, 'Drawer must be closed when event leaves feed');
+    assert.equal(ns.currentDrawerData, null, 'Drawer data must be retired');
+    assert.equal(ackOverlay.hidden, true, 'Ack modal must close when incident is retired');
+    assert.equal(toastTitle, 'Incident closed');
+  });
+
+  await t.test('ack modal captures target and prevents background case switching', async () => {
+    const drawer = createStubElement('div', 'sos-drawer');
+    drawer.classList.add('open');
+    const ackOverlay = createStubElement('div', 'ack-modal-overlay');
+    ackOverlay.hidden = true;
+    const ackVessel = createStubElement('p', 'ack-modal-vessel');
+    const ackConfirmBtn = createStubElement('button', 'ack-btn-confirm');
+    const ackEta = createStubElement('input', 'ack-eta');
+    ackEta.value = '25';
+    const ackStatus = createStubElement('select', 'ack-status');
+    ackStatus.value = '2';
+    const ackNote = createStubElement('input', 'ack-note');
+    ackNote.value = 'On our way';
+
+    let requestedUrl = '';
+    let requestBody = null;
+    const ns = {
+      ready: true,
+      allAlerts: () => [],
+      authFetch: (url, opts) => {
+        requestedUrl = url;
+        requestBody = opts && JSON.parse(opts.body);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+      },
+      loadActiveSos: () => Promise.resolve(),
+      showToast: () => {},
+      responderStatusHtml: () => '',
+      formatEta: () => '',
+      confidenceColor: () => '#e74c3c'
+    };
+
+    const elements = {
+      'sos-drawer': drawer,
+      'sos-drawer-header': createStubElement('div', 'sos-drawer-header'),
+      'sos-drawer-title': createStubElement('span', 'sos-drawer-title'),
+      'sos-drawer-close': createStubElement('button', 'sos-drawer-close'),
+      'sos-timer': createStubElement('span', 'sos-timer'),
+      'sos-timer-label': createStubElement('span', 'sos-timer-label'),
+      'sos-vessel-id': createStubElement('span', 'sos-vessel-id'),
+      'sos-owner': createStubElement('span', 'sos-owner'),
+      'sos-position': createStubElement('span', 'sos-position'),
+      'sos-buoy': createStubElement('span', 'sos-buoy'),
+      'sos-coverage': createStubElement('span', 'sos-coverage'),
+      'sos-stage': createStubElement('span', 'sos-stage'),
+      'sos-next-contact': createStubElement('span', 'sos-next-contact'),
+      'sos-confidence-value': createStubElement('span', 'sos-confidence-value'),
+      'sos-confidence-fill': createStubElement('span', 'sos-confidence-fill'),
+      'sos-btn-zoom': createStubElement('button', 'sos-btn-zoom'),
+      'sos-btn-acknowledge': createStubElement('button', 'sos-btn-acknowledge'),
+      'sos-btn-resolve': createStubElement('button', 'sos-btn-resolve'),
+      'sos-btn-broadcast': createStubElement('button', 'sos-btn-broadcast'),
+      'sos-btn-checkin': createStubElement('button', 'sos-btn-checkin'),
+      'sos-btn-activity': createStubElement('button', 'sos-btn-activity'),
+      'sos-broadcast-msg': createStubElement('div', 'sos-broadcast-msg'),
+      'sos-responder-block': createStubElement('div', 'sos-responder-block'),
+      'ack-modal-overlay': ackOverlay,
+      'ack-modal-vessel': ackVessel,
+      'ack-status': ackStatus,
+      'ack-eta': ackEta,
+      'ack-note': ackNote,
+      'ack-btn-confirm': ackConfirmBtn,
+      'ack-btn-cancel': createStubElement('button', 'ack-btn-cancel'),
+      'ack-modal-close': createStubElement('button', 'ack-modal-close')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const incidentsCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-incidents.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(incidentsCode, context);
+
+    // Open drawer with Case A
+    ns.openIncidentDrawer({
+      alertType: 'sos',
+      sosEventId: 'CASE-A',
+      headerText: 'Case A',
+      desc: 'Bangka Alpha',
+      vesselId: 'V-001'
+    }, null);
+    assert.equal(ns.currentDrawerData.sosEventId, 'CASE-A');
+
+    // Open acknowledgment modal
+    ns.openAckModal();
+    assert.equal(ackOverlay.hidden, false);
+    assert.equal(ackVessel.textContent, 'Bangka Alpha');
+
+    // Attempt background switch to Case B while modal is open
+    ns.openIncidentDrawer({
+      alertType: 'sos',
+      sosEventId: 'CASE-B',
+      headerText: 'Case B',
+      desc: 'Bangka Beta',
+      vesselId: 'V-002'
+    }, null);
+
+    // Must still be locked to Case A
+    assert.equal(ns.currentDrawerData.sosEventId, 'CASE-A', 'openIncidentDrawer must not switch case while ack modal is open');
+
+    // Submit acknowledgment
+    ackConfirmBtn.click();
+    await new Promise(r => setTimeout(r, 10));
+
+    assert.equal(requestedUrl, '/api/sos/CASE-A/acknowledge', 'Acknowledge request must target original Case A');
+    assert.equal(requestBody.eta_minutes, 25);
+    assert.equal(requestBody.responder_note, 'On our way');
+    assert.equal(ackOverlay.hidden, true, 'Ack modal must close on success');
+  });
+
+  await t.test('keyboard shortcuts ignore editable elements and follow Escape priority', () => {
+    let fullscreenClicked = false;
+    const fullscreenBtn = createStubElement('button', 'btn-fullscreen');
+    fullscreenBtn.click = () => { fullscreenClicked = true; };
+
+    const drawer = createStubElement('div', 'sos-drawer');
+    const ackOverlay = createStubElement('div', 'ack-modal-overlay');
+    ackOverlay.hidden = false; // Ack modal is open on top
+
+    const triggerBtn = createStubElement('button', 'ack-trigger-btn');
+    const noteTextarea = createStubElement('textarea', 'note-textarea');
+
+    const ns = {
+      ready: true,
+      ackOverlay: ackOverlay,
+      closeAckModal: () => {
+        ackOverlay.hidden = true;
+        if (triggerBtn) triggerBtn.focus();
+      },
+      closeSOSDrawer: () => { drawer.classList.remove('open'); },
+      sosDrawer: drawer,
+      updateStats: () => {}
+    };
+
+    const elements = {
+      'btn-fullscreen': fullscreenBtn,
+      'sos-drawer': drawer,
+      'ack-modal-overlay': ackOverlay,
+      'note-textarea': noteTextarea
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const shortcutsCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-shortcuts-weather.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(shortcutsCode, context);
+
+    // 1. Typing in editable element does not trigger single-letter shortcuts
+    document.activeElement = noteTextarea;
+    document.dispatchEvent({ type: 'keydown', key: 'f' });
+    document.dispatchEvent({ type: 'keydown', key: 'b' });
+    document.dispatchEvent({ type: 'keydown', key: 'p' });
+    document.dispatchEvent({ type: 'keydown', key: 'm' });
+    assert.equal(fullscreenClicked, false, 'Typing f in textarea must not click fullscreen');
+
+    // 2. Escape priority: Ack modal is open on top of SOS drawer
+    drawer.classList.add('open');
+    ackOverlay.hidden = false;
+    document.activeElement = triggerBtn;
+
+    // Press Escape once: closes ackOverlay first, drawer remains open
+    document.dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {} });
+    assert.equal(ackOverlay.hidden, true, 'First Escape must close the topmost modal');
+    assert.equal(drawer.classList.contains('open'), true, 'First Escape must keep the underlying drawer open');
+    assert.equal(document.activeElement, triggerBtn, 'Focus must return to trigger element');
+
+    // Press Escape second time: closes SOS drawer
+    document.dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {} });
+    assert.equal(drawer.classList.contains('open'), false, 'Second Escape must close the drawer');
+  });
+
+  await t.test('audit filters snapshot on submit: pagination and export preserve applied filters', async () => {
+    let capturedQueries = [];
+    const emailInput = createStubElement('input', 'audit-filter-actor-email');
+    emailInput.value = 'initial@example.com';
+    const actionInput = createStubElement('input', 'audit-filter-action');
+    actionInput.value = 'sos.acknowledge';
+    const resourceTypeSelect = createStubElement('select', 'audit-filter-resource-type');
+    resourceTypeSelect.value = 'sos_event';
+    const resultsEl = createStubElement('div', 'audit-results');
+    const appliedEl = createStubElement('div', 'audit-applied-filters');
+    const loadMoreBtn = createStubElement('button', 'audit-load-more-btn');
+
+    const ns = {
+      ready: true,
+      CURRENT_USER: { role: 'admin' },
+      auditTimelineHtml: () => '<div>timeline</div>',
+      authFetch: (url) => {
+        capturedQueries.push(url);
+        if (url.includes('/export')) {
+          return Promise.resolve({
+            ok: true,
+            blob: () => Promise.resolve({})
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            events: [{ id: 1 }],
+            next_cursor: 'cursor-abc',
+            applied_filters: { actor_email: 'initial@example.com' }
+          })
+        });
+      },
+      showToast: () => {}
+    };
+
+    const elements = {
+      'audit-filter-actor-email': emailInput,
+      'audit-filter-action': actionInput,
+      'audit-filter-resource-type': resourceTypeSelect,
+      'audit-filter-date-from': createStubElement('input', 'audit-filter-date-from'),
+      'audit-filter-date-to': createStubElement('input', 'audit-filter-date-to'),
+      'audit-results': resultsEl,
+      'audit-applied-filters': appliedEl,
+      'audit-load-more-btn': loadMoreBtn,
+      'audit-error': createStubElement('div', 'audit-error')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const auditCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-operations-audit.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(auditCode, context);
+
+    // Initial search submission
+    await ns.renderAuditPanel();
+    assert.ok(capturedQueries[0].includes('actor_email=initial%40example.com'));
+
+    // Now operator mutates the email input without submitting the form
+    emailInput.value = 'unsubmitted@example.com';
+
+    // Operator clicks "Load more"
+    loadMoreBtn.click();
+    await new Promise(r => setTimeout(r, 10));
+
+    // Pagination request must still use snapshotted 'initial@example.com', NOT 'unsubmitted@example.com'
+    assert.ok(capturedQueries[1].includes('actor_email=initial%40example.com'), 'Pagination must use snapshotted applied filters');
+    assert.ok(!capturedQueries[1].includes('unsubmitted'), 'Pagination must not use unsubmitted form values');
+    assert.ok(capturedQueries[1].includes('cursor=cursor-abc'));
+  });
+
+  await t.test('audit and case timeline drop out-of-order obsolete responses', async () => {
+    let resolveCaseA;
+    let resolveCaseB;
+    const pCaseA = new Promise(r => resolveCaseA = r);
+    const pCaseB = new Promise(r => resolveCaseB = r);
+
+    let timelineCallCount = 0;
+    const drawerTitle = createStubElement('span', 'activity-drawer-title');
+    const drawerContent = createStubElement('div', 'activity-drawer-content');
+    const activityDrawer = createStubElement('div', 'activity-drawer');
+
+    const ns = {
+      ready: true,
+      CURRENT_USER: { role: 'admin' },
+      auditTimelineHtml: (events) => (events && events[0] ? events[0].title : ''),
+      authFetch: () => {
+        timelineCallCount++;
+        if (timelineCallCount === 1) return pCaseA;
+        return pCaseB;
+      }
+    };
+
+    const elements = {
+      'activity-drawer': activityDrawer,
+      'activity-drawer-title': drawerTitle,
+      'activity-drawer-content': drawerContent,
+      'activity-drawer-unavailable': createStubElement('div', 'activity-drawer-unavailable'),
+      'activity-drawer-close': createStubElement('button', 'activity-drawer-close')
+    };
+
+    const { window, document } = createDOMContext(elements, ns);
+    const auditCode = fs.readFileSync(path.join(__dirname, '../js/dashboard/dashboard-operations-audit.js'), 'utf8');
+    const context = vm.createContext(Object.assign({}, window, { window, document, AqOneDashboard: ns }));
+    vm.runInContext(auditCode, context);
+
+    // Operator opens Case A
+    ns.openActivityDrawer('sos_event', 'CASE-A', 'Case A Activity');
+    assert.equal(drawerTitle.textContent, 'Case A Activity');
+
+    // Operator quickly switches to Case B before Case A responds
+    ns.openActivityDrawer('sos_event', 'CASE-B', 'Case B Activity');
+    assert.equal(drawerTitle.textContent, 'Case B Activity');
+
+    // Case A resolves late
+    resolveCaseA({
+      ok: true,
+      json: () => Promise.resolve({ events: [{ title: 'CASE A TIMELINE' }] })
+    });
+    await new Promise(r => setTimeout(r, 10));
+
+    // Case A's response must NOT have replaced Case B's loading state or title!
+    assert.equal(drawerTitle.textContent, 'Case B Activity');
+    assert.ok(!drawerContent.innerHTML.includes('CASE A TIMELINE'), 'Obsolete Case A response must be dropped');
+
+    // Case B resolves
+    resolveCaseB({
+      ok: true,
+      json: () => Promise.resolve({ events: [{ title: 'CASE B TIMELINE' }] })
+    });
+    await new Promise(r => setTimeout(r, 10));
+
+    assert.equal(drawerTitle.textContent, 'Case B Activity');
+    assert.ok(drawerContent.innerHTML.includes('CASE B TIMELINE'), 'Case B timeline must be rendered');
   });
 });

@@ -191,7 +191,7 @@
     const list = document.getElementById('alert-list');
     const rows = allAlerts();
     list.innerHTML = rows.map((a, i) => `
-      <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}">
+      <div class="alert-row${a.isLive ? ' alert-row-live' : ' alert-row-secondary'}" data-alert-index="${i}" tabindex="0" role="button" aria-label="Incident: ${escapeHtml(a.desc)}">
         ${alertIcon(a.type)}
         <div class="alert-info">
           <div class="alert-desc">${(function () {
@@ -211,7 +211,7 @@
     `).join('');
 
     list.querySelectorAll('.alert-row').forEach(row => {
-      row.addEventListener('click', () => {
+      function activateAlert() {
         var a = rows[row.dataset.alertIndex];
         if (!a) return;
         // An SOS sent without a GPS fix is still a real distress call and must
@@ -220,12 +220,19 @@
           map.setView([a.lat, a.lng], 14, { animate: true, duration: 1 });
         }
         if (a.isLive && a.drawerData) {
-          ns.openIncidentDrawer(a.drawerData, ns.liveSosMarkers[a.sosEventId] || null);
+          ns.openIncidentDrawer(a.drawerData, (ns.liveSosMarkers && ns.liveSosMarkers[a.sosEventId]) || null);
           return;
         }
         if (a.vesselId) {
           var vm = vesselMarkers[a.vesselId];
           if (vm) vm.openPopup();
+        }
+      }
+      row.addEventListener('click', activateAlert);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          activateAlert();
         }
       });
     });
