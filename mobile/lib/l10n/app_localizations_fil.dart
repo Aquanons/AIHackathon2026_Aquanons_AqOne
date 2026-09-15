@@ -635,4 +635,26 @@ class AppLocalizationsFil extends AppLocalizations {
 
   @override
   String get responderDelayedStillOnWay => 'Naantala — papunta pa rin';
+
+  @override
+  String get rescueNotifTitle => 'Papunta na ang tulong';
+
+  @override
+  String rescueNotifBodyMinutes(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes minuto',
+      one: '1 minuto',
+    );
+    return 'Darating ang bangkang panagip sa $_temp0';
+  }
+
+  @override
+  String get rescueNotifBodySoon =>
+      'Darating ang bangkang panagip anumang oras.';
+
+  @override
+  String get rescueNotifBodyDelayed =>
+      'Naantala ang bangkang panagip ngunit papunta pa rin. Manatili sa iyong bangka.';
 }

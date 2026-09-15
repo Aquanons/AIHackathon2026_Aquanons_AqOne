@@ -22,6 +22,10 @@
     <!-- SOS alarm: vibration when a distress call is raised. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
 
+    <!-- Rescue-ETA notification in the shade (Android 13+ requires this at
+         runtime, not install time). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- Venture compass. No permission is needed to read the magnetometer;
          these are declared not-required so Play does not hide the app from
          handsets without a compass - the map still works, the dial just

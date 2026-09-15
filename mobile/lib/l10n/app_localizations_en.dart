@@ -624,4 +624,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get responderDelayedStillOnWay => 'Delayed — still on the way';
+
+  @override
+  String get rescueNotifTitle => 'Help is coming';
+
+  @override
+  String rescueNotifBodyMinutes(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes minutes',
+      one: '1 minute',
+    );
+    return 'Rescue boat arriving in $_temp0';
+  }
+
+  @override
+  String get rescueNotifBodySoon => 'Rescue boat arriving any moment now.';
+
+  @override
+  String get rescueNotifBodyDelayed =>
+      'The rescue boat is delayed but still coming. Stay with your boat.';
 }

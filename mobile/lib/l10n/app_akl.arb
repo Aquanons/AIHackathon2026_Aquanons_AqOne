@@ -112,5 +112,9 @@
   "sosCancelledNothingSent": "Ginkansela ro SOS. Waeay it napadaea.",
   "sosSetupBoatRequired": "Tapuson ro pagrehistro it imong baroto bag-o magpadaea it SOS.",
   "responderDelayedStillOnWay": "Naulang — nagapakadto pa gihapon",
+  "rescueNotifTitle": "Nagapakadto ron ro bulig",
+  "rescueNotifBodyMinutes": "Madangat ro sakayan nga panagip sa {minutes, plural, =1{1 ka minuto} other{{minutes} ka minuto}}",
+  "rescueNotifBodySoon": "Madangat sa anumang oras ro sakayan nga panagip.",
+  "rescueNotifBodyDelayed": "Naulang ro sakayan nga panagip, pero nagapakadto pa gihapon. Pabilin sa imong sakayan.",
   "hotspotLegendDisclaimer": "Base sa datos it kapalibutan. Indi ini saad it isda, kag indi man ini timailhan nga ligaw eon magguwa."
 }

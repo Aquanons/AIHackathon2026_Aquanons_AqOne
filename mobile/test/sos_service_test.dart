@@ -188,4 +188,105 @@ void main() {
     expect(updated.lastError, isNotNull);
     expect(updated.lastError, isNotEmpty);
   });
+
+  test('un-enrolled handset reads its own ack by local_id over the direct path',
+      () async {
+    final record = _record('local-ack');
+    await outbox.insert(record);
+    await outbox.advance(record.localId, DeliveryState.delivered);
+
+    final etaAt = DateTime.now()
+        .toUtc()
+        .add(const Duration(minutes: 20))
+        .toIso8601String();
+
+    final backend = BackendClient(
+      client: _FakeBackendClient((request) async {
+        if (request.url.path == '/healthz') {
+          return _direct(200);
+        }
+        if (request.url.path == '/api/sos/ack/local-ack') {
+          return http.StreamedResponse(
+            Stream<List<int>>.value(utf8.encode(jsonEncode(<String, Object?>{
+              'vessel_id': 'fisher-7f3a',
+              'server_time': '2026-09-15T00:00:00Z',
+              'event': <String, Object?>{
+                'id': 7,
+                'local_id': 'local-ack',
+                'seq': null,
+                'client_ts': 1755248500,
+                'delivery_state': 'acknowledged',
+                'acknowledged_at': '2026-09-15T00:05:00Z',
+                'acked_by': 'ranger@example.com',
+                'eta_at': etaAt,
+                'responder_status': 2,
+                'responder_status_label': 'Rescue boat on the way',
+                'responder_note': 'On the way',
+                'fisher_reply': null,
+                'resolved_at': null,
+              },
+            }))),
+            200,
+          );
+        }
+        throw Exception('unexpected ${request.url.path}');
+      }),
+    );
+    final buoy = BuoyClient(
+      baseUrl: 'http://192.168.4.1',
+      client: MockClient((request) async {
+        throw const FormatException('no buoy in range');
+      }),
+    );
+
+    final service = buildService(buoy: buoy, backend: backend);
+    await service.reconcile();
+
+    final updated = await outbox.byLocalId(record.localId);
+    expect(updated!.state, DeliveryState.acknowledged);
+    expect(updated.etaAt, etaAt);
+    expect(updated.responderStatus, 2);
+    expect(updated.responderNote, 'On the way');
+    // The fisher's reply needs the backend id, which was previously only ever
+    // learned through the credentialed vessel feed.
+    expect(updated.remoteId, '7');
+  });
+
+  test('a 404 from the ack read-back leaves the delivered record untouched',
+      () async {
+    final record = _record('local-pending');
+    await outbox.insert(record);
+    await outbox.advance(record.localId, DeliveryState.delivered);
+
+    final backend = BackendClient(
+      client: _FakeBackendClient((request) async {
+        if (request.url.path == '/healthz') {
+          return _direct(200);
+        }
+        if (request.url.path == '/api/sos/ack/local-pending') {
+          return http.StreamedResponse(
+            Stream<List<int>>.value(
+              utf8.encode(jsonEncode(<String, Object?>{'detail': 'no such SOS event'})),
+            ),
+            404,
+          );
+        }
+        throw Exception('unexpected ${request.url.path}');
+      }),
+    );
+    final buoy = BuoyClient(
+      baseUrl: 'http://192.168.4.1',
+      client: MockClient((request) async {
+        throw const FormatException('no buoy in range');
+      }),
+    );
+
+    final service = buildService(buoy: buoy, backend: backend);
+    await service.reconcile();
+
+    final updated = await outbox.byLocalId(record.localId);
+    expect(updated!.state, DeliveryState.delivered);
+    expect(updated.etaAt, isNull);
+    expect(updated.remoteId, isNull);
+  });
 }

@@ -199,6 +199,64 @@ async def ingest_sos(payload: SosIn) -> dict[str, object]:
     }
 
 
+@router.get('/ack/{local_id}')
+async def ack_by_local_id(local_id: str) -> dict[str, object]:
+    """The unauthenticated read-back that answers a direct-path handset.
+
+    `POST /api/sos` deliberately requires no credentials (see its docstring):
+    a fisherman at sea has no account to hold and no way to obtain one. The
+    acknowledgement of a call a handset raised that way is the same safety
+    information as the call itself, so its read-back is not gated either -
+    demanding a vessel-device token here would silently strand exactly the
+    un-enrolled phones the direct path exists for.
+
+    The lookup is keyed on `local_id`, the id the handset itself generated and
+    sent with the SOS (it is also the app's outbox key, so only that phone
+    knows it). The response reveals one thing only - what happened to that one
+    incident: no other vessel's rows, no coordinates, no note. 404 until the
+    id exists on the backend, so a poll before then simply reads as "not yet".
+
+    Returns the same single-event shape as
+    `GET /api/sos/vessel/{vessel_id}`, so the phone parses an ack from both
+    sources through one code path.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            '''
+            SELECT id, vessel_id, local_id, seq, client_ts, acknowledged_at,
+                   acked_by, eta_at, responder_status, responder_note,
+                   fisher_reply, resolved_at,
+                   delivered_direct, delivered_via_buoy
+            FROM sos_events
+            WHERE local_id = $1
+            LIMIT 1
+            ''',
+            local_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail='no such SOS event')
+    return {
+        'vessel_id': row['vessel_id'],
+        'server_time': datetime.now(UTC).isoformat(),
+        'event': {
+            'id': row['id'],
+            'local_id': row['local_id'],
+            'seq': row['seq'],
+            'client_ts': row['client_ts'],
+            'delivery_state': _delivery_state(row),
+            'acknowledged_at': _iso(row['acknowledged_at']),
+            'acked_by': row['acked_by'],
+            'eta_at': _iso(row['eta_at']),
+            'responder_status': row['responder_status'],
+            'responder_status_label': RESPONDER_STATUS_LABELS.get(row['responder_status']),
+            'responder_note': row['responder_note'],
+            'fisher_reply': row['fisher_reply'],
+            'resolved_at': _iso(row['resolved_at']),
+        },
+    }
+
+
 @protected_router.get('/active')
 async def active_sos(_: dict = Depends(require_user)) -> dict[str, object]:
     """Every unresolved SOS event, newest first. Dispatcher view.

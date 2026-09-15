@@ -240,6 +240,50 @@ data: {"event": "acknowledged", "sos": { ... }}
 The phone learns nothing beyond its buoy (`docs/03_PHONE_BUOY_WIFI.md`) unless
 it has internet. If it does, it can reconcile its outbox:
 
+### `GET /api/sos/ack/{local_id}`
+
+The read-back that answers a **direct-path, un-enrolled handset**.
+
+`POST /api/sos` sends a call with no credentials (`docs/05`'s trust note on
+safety information under a distress call), but until this endpoint existed the
+*answer* to that call was credential-gated: `GET /api/sos/vessel/{vessel_id}`
+below requires a vessel-device token, and nothing in the app issues one (no
+enrolment UI). A phone could call for help over plain internet but could never
+learn the MDRRMO had answered. This endpoint mirrors the unauthenticated
+ingest: the packet a handset sent without a credential must not be answered
+only to handsets holding one.
+
+- **No bearer token.** The lookup is keyed on `local_id`, the id the handset
+  generated and sent with the SOS, which also keys the app's own outbox - so
+  only the raising phone knows it.
+- Returns **one incident's acknowledgement** (delivery state, `acked_by`,
+  `eta_at`, `responder_status`, `responder_note`, `fisher_reply`,
+  `resolved_at`, and the backend `id` the phone needs to post a reply).
+- **404 until the id exists** on the backend, so a poll before then reads as
+  "not yet acknowledged"; a `200` with `delivery_state: "delivered"` means the
+  call reached the backend but no responder has answered yet.
+- Reveals no coordinates, no note, and no other vessel's rows.
+
+```json
+{
+  "vessel_id": "6b59...1",
+  "server_time": "2026-09-15T12:00:00+00:00",
+  "event": {
+    "id": 4,
+    "local_id": "1789406852548-9a5f31da",
+    "delivery_state": "acknowledged",
+    "eta_at": "2026-09-15T12:20:00+00:00",
+    "responder_status": 2,
+    "responder_status_label": "Rescue boat on the way",
+    "responder_note": "On the way"
+  }
+}
+```
+
+The app polls this per outstanding direct-path record during `reconcile()` in
+place of the credentialed vessel feed when it has no device credential
+(`mobile/lib/services/sos_service.dart`).
+
 ### `GET /api/sos/vessel/{vessel_id}`
 
 Returns that vessel's SOS rows, newest first. The app matches by

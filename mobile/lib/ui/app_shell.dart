@@ -11,6 +11,7 @@ import '../models/delivery_state.dart';
 import '../models/sos_record.dart';
 import '../models/squall_watch.dart';
 import '../services/location_service.dart';
+import '../services/eta_notifier.dart';
 import '../services/sos_service.dart';
 import '../services/squall_alarm.dart';
 import '../services/venture_feeds.dart';
@@ -232,6 +233,20 @@ class _AppShellState extends State<AppShell> {
       }
 
       _announced.add(pending.localId);
+      // Same dedupe, other surface: the dialog above only helps someone who
+      // is looking at the phone. The notification is the same moment for a
+      // fisher who is not - and it must fire even if the dialog cannot.
+      final t = AppLocalizations.of(context);
+      final minutes = pending.etaTime?.difference(DateTime.now()).inMinutes;
+      final notifBody = pending.etaOverdue
+          ? t.rescueNotifBodyDelayed
+          : (minutes != null && minutes >= 1)
+              ? t.rescueNotifBodyMinutes(minutes)
+              : t.rescueNotifBodySoon;
+      unawaited(EtaNotifier.showRescueEta(
+        title: t.rescueNotifTitle,
+        body: notifBody,
+      ));
       _dialogOpen = true;
 
       // Scheduled after the current frame so this can safely fire from a

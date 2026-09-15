@@ -633,4 +633,26 @@ class AppLocalizationsAkl extends AppLocalizations {
 
   @override
   String get responderDelayedStillOnWay => 'Naulang — nagapakadto pa gihapon';
+
+  @override
+  String get rescueNotifTitle => 'Nagapakadto ron ro bulig';
+
+  @override
+  String rescueNotifBodyMinutes(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes ka minuto',
+      one: '1 ka minuto',
+    );
+    return 'Madangat ro sakayan nga panagip sa $_temp0';
+  }
+
+  @override
+  String get rescueNotifBodySoon =>
+      'Madangat sa anumang oras ro sakayan nga panagip.';
+
+  @override
+  String get rescueNotifBodyDelayed =>
+      'Naulang ro sakayan nga panagip, pero nagapakadto pa gihapon. Pabilin sa imong sakayan.';
 }

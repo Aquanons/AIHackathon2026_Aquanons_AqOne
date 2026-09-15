@@ -823,5 +823,26 @@
   "responderDelayedStillOnWay": "Delayed — still on the way",
   "@responderDelayedStillOnWay": {
     "description": "SAFETY CRITICAL. Shown in the responder countdown when the estimated arrival time has passed but rescue is still en route."
+  },
+  "rescueNotifTitle": "Help is coming",
+  "@rescueNotifTitle": {
+    "description": "System-notification title when the MDRRMO acknowledges an SOS with an ETA."
+  },
+  "rescueNotifBodyMinutes": "Rescue boat arriving in {minutes, plural, =1{1 minute} other{{minutes} minutes}}",
+  "@rescueNotifBodyMinutes": {
+    "description": "SAFETY CRITICAL. System-notification body carrying the MDRRMO's arrival estimate, pluralized.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "rescueNotifBodySoon": "Rescue boat arriving any moment now.",
+  "@rescueNotifBodySoon": {
+    "description": "SAFETY CRITICAL. System-notification body when the ETA is under a minute away."
+  },
+  "rescueNotifBodyDelayed": "The rescue boat is delayed but still coming. Stay with your boat.",
+  "@rescueNotifBodyDelayed": {
+    "description": "SAFETY CRITICAL. System-notification body shown after the promised arrival time has passed; rescue is still en route."
   }
 }

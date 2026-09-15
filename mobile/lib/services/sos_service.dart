@@ -347,14 +347,37 @@ class SosService {
 
       final vesselIds = pending.map((record) => record.vesselId).toSet();
       var changed = false;
-      final cloudUp =
-          _backend.hasVesselCredential && await _backend.isReachable();
+      final backendUp = await _backend.isReachable();
+      final cloudUp = backendUp && _backend.hasVesselCredential;
 
       for (final vesselId in vesselIds) {
         final records = pending.where((r) => r.vesselId == vesselId).toList();
         List<RemoteSos> remote;
         if (cloudUp) {
           remote = await _backend.vesselSos(vesselId);
+        } else if (backendUp) {
+          // No vessel credential (and possibly no enrolment UI to ever get
+          // one), but the backend is reachable over the same internet that
+          // carried the SOS. The direct path asked without a credential, so
+          // it reads the answer the same way - one ack per record, by the
+          // local_id only this phone knows (GET /api/sos/ack/{local_id}).
+          remote = <RemoteSos>[];
+          for (final record in records) {
+            final ack = await _backend.ackByLocalId(record.localId);
+            if (ack != null) {
+              remote.add(ack);
+            }
+          }
+          // A record that reached the backend only over the buoy has no
+          // local_id there for ackByLocalId() to answer with, so let the
+          // buoy - which proxies the credentialed feed - speak for the
+          // records the backend did not match. Unreachable buoy is not an
+          // error here: whatever ackByLocalId() already found still applies.
+          if (remote.length < records.length) {
+            try {
+              remote = <RemoteSos>[...remote, ...await _buoy.sosStatus(vesselId)];
+            } catch (_) {}
+          }
         } else {
           try {
             remote = await _buoy.sosStatus(vesselId);

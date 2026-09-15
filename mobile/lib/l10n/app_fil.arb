@@ -112,5 +112,9 @@
   "sosCancelledNothingSent": "Kinansela ang SOS. Walang naipadala.",
   "sosSetupBoatRequired": "Tapusin ang pagrehistro ng iyong bangka bago magpadala ng SOS.",
   "responderDelayedStillOnWay": "Naantala — papunta pa rin",
+  "rescueNotifTitle": "Papunta na ang tulong",
+  "rescueNotifBodyMinutes": "Darating ang bangkang panagip sa {minutes, plural, =1{1 minuto} other{{minutes} minuto}}",
+  "rescueNotifBodySoon": "Darating ang bangkang panagip anumang oras.",
+  "rescueNotifBodyDelayed": "Naantala ang bangkang panagip ngunit papunta pa rin. Manatili sa iyong bangka.",
   "hotspotLegendDisclaimer": "Batay sa datos ng kapaligiran. Hindi ito pangako ng huli, at hindi rin ito hudyat ng ligtas na paglabas."
 }

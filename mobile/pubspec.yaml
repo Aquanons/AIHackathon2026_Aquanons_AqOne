@@ -92,6 +92,15 @@ dependencies:
   vibration: ^3.1.3
   audioplayers: ^6.1.0
 
+  # System notification when the MDRRMO acknowledges an SOS with an ETA. The
+  # in-app dialog is invisible on a locked/backgrounded phone; the shade is
+  # the "help is on the way" moment a fisher might otherwise miss. 19.x, not
+  # the current major: it stays inside this project's Flutter/Dart floor and
+  # its compileSdk 35 requirement is already met (build uses 36), while newer
+  # majors bump AGP/desugaring expectations gratuitously. See
+  # services/eta_notifier.dart.
+  flutter_local_notifications: ^19.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

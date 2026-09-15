@@ -120,6 +120,14 @@ sos_events
   vessel-device bearer token (`docs/05_PUBLIC_API.md`'s Option A) bound to
   that vessel; ingest itself stays unauthenticated, but this per-vessel read
   is not. Returns only that vessel's own events.
+- `GET /api/sos/ack/{local_id}` — the read-back for a **direct-path handset
+  with no vessel-device token**, which therefore could never call the
+  credentialed vessel feed (the app ships no enrolment UI). Exactly as
+  unauthenticated as the ingest that raised the call, for the same trust
+  rationale (`docs/05`). Keyed on the handset's own `local_id`; returns that
+  one incident's acknowledgement fields only, 404 until the id exists on the
+  backend. Mirrors the vessel-feed event shape so the phone parses both
+  through one code path.
 - `POST /api/sos/{id}/reply` — the one-byte answer. Requires the same
   vessel-device bearer token, and only updates an event owned by that token's
   vessel. Monotonic once resolved: a retry after `SAFE_NOW` cannot reopen the
@@ -144,6 +152,11 @@ sos_events
 - Poll faster while an SOS is live. `reconcileInterval` of 2 minutes is fine for
   housekeeping and far too slow for someone waiting on an answer — drop to
   ~15 seconds while any record is unresolved, then back off.
+- A system notification fires when reconcile first sees an acknowledgement
+  with an ETA, carrying the ETA minutes. The in-app dialog alone is invisible
+  on a locked or backgrounded phone; the shade is the "help is on the way"
+  moment if the fisher is not looking at the screen. Fired once, deduplicated
+  on the same `local_id` as the dialog.
 
 ---
 

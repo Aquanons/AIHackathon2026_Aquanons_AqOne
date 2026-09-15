@@ -1149,6 +1149,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delayed — still on the way'**
   String get responderDelayedStillOnWay;
+
+  /// System-notification title when the MDRRMO acknowledges an SOS with an ETA.
+  ///
+  /// In en, this message translates to:
+  /// **'Help is coming'**
+  String get rescueNotifTitle;
+
+  /// SAFETY CRITICAL. System-notification body carrying the MDRRMO's arrival estimate, pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescue boat arriving in {minutes, plural, =1{1 minute} other{{minutes} minutes}}'**
+  String rescueNotifBodyMinutes(int minutes);
+
+  /// SAFETY CRITICAL. System-notification body when the ETA is under a minute away.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescue boat arriving any moment now.'**
+  String get rescueNotifBodySoon;
+
+  /// SAFETY CRITICAL. System-notification body shown after the promised arrival time has passed; rescue is still en route.
+  ///
+  /// In en, this message translates to:
+  /// **'The rescue boat is delayed but still coming. Stay with your boat.'**
+  String get rescueNotifBodyDelayed;
 }
 
 class _AppLocalizationsDelegate

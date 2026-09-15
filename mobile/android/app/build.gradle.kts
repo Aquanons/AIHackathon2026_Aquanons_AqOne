@@ -33,6 +33,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications 10+ requires core-library desugaring for
+        // its scheduling support, and applies it even when an app only ever
+        // shows notifications immediately (rename eta_notifier.dart). Needed
+        // on every Android build, not just release's R8 pass.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     signingConfigs {
@@ -60,6 +65,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Desugaring bundles code that pushes a minSdk-era APK over the
+        // dalvik method reference cap.
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -97,6 +105,10 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

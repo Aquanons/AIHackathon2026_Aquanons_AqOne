@@ -366,6 +366,40 @@ class BackendClient {
         .toList(growable: false);
   }
 
+  /// Ask the backend what happened to the one SOS this handset sent, without
+  /// needing a vessel credential.
+  ///
+  /// This is the mirror of [postSos]: the direct path hands the emergency over
+  /// with no account to hold and no way to obtain one, so its answer cannot
+  /// demand a credential either - the unauthenticated ingest and its
+  /// unauthenticated read-back share the same safety rationale.
+  /// [hasVesselCredential] phones instead use [vesselSos]; an un-enrolled
+  /// phone asks precisely about the record it raised, by the id only it knows.
+  /// Returns null for "unknown to the backend" (still waiting) or on any
+  /// network failure - never throws.
+  Future<RemoteSos?> ackByLocalId(String localId) async {
+    try {
+      final uri = EndpointGuard.backend(
+        _baseUrl,
+        '/api/sos/ack/${Uri.encodeComponent(localId)}',
+      );
+      final response = await _send(
+        _request('GET', uri),
+      ).timeout(AqOneConfig.backendTimeout);
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      final event = decoded is Map<String, dynamic> ? decoded['event'] : null;
+      if (event is! Map<String, dynamic>) {
+        return null;
+      }
+      return RemoteSos.fromJson(event);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The fisher's one-tap answer to an acknowledgement.
   ///
   /// 1 = still in danger, 2 = safe now. Tells the dispatcher the fisher is

@@ -45,6 +45,8 @@ class _FakePool:
             'note': None,
             'trust_tier': 'self_declared',
             'client_ts': 1755248500,
+            'local_id': None,
+            'seq': None,
             'delivered_direct': True,
             'delivered_via_buoy': False,
             'buoy_id': None,
@@ -103,6 +105,10 @@ class _FakePool:
         return []
 
     async def fetchrow(self, query: str, *args):
+        if 'WHERE local_id = $1' in query and 'SELECT id, vessel_id' in query:
+            matches = [e for e in self.sos_events.values() if e.get('local_id') == args[0]]
+            return matches[0] if matches else None
+
         if 'UPDATE vessel_devices' in query and 'SET last_seen_at = NOW()' in query:
             return self.devices.get(int(args[0]))
 
@@ -321,3 +327,90 @@ def test_a_different_vessels_device_cannot_reply_to_the_event(monkeypatch):
 
     assert response.status_code == 404
     assert pool.sos_events[6]['fisher_reply'] is None
+
+
+def test_unauthenticated_handset_reads_its_own_ack_by_local_id(monkeypatch):
+    """The direct path raised this SOS with no credential, so reading its
+    answer back must not demand one either (see the ack_by_local_id docstring,
+    which mirrors the unauthenticated-ingest trust note in app/api/sos.py).
+    """
+    pool = _FakePool()
+    pool.seed(
+        id=9,
+        local_id='1789406852548-9a5f31da',
+        acknowledged_at=datetime.now(UTC),
+        acked_by='ranger@example.com',
+        eta_at=datetime.now(UTC) + timedelta(minutes=20),
+        responder_status=2,
+        responder_note='On the way',
+    )
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get('/api/sos/ack/1789406852548-9a5f31da')
+
+    assert response.status_code == 200
+    body = response.json()
+    event = body['event']
+    assert event['local_id'] == '1789406852548-9a5f31da'
+    assert event['delivery_state'] == 'acknowledged'
+    assert event['responder_status'] == 2
+    assert event['responder_note'] == 'On the way'
+    assert event['eta_at'] is not None
+    assert event['resolved_at'] is None
+
+
+def test_ack_by_local_id_returns_delivered_before_the_responder_answers(monkeypatch):
+    """The incident exists on the backend but nobody has acked it yet - the
+    phone learns its backend id (needed for replies) without any false claim
+    that a responder answered.
+    """
+    pool = _FakePool()
+    pool.seed(id=13, local_id='v1-ccc')
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get('/api/sos/ack/v1-ccc')
+
+    assert response.status_code == 200
+    assert response.json()['event']['delivery_state'] == 'delivered'
+    assert response.json()['event']['acknowledged_at'] is None
+
+
+def test_ack_by_local_id_is_404_for_an_unknown_id(monkeypatch):
+    pool = _FakePool()
+    pool.seed(id=10)
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get('/api/sos/ack/does-not-exist')
+
+    assert response.status_code == 404
+
+
+def test_ack_by_local_id_reveals_only_the_named_incidents_ack(monkeypatch):
+    """Keyed on the handset's own id, the endpoint must never leak another
+    incident - the display row should be the ack fields only, not the full
+    vessel feed with coordinates and notes.
+    """
+    pool = _FakePool()
+    pool.seed(id=11, local_id='v1-aaa')
+    pool.seed(
+        id=12,
+        vessel_id='V002',
+        local_id='v2-bbb',
+        acked_by='ranger@example.com',
+    )
+    _patch(monkeypatch, pool)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get('/api/sos/ack/v2-bbb')
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['vessel_id'] == 'V002'
+    event = body['event']
+    assert event['id'] == 12
+    assert 'lat' not in event
+    assert 'lon' not in event
+    assert 'note' not in event
