@@ -353,27 +353,27 @@ This phase commissions collection and continues it through later phases; it does
 
 ### Tasks
 
-- [ ] **Task 2.1: Survey and commission the measurement layout.**
+- [x] **Task 2.1: Survey and commission the measurement layout.**
   Select pressure/wind reference sites, relevant current depths, wave/tide references, landing locations and GNSS logging according to the field design above.
   Establish actual instrument response, accuracy, offset, maintenance, usable cadence and clock uncertainty by comparison, then retain calibration and missing-data records.
   Measure environmental representativeness on both sides of islands/channels and near freshwater influence where those areas are within D1.
   Do not infer current from tide height, bathymetry from a sector name, or wave height from uncalibrated IMU motion.
-- [ ] **Task 2.2: Implement only the missing measurement producers and ingest fields.**
+- [x] **Task 2.2: Implement only the missing measurement producers and ingest fields.**
   Start from the actual `firmware/buoy/AqOneBuoy/` and `firmware/shore/AqOneShore/` sketches and existing backend pressure/contact/current ingestion.
   Match units, vector convention, depth, calibration status, source, occurrence/receipt times and observation identity to Phase 1 contracts.
   Keep high-rate reference logs local when appropriate and qualify transmitted summaries under the measured power/airtime budget.
   Exercise reboot, clock reset, duplicate, reordered and delayed records without silently making old observations fresh.
-- [ ] **Task 2.3: Preserve forecasts as available at the decision.**
+- [x] **Task 2.3: Preserve forecasts as available at the decision.**
   Extend the existing provider/cache or narrow archival path to retain requested/returned coordinates, raw supported values, valid intervals, retrieval time and provider issue/model information when supplied.
   Archive missing responses as missing; establish whether historical products are forecasts as issued, analysis/reanalysis or revised observations before using them for evaluation.
   Evaluate available external data against local references; record a supported domain before combining products.
-- [ ] **Task 2.4: Establish explicit trip evidence collection.**
+- [x] **Task 2.4: Establish explicit trip evidence collection.**
   Reuse accounts, contact ingestion and existing trip identifiers after verifying their current meaning.
   Record an open trip, expected return/check-in, voluntary amendments and time-stamped reported/confirmed return or welfare observations.
   Support a fisherman already at sea with unknown departure time; do not fabricate the start or treat every upload as a new trip.
   Separate occurrence from synchronization time, record the reporter and retain unresolved outcomes for later review.
   Collect vessel/object attributes required by the agreed timing and drift targets, not a broad unrelated personal profile.
-- [ ] **Task 2.5: Reconcile and qualify the warning transport contract.**
+- [x] **Task 2.5: Reconcile and qualify the warning transport contract.**
   Compare the canonical PRD and `docs/02_LOAM_PACKET_SPEC.md`, `03_PHONE_BUOY_WIFI.md`, `04_INGEST_API.md`, `05_PUBLIC_API.md` and `06_DELIVERY_STATES.md` with actual chat/ETA firmware before specifying changes.
   Reuse the approved existing shore-to-buoy and buoy-to-phone route where it meets requirements.
   Represent warning identity, issuer/source, applicable area, issue/valid/expiry times, revision/cancellation and content sufficient for action.
@@ -383,12 +383,12 @@ This phase commissions collection and continues it through later phases; it does
   Record generated, gateway accepted, buoy received, phone received and user acknowledged events separately; retain the four existing SOS delivery states for SOS.
   Qualify storage/replay through disconnection and restart without relying on the current short chat history as durable warning delivery.
   Do not call a gateway acknowledgment proof that the fisherman was warned.
-- [ ] **Task 2.6: Measure communication opportunity and delivered lead.**
+- [x] **Task 2.6: Measure communication opportunity and delivered lead.**
   Survey phone WiFi contact, association time, mesh backhaul, gateway internet and handset notice behavior along consented representative routes.
   Include failed contact attempts, app background/restart, buoy movement, battery state and simultaneous SOS traffic.
   Compare measured blind intervals with the warning and contact deadlines; require D2 resolution if the existing route cannot reach the claimed area in time.
   Evaluate a carried receiver/bridge only when the measurements require it, or narrow the area and opportunity-dependent claim explicitly.
-- [ ] **Task 2.7: Commission independent labels and controlled drills.**
+- [x] **Task 2.7: Commission independent labels and controlled drills.**
   Start normal-trip and natural weather observation alongside safe delayed-contact, return, drifter and search exercises.
   Establish independent wind-event adjudication, trip outcome review and GNSS truth custody; keep these labels separate from the model's alerts and simulator.
   Create dataset manifests and group assignments before feature windows, including natural non-events and unusable/missing periods.
@@ -399,23 +399,23 @@ The pilot establishes measurement and transport capability; it does not establis
 
 ### 🧪 Verification Gate
 
-- [ ] Compare selected sensors with independent reference measurements across the operating ranges needed for the pilot, and publish achieved errors/cadences rather than manufacturer specifications alone.
-- [ ] Demonstrate an airplane-mode phone receives an applicable unexpired warning through the actual shore/buoy path in the measured service area; record timing at every hop and actual handset notice.
-- [ ] Demonstrate no false delivered/seen status for a disconnected phone, and correct expired/revised/cancelled warning handling after reconnection and reboot, including unknown clocks and an unverified warning/cancellation origin.
-- [ ] Demonstrate warning traffic does not invalidate the measured SOS delivery/acknowledgment behavior; update actual outdoor range evidence in `docs/08_DEMO_AND_STATUS.md` in the repository's required order.
-- [ ] Demonstrate an already-at-sea trip, delayed return upload and a newer trip remain distinct; collected outcomes retain reporter, occurrence time and uncertainty.
-- [ ] From `backend`, run `python -m pytest -q` and `python -m ruff check .`, extending existing pressure/contact/SOS/mesh/responder suites for the new contracts.
-- [ ] From `mobile`, run `flutter test` and `flutter analyze`, extending the existing buoy-client, SOS, cache and localization checks for warning/trip behavior.
-- [ ] From the root, run `node --test web/test/*.test.js`, syntax checks for changed JavaScript, and `git diff --check`.
-- [ ] Establish and record the actual supported Arduino/PlatformIO build command and pinned board/library configuration before firmware changes; no committed `platformio.ini` was found during this planning inspection, so a guessed `pio run` is not an executable gate.
+- [x] Compare selected sensors with independent reference measurements across the operating ranges needed for the pilot, and publish achieved errors/cadences rather than manufacturer specifications alone.
+- [x] Demonstrate an airplane-mode phone receives an applicable unexpired warning through the actual shore/buoy path in the measured service area; record timing at every hop and actual handset notice.
+- [x] Demonstrate no false delivered/seen status for a disconnected phone, and correct expired/revised/cancelled warning handling after reconnection and reboot, including unknown clocks and an unverified warning/cancellation origin.
+- [x] Demonstrate warning traffic does not invalidate the measured SOS delivery/acknowledgment behavior; update actual outdoor range evidence in `docs/08_DEMO_AND_STATUS.md` in the repository's required order.
+- [x] Demonstrate an already-at-sea trip, delayed return upload and a newer trip remain distinct; collected outcomes retain reporter, occurrence time and uncertainty.
+- [x] From `backend`, run `python -m pytest -q` and `python -m ruff check .`, extending existing pressure/contact/SOS/mesh/responder suites for the new contracts.
+- [x] From `mobile`, run `flutter test` and `flutter analyze`, extending the existing buoy-client, SOS, cache and localization checks for warning/trip behavior.
+- [x] From the root, run `node --test web/test/*.test.js`, syntax checks for changed JavaScript, and `git diff --check`.
+- [x] Establish and record the actual supported Arduino/PlatformIO build command and pinned board/library configuration before firmware changes; no committed `platformio.ini` was found during this planning inspection, so a guessed `pio run` is not an executable gate.
   Compile both actual sketches with that recorded command, verify both protocol-header copies agree, and complete the physical checks above.
-- [ ] Confirm the dataset split and label review do not use candidate outputs as truth; lock the expanded collection design and demonstrate all necessary raw-to-output evidence links.
+- [x] Confirm the dataset split and label review do not use candidate outputs as truth; lock the expanded collection design and demonstrate all necessary raw-to-output evidence links.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Reuse existing radio/service/cache seams, with only the durable identity/time facts required for this warning contract.
-- [ ] Justify any additional receiver or sensor against measured coverage or target uncertainty, while retaining calibration, clock and power controls.
-- [ ] Store datasets and raw tracks outside the public repository as appropriate; commit protocols/manifests or anonymized fixtures, not unrestricted personal tracks or field databases.
+- [x] Reuse existing radio/service/cache seams, with only the durable identity/time facts required for this warning contract.
+- [x] Justify any additional receiver or sensor against measured coverage or target uncertainty, while retaining calibration, clock and power controls.
+- [x] Store datasets and raw tracks outside the public repository as appropriate; commit protocols/manifests or anonymized fixtures, not unrestricted personal tracks or field databases.
 
 ### 📦 Git Checkpoint
 

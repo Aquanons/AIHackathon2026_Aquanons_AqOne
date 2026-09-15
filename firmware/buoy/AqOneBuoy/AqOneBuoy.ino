@@ -340,6 +340,25 @@ void historyAdd(const char* from, const char* text) {
 }
 
 // ---------------------------------------------------------------------------
+// Cached warnings (Task 2.5)
+// ---------------------------------------------------------------------------
+
+struct CachedWarning {
+  int      id;
+  char     src[16];
+  char     priority[16];
+  char     area[24];
+  char     title[49];
+  char     description[81];
+  uint32_t publishDate;
+  uint32_t expirationDate;
+  bool     used;
+};
+
+static const int MAX_CACHED_WARNINGS = 6;
+CachedWarning cachedWarnings[MAX_CACHED_WARNINGS];
+
+// ---------------------------------------------------------------------------
 // WiFi — access point only.
 //
 // An older build ran AP+STA and had to bring the station link up first so the
@@ -611,6 +630,34 @@ void handleHistory() {
   http.send(200, "application/json", body);
 }
 
+// GET /v1/warnings — offline handsets read active unexpired advisories/warnings here.
+void handleGetWarnings() {
+  JsonDocument doc;
+  JsonArray arr = doc["advisories"].to<JsonArray>();
+
+  uint32_t nowEpoch = clockValid() ? (uint32_t)time(nullptr) : 0;
+  for (int i = 0; i < MAX_CACHED_WARNINGS; i++) {
+    if (!cachedWarnings[i].used) continue;
+    if (nowEpoch > 0 && cachedWarnings[i].expirationDate > 0 && nowEpoch > cachedWarnings[i].expirationDate) {
+      cachedWarnings[i].used = false;
+      continue;
+    }
+    JsonObject w = arr.add<JsonObject>();
+    w["id"] = cachedWarnings[i].id;
+    w["title"] = cachedWarnings[i].title;
+    w["priority"] = cachedWarnings[i].priority;
+    w["municipality"] = cachedWarnings[i].area;
+    w["description"] = cachedWarnings[i].description;
+    w["source"] = cachedWarnings[i].src;
+    if (cachedWarnings[i].publishDate) w["publish_date"] = isoUtc(cachedWarnings[i].publishDate);
+    if (cachedWarnings[i].expirationDate) w["expiration_date"] = isoUtc(cachedWarnings[i].expirationDate);
+  }
+
+  String body;
+  serializeJson(doc, body);
+  http.send(200, "application/json", body);
+}
+
 // ---------------------------------------------------------------------------
 // Connectivity probes — the thing that makes or breaks an open network
 //
@@ -877,6 +924,61 @@ void onMeshFrame(const uint8_t* raw, size_t total, const LoamFrame& f) {
       break;
     }
 
+    case T_WARN: {
+      if (!parsed) break;
+      int wid = p["id"] | 0;
+      if (!wid) break;
+
+      uint32_t expAt = p["exp"] | 0;
+      if (clockValid() && expAt > 0 && (uint32_t)time(nullptr) > expAt) {
+        Serial.printf("[warn] dropped expired warning id=%d\n", wid);
+        break;
+      }
+
+      int slot = -1;
+      for (int i = 0; i < MAX_CACHED_WARNINGS; i++) {
+        if (cachedWarnings[i].used && cachedWarnings[i].id == wid) {
+          slot = i;
+          break;
+        }
+        if (!cachedWarnings[i].used && slot < 0) slot = i;
+      }
+      if (slot < 0) slot = 0;
+
+      cachedWarnings[slot].id = wid;
+      strncpy(cachedWarnings[slot].src, p["src"] | "MDRRMO", sizeof(cachedWarnings[slot].src) - 1);
+      cachedWarnings[slot].src[sizeof(cachedWarnings[slot].src) - 1] = 0;
+      strncpy(cachedWarnings[slot].priority, p["pr"] | "Warning", sizeof(cachedWarnings[slot].priority) - 1);
+      cachedWarnings[slot].priority[sizeof(cachedWarnings[slot].priority) - 1] = 0;
+      strncpy(cachedWarnings[slot].area, p["area"] | "All", sizeof(cachedWarnings[slot].area) - 1);
+      cachedWarnings[slot].area[sizeof(cachedWarnings[slot].area) - 1] = 0;
+      strncpy(cachedWarnings[slot].title, p["ttl"] | "", sizeof(cachedWarnings[slot].title) - 1);
+      cachedWarnings[slot].title[sizeof(cachedWarnings[slot].title) - 1] = 0;
+      strncpy(cachedWarnings[slot].description, p["txt"] | "", sizeof(cachedWarnings[slot].description) - 1);
+      cachedWarnings[slot].description[sizeof(cachedWarnings[slot].description) - 1] = 0;
+      cachedWarnings[slot].publishDate = p["iss"] | 0;
+      cachedWarnings[slot].expirationDate = expAt;
+      cachedWarnings[slot].used = true;
+
+      JsonDocument ev;
+      ev["type"] = "warning";
+      JsonObject d = ev["data"].to<JsonObject>();
+      d["id"] = wid;
+      d["title"] = cachedWarnings[slot].title;
+      d["priority"] = cachedWarnings[slot].priority;
+      d["municipality"] = cachedWarnings[slot].area;
+      d["description"] = cachedWarnings[slot].description;
+      if (cachedWarnings[slot].publishDate) d["publish_date"] = isoUtc(cachedWarnings[slot].publishDate);
+      if (cachedWarnings[slot].expirationDate) d["expiration_date"] = isoUtc(cachedWarnings[slot].expirationDate);
+      String out;
+      serializeJson(ev, out);
+      ws.broadcastTXT(out);
+
+      Serial.printf("[warn] cached warning id=%d prio=%s\n", wid, cachedWarnings[slot].priority);
+      meshRelay(raw, total, f);
+      break;
+    }
+
     case T_CHAT: {
       if (!parsed) break;
       const char* from = p["from"] | "?";
@@ -986,6 +1088,7 @@ void setup() {
   http.on("/v1/sos/status", HTTP_GET,  handleGetSosStatus);
   http.on("/v1/status",     HTTP_GET,  handleStatus);
   http.on("/history",       HTTP_GET,  handleHistory);
+  http.on("/v1/warnings",   HTTP_GET,  handleGetWarnings);
   http.on("/portal",        HTTP_GET,  handlePortal);
 
   // Connectivity probes, per platform.

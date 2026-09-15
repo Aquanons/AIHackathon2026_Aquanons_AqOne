@@ -27,6 +27,9 @@ The detailed naming, status, and authoring rules live in [`README.md`](README.md
 | Mobile localization | [`22_LOCALIZATION_PLAN.md`](22_LOCALIZATION_PLAN.md) |
 | Mobile test fixtures | [`21_WEEK1_CONTRACT_FIXTURES.md`](21_WEEK1_CONTRACT_FIXTURES.md) |
 | AI accuracy and data protocol | [`49_AI_ACCURACY_DATA_PROTOCOL.md`](49_AI_ACCURACY_DATA_PROTOCOL.md) |
+| Field measurement & commissioning | [`50_FIELD_MEASUREMENT_AND_COMMISSIONING_PROTOCOL.md`](50_FIELD_MEASUREMENT_AND_COMMISSIONING_PROTOCOL.md) |
+| Communication opportunity & delivered lead | [`51_COMMUNICATION_OPPORTUNITY_AND_DELIVERY_LEAD.md`](51_COMMUNICATION_OPPORTUNITY_AND_DELIVERY_LEAD.md) |
+| Independent labels & drill manifests | [`52_INDEPENDENT_LABELS_AND_DRILL_MANIFESTS.md`](52_INDEPENDENT_LABELS_AND_DRILL_MANIFESTS.md) |
 
 ## Find documents by lifecycle
 

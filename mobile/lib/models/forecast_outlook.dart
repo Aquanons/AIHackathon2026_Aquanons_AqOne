@@ -81,6 +81,9 @@ class ForecastOutlook {
     this.generatedAt,
     this.latitude,
     this.longitude,
+    this.requestedLatitude,
+    this.requestedLongitude,
+    this.issueTime,
     this.timezone,
     this.timezoneAbbreviation,
     this.utcOffsetSeconds,
@@ -96,6 +99,9 @@ class ForecastOutlook {
   final DateTime? generatedAt;
   final double? latitude;
   final double? longitude;
+  final double? requestedLatitude;
+  final double? requestedLongitude;
+  final DateTime? issueTime;
   final String? timezone;
   final String? timezoneAbbreviation;
   final int? utcOffsetSeconds;
@@ -113,6 +119,9 @@ class ForecastOutlook {
     DateTime? generatedAt,
     double? latitude,
     double? longitude,
+    double? requestedLatitude,
+    double? requestedLongitude,
+    DateTime? issueTime,
     String? timezone,
     String? timezoneAbbreviation,
     int? utcOffsetSeconds,
@@ -128,6 +137,9 @@ class ForecastOutlook {
         generatedAt: generatedAt ?? this.generatedAt,
         latitude: latitude ?? this.latitude,
         longitude: longitude ?? this.longitude,
+        requestedLatitude: requestedLatitude ?? this.requestedLatitude,
+        requestedLongitude: requestedLongitude ?? this.requestedLongitude,
+        issueTime: issueTime ?? this.issueTime,
         timezone: timezone ?? this.timezone,
         timezoneAbbreviation:
             timezoneAbbreviation ?? this.timezoneAbbreviation,
@@ -144,6 +156,9 @@ class ForecastOutlook {
         'generated_at': generatedAt?.toIso8601String(),
         'latitude': latitude,
         'longitude': longitude,
+        'requested_latitude': requestedLatitude,
+        'requested_longitude': requestedLongitude,
+        'issue_time': issueTime?.toIso8601String(),
         'timezone': timezone,
         'timezone_abbreviation': timezoneAbbreviation,
         'utc_offset_seconds': utcOffsetSeconds,
@@ -192,6 +207,7 @@ class ForecastOutlook {
     }
 
     final genStr = raw['generated_at'];
+    final issueStr = raw['issue_time'];
 
     return ForecastOutlook(
       days: days,
@@ -200,6 +216,9 @@ class ForecastOutlook {
       generatedAt: genStr is String ? DateTime.tryParse(genStr) : null,
       latitude: _double(raw['latitude']),
       longitude: _double(raw['longitude']),
+      requestedLatitude: _double(raw['requested_latitude']),
+      requestedLongitude: _double(raw['requested_longitude']),
+      issueTime: issueStr is String ? DateTime.tryParse(issueStr) : null,
       timezone: raw['timezone'] is String ? raw['timezone'] as String : null,
       timezoneAbbreviation: raw['timezone_abbreviation'] is String
           ? raw['timezone_abbreviation'] as String
@@ -263,6 +282,7 @@ class ForecastOutlook {
     }
 
     final genStr = decoded['generated_at'];
+    final issueStr = decoded['model_issue_time'] ?? decoded['issue_time'];
     final backendSource =
         decoded['source'] is String ? decoded['source'] as String : source;
 
@@ -273,6 +293,9 @@ class ForecastOutlook {
       generatedAt: genStr is String ? DateTime.tryParse(genStr) : null,
       latitude: _double(decoded['latitude']),
       longitude: _double(decoded['longitude']),
+      requestedLatitude: _double(decoded['requested_latitude']),
+      requestedLongitude: _double(decoded['requested_longitude']),
+      issueTime: issueStr is String ? DateTime.tryParse(issueStr) : null,
       timezone: decoded['timezone'] is String ? decoded['timezone'] as String : null,
       timezoneAbbreviation: decoded['timezone_abbreviation'] is String
           ? decoded['timezone_abbreviation'] as String
@@ -377,6 +400,9 @@ class ForecastOutlook {
       generatedAt: fetchedAt,
       latitude: _double(atmo['latitude']) ?? lat,
       longitude: _double(atmo['longitude']) ?? lon,
+      requestedLatitude: lat,
+      requestedLongitude: lon,
+      issueTime: null,
       timezone: atmo['timezone'] is String ? atmo['timezone'] as String : null,
       timezoneAbbreviation: atmo['timezone_abbreviation'] is String
           ? atmo['timezone_abbreviation'] as String

@@ -407,6 +407,10 @@ async def public_forecast(
         'timezone_abbreviation': timezone_abbr,
         'utc_offset_seconds': utc_offset,
         'units': FORECAST_UNITS,
+        'marine_available': bool(marine and 'hourly' in marine),
+        'model_issue_time': None,
+        'valid_interval_start': out_hours[0]['time'] if out_hours else None,
+        'valid_interval_end': out_hours[-1]['time'] if out_hours else None,
         'days': out_days,
         'hours': out_hours,
     }
