@@ -9,6 +9,25 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-16 — AI Safety Remediation Phase 5: Field Readiness, Measurement Protocols & Collection Handoff
+
+Recorded per `docs/AI_SAFETY_REMEDIATION_IMPLEMENTATION_PLAN_GEMINI_3_8.md` and `docs/54_FIELD_READINESS_AND_MEASUREMENT_HANDOFF.md`.
+Environment: Windows 11, Python 3.11.9, pytest-9.1.1, Node.js v22.22.3, Ruff 0.15.5.
+
+**Field Readiness, Measurement Protocols & Collection Handoff (Tasks 5.1–5.9, F1–F8):**
+- **Instrument Inventory (Task 5.1):** Separated software-verified codebase assets (manifest validator, causal trip profiler, shoreline-bounded particle drift simulator, gated squall detector) from proposed physical assets (anchored marine buoys, seabed ADCP, directional wave buoy, shore tower ultrasonic anemometer) that remain pending in-water deployment.
+- **Operating Domain & Independent Events (Task 5.2):** Formally defined the New Washington and Batan Bay geographic domain ($11.60^\circ\text{--}11.75^\circ\text{N}$, $122.40^\circ\text{--}122.55^\circ\text{E}$), artisanal vessel classes (Class A non-motorized, Class B motorized pumpboat), and independent event adjudication standards.
+- **Pre-Registered Acceptance Protocols (F1–F8):** Established frozen decision rules, baselines, and denominators for collocated sensor commissioning (F1), handset WiFi contact logging (F2), prospective weather onset (F3), delayed return drills (F4), drifter containment (F5), blinded search trials (F6), integrated before/during/after storyline (F7), and frozen model evaluation (F8).
+- **Delivered Lead Accounting Standard (Task 5.8):** Formulated delivered lead as $T_{\text{hazard\_onset}} - T_{\text{handset\_display}}$; unreceived or undelivered alerts are strictly accounted as missed lead in denominators, never excluded from statistics.
+- **Canonical Manifest Fixture (Tasks 5.5, 5.9):** Created and verified [`manifests/field_eval_manifest_v1.json`](../manifests/field_eval_manifest_v1.json) with SHA-256 evidence checksums, disjoint event splits, and diverse evaluation outcomes, verified by `test_canonical_field_eval_manifest_validates_cleanly`.
+- **Concrete Blockers & Handoff:** Documented prerequisites (LGU/Coast Guard permits, mooring installation, surrogate target construction, safety escort vessels) and defined collection handoff for hardware (Daniel), gateway (Arnold), and backend (Lenard).
+- **Honest Status:** In accordance with Phase 5 rules, Phase 5 remains **Preparation & Protocol Complete; Physical In-Water Collection Pending Handoff**. Software gates pass completely; physical in-water claims remain unmeasured until real maritime collection is executed.
+
+**Verification Results:**
+- Backend: **362 passed, 5 skipped, 1 xfailed** (`python -m pytest -q`); Ruff check clean (`All checks passed!`).
+- Manifest & Replay suite (`tests/test_calibration_and_replay.py`): **9/9 passed**.
+- Web: **141 passed, 0 failed** (`node --test web/test/*.test.js`).
+
 ## 2026-09-15 — AI Safety Remediation Phase 4: Calibration Lineage, Historical Replay & Claim Boundaries
 
 Recorded per `docs/AI_SAFETY_REMEDIATION_IMPLEMENTATION_PLAN_GEMINI_3_8.md`.

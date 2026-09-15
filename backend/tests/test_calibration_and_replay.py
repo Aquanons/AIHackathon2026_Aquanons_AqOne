@@ -34,6 +34,7 @@ Scenarios covered:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -496,3 +497,21 @@ def test_c8_controlled_drift_evaluation_known_containment_and_unsupported_horizo
     eval_unsupported = evaluate_drift_track(mock_prediction, long_track, horizon_hours=24.0)
     assert eval_unsupported['is_supported'] is False
     assert eval_unsupported['contained'] is False  # Must not report unsupported horizon as success!
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Field evaluation manifest fixture verification
+# ---------------------------------------------------------------------------
+
+def test_canonical_field_eval_manifest_validates_cleanly():
+    """The canonical field evaluation manifest fixture at manifests/field_eval_manifest_v1.json
+    must validate cleanly without placeholder hashes or partition leakage.
+    """
+    manifest_path = Path(__file__).resolve().parent.parent.parent / 'manifests' / 'field_eval_manifest_v1.json'
+    assert manifest_path.exists(), f"Expected manifest file at {manifest_path}"
+
+    validated = validate_manifest(manifest_path)
+    assert validated['manifest_version'] == '1.0.0'
+    assert len(validated['records']) >= 3
+    assert all('raw_evidence_sha256' in rec for rec in validated['records'])
+
