@@ -30,6 +30,8 @@ from time import perf_counter
 import httpx
 import numpy as np
 
+from app import geo
+
 CENTER_LAT = 11.6892
 CENTER_LON = 122.3667
 MANILA_TZ = timezone(timedelta(hours=8))
@@ -39,8 +41,8 @@ KM_PER_DEG_LAT = 110_574.0
 # Recorded on every persisted drift run snapshot (docs/40 Phase 2 item 3) so a
 # later change to the particle model is visible in old runs' metadata rather
 # than silently reinterpreting them. Bump on any change to predict_drift's
-# physics (leeway coefficients, diffusion, current-bias sigma, ...).
-MODEL_VERSION = 'aqone-drift-v1'
+# physics (leeway coefficients, diffusion, current-bias sigma, boundaries).
+MODEL_VERSION = 'aqone-drift-v2'
 
 
 class ObjectClass(str, Enum):  # noqa: UP042
@@ -82,6 +84,9 @@ class DriftResult:
     runtime_ms: float
     wind_source: str
     object_class: str
+    stranded_count: int = 0
+    support_lost_at: str | None = None
+    trajectories: list[dict[str, object]] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -92,7 +97,30 @@ class DriftResult:
             'runtime_ms': round(self.runtime_ms, 3),
             'wind_source': self.wind_source,
             'object_class': self.object_class,
+            'stranded_count': self.stranded_count,
+            'support_lost_at': self.support_lost_at,
         }
+
+
+def _points_in_water(
+    lats: np.ndarray,
+    lons: np.ndarray,
+    polygon: tuple[tuple[float, float], ...] | None = None,
+) -> np.ndarray:
+    """Vectorized point-in-water check using ray casting against coastal boundary."""
+    if polygon is None:
+        polygon = geo.WATER_POLYGON
+    inside = np.zeros(len(lats), dtype=bool)
+    count = len(polygon)
+    for i in range(count):
+        lat_i, lon_i = polygon[i]
+        lat_j, lon_j = polygon[(i - 1) % count]
+        intersects = (lat_i > lats) != (lat_j > lats)
+        denom = (lat_j - lat_i) if abs(lat_j - lat_i) > 1e-12 else 1e-12
+        lon_at_lat = (lon_j - lon_i) * (lats - lat_i) / denom + lon_i
+        crossing = intersects & (lons < lon_at_lat)
+        inside ^= crossing
+    return inside
 
 
 def _km_per_deg_lon(lat: float) -> float:
@@ -400,6 +428,9 @@ def predict_drift(
     current_bias_sigma_ms: float = 0.06,
     leeway_scale_sigma: float = 0.25,
     grid_resolution_m: float = 500.0,
+    boundary_polygon: tuple[tuple[float, float], ...] | None = None,
+    enable_stranding: bool = False,
+    record_trajectories: bool = False,
 ) -> DriftResult:
     start = perf_counter()
     observed_at = _ensure_timezone(observed_at)
@@ -423,7 +454,9 @@ def predict_drift(
     current_bias_u = rng.normal(0.0, current_bias_sigma_ms, size=particle_count)
     current_bias_v = rng.normal(0.0, current_bias_sigma_ms, size=particle_count)
     leeway_scale = np.clip(rng.normal(1.0, leeway_scale_sigma, size=particle_count), 0.3, 2.0)
+    stranded = np.zeros(particle_count, dtype=bool)
     centroid_track: list[dict[str, object]] = []
+    traj_records: list[dict[str, object]] | None = [] if record_trajectories else None
 
     for step in range(horizon_steps + 1):
         at = observed_at + timedelta(minutes=step * step_minutes)
@@ -431,28 +464,44 @@ def predict_drift(
         centroid_lat = float(np.mean(lat))
         centroid_lon = float(np.mean(lon))
         centroid_track.append({'at': at.isoformat(), 'lat': centroid_lat, 'lon': centroid_lon})
+        if record_trajectories and traj_records is not None:
+            traj_records.append({'at': at.isoformat(), 'lat': lat.copy(), 'lon': lon.copy()})
         if step == horizon_steps:
             break
 
-        current_u, current_v = current_vector_fn(lat, lon, at)
-        wind_u, wind_v = _interpolate_series(wind_series, at)
-        wind_speed = math.hypot(wind_u, wind_v)
-        if wind_speed < 1e-6:
-            wind_perp_u = 0.0
-            wind_perp_v = 0.0
-        else:
-            wind_perp_u = -wind_v
-            wind_perp_v = wind_u
-        leeway_u = leeway_scale * (
-            spec.downwind * wind_u + cross_sign * spec.crosswind * wind_perp_u
-        )
-        leeway_v = leeway_scale * (
-            spec.downwind * wind_v + cross_sign * spec.crosswind * wind_perp_v
-        )
-        diffusion_u = rng.normal(0.0, diffusion_sigma, size=particle_count)
-        diffusion_v = rng.normal(0.0, diffusion_sigma, size=particle_count)
-        x += (current_u + current_bias_u + leeway_u) * dt_seconds + diffusion_u
-        y += (current_v + current_bias_v + leeway_v) * dt_seconds + diffusion_v
+        active_idx = np.where(~stranded)[0]
+        if len(active_idx) > 0:
+            current_u, current_v = current_vector_fn(lat[active_idx], lon[active_idx], at)
+            wind_u, wind_v = _interpolate_series(wind_series, at)
+            wind_speed = math.hypot(wind_u, wind_v)
+            if wind_speed < 1e-6:
+                wind_perp_u = 0.0
+                wind_perp_v = 0.0
+            else:
+                wind_perp_u = -wind_v
+                wind_perp_v = wind_u
+            leeway_u = leeway_scale[active_idx] * (
+                spec.downwind * wind_u + cross_sign[active_idx] * spec.crosswind * wind_perp_u
+            )
+            leeway_v = leeway_scale[active_idx] * (
+                spec.downwind * wind_v + cross_sign[active_idx] * spec.crosswind * wind_perp_v
+            )
+            diffusion_u = rng.normal(0.0, diffusion_sigma, size=len(active_idx))
+            diffusion_v = rng.normal(0.0, diffusion_sigma, size=len(active_idx))
+
+            cand_x = x[active_idx] + (current_u + current_bias_u[active_idx] + leeway_u) * dt_seconds + diffusion_u
+            cand_y = y[active_idx] + (current_v + current_bias_v[active_idx] + leeway_v) * dt_seconds + diffusion_v
+            cand_lat, cand_lon = _to_latlon(cand_x, cand_y, last_lat, last_lon)
+
+            if enable_stranding and boundary_polygon is not None:
+                in_water = _points_in_water(cand_lat, cand_lon, boundary_polygon)
+                stranded_now = ~in_water
+                x[active_idx[in_water]] = cand_x[in_water]
+                y[active_idx[in_water]] = cand_y[in_water]
+                stranded[active_idx[stranded_now]] = True
+            else:
+                x[active_idx] = cand_x
+                y[active_idx] = cand_y
 
     x_min = float(np.min(x)) - grid_resolution_m
     x_max = float(np.max(x)) + grid_resolution_m
@@ -479,6 +528,12 @@ def predict_drift(
         'values': hist.tolist(),
     }
     runtime_ms = (perf_counter() - start) * 1000.0
+    support_lost_at_val = getattr(current_vector_fn, 'support_lost_at', None)
+    support_lost_str = (
+        support_lost_at_val.isoformat()
+        if hasattr(support_lost_at_val, 'isoformat')
+        else (str(support_lost_at_val) if support_lost_at_val else None)
+    )
     return DriftResult(
         grid=grid,
         contours=contours,
@@ -487,6 +542,9 @@ def predict_drift(
         runtime_ms=runtime_ms,
         wind_source=wind_series.source,
         object_class=object_class.value,
+        stranded_count=int(np.sum(stranded)),
+        support_lost_at=support_lost_str,
+        trajectories=traj_records,
     )
 
 

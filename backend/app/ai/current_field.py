@@ -161,6 +161,7 @@ async def create_current_field_factory(
             ) -> tuple[np.ndarray, np.ndarray]:
                 return _synthetic_current_vector(lat, lon, at)
             _empty_field.observation_fraction = 0.0  # type: ignore[attr-defined]
+            _empty_field.support_lost_at = None  # type: ignore[attr-defined]
             return _empty_field
         else:
             def _zero_field(
@@ -169,6 +170,7 @@ async def create_current_field_factory(
                 n = len(lat)
                 return np.zeros(n, dtype=float), np.zeros(n, dtype=float)
             _zero_field.observation_fraction = 0.0  # type: ignore[attr-defined]
+            _zero_field.support_lost_at = None  # type: ignore[attr-defined]
             return _zero_field
 
     buoy_lats = np.array([b['lat'] for b in buoy_list], dtype=float)
@@ -249,6 +251,9 @@ async def create_current_field_factory(
                 u_out[~has_obs] = 0.0
                 v_out[~has_obs] = 0.0
 
+        if n > 0 and n_observed == 0 and _estimated_field.support_lost_at is None:
+            _estimated_field.support_lost_at = at
+
         total_particles += n
         total_observed += n_observed
         _estimated_field.observation_fraction = (
@@ -256,4 +261,6 @@ async def create_current_field_factory(
         )  # type: ignore[attr-defined]
         return u_out, v_out
 
+    _estimated_field.support_lost_at = None  # type: ignore[attr-defined]
+    _estimated_field.observation_fraction = 0.0  # type: ignore[attr-defined]
     return _estimated_field

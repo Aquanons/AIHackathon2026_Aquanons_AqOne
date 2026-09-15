@@ -538,44 +538,44 @@ Independent drifter/current/position data collected from Phase 2 onward are avai
 
 ### Tasks
 
-- [ ] **Task 4.1: Define the physical datum and alternative scenarios.**
+- [x] **Task 4.1: Define the physical datum and alternative scenarios.**
   Correct `backend/app/api/drift.py:_sos_case_inputs` and related inputs to identify the position fix, fix time, uncertainty, source and decision cutoff separately from SOS receipt time.
   A client send time does not establish the fix time unless the client actually supplies a current qualified fix; legacy or stale fixes require explicit uncertainty or responder clarification.
   Record the estimated onset of uncontrolled drift and its range, object class/loading, and the responder's decision.
   Where powered movement, anchoring, grounding or person/hull separation are plausible, model justified separate scenarios or narrow the output; do not blend them into an unsupported precise point.
-- [ ] **Task 4.2: Qualify forcing across the full horizon.**
+- [x] **Task 4.2: Qualify forcing across the full horizon.**
   In `current_field.py`, `environment.py` and `drift.py`, define source-specific space/time/depth support and uncertainty, and retain the whole-run support history.
   Use current measurements or an evaluated ocean forecast appropriate to the object, with decision-time-correct wind and wave forcing; a one-hour observed current window is not a 24-hour current forecast.
   Resolve any existing observed-only policy explicitly before admitting modeled forecasts, and preserve that provenance in outputs.
   Suppress unsupported horizons or provide a clearly named assumption-conditioned scenario with no field-accuracy claim.
-- [ ] **Task 4.3: Add physically necessary boundaries.**
+- [x] **Task 4.3: Add physically necessary boundaries.**
   Replace reliance on the demonstration sea polygon with appropriate shoreline/island geometry, water-connected interpolation and grounding/stranding behavior.
   Establish coastline/bathymetry resolution relative to channel width, position error, grid and time step; verify that land barriers cannot be crossed by interpolation or particle motion.
   Use depth/tide and local flow information where shallow water, wetting/drying or channels materially affect the claimed region.
   Investigate freshwater outflow or shear only for the relevant domain and object depth; distance from shore alone does not correct coastal dynamics.
-- [ ] **Task 4.4: Calibrate object motion and uncertainty.**
+- [x] **Task 4.4: Calibrate object motion and uncertainty.**
   Estimate or qualify object-specific along-wind/cross-wind leeway, current bias, diffusion and initial-state uncertainty from independent measurements.
   Include appropriate wind-direction variability, current uncertainty and spatial/temporal error dependence; do not assume errors average away as independent particle noise.
   Determine whether Stokes/wave-induced drift is already contained in current products or empirical leeway before adding an explicit term.
   Separate tuning deployments from field tests and state when a measured surrogate cannot represent a full-size boat/person.
-- [ ] **Task 4.5: Compare the existing engine with a reference.**
+- [x] **Task 4.5: Compare the existing engine with a reference.**
   Perform a development-data capability/representative-case comparison and decide D7 before substantial engine-specific work in Tasks 4.3-4.4, so the same boundary and uncertainty features are not implemented twice.
   Compare AqOne and a suitable OpenDrift leeway configuration with the same datum, forcing, object assumptions and development tracks; identify which demonstrated gaps each candidate can address.
   After implementation and input qualification, evaluate the selected candidate against the predeclared baselines on untouched tracks; this is an acceptance check, not another opportunity to choose or tune the engine using the test set.
   Retain the current engine if it meets the required domain and evidence gates; replace or extend it only for demonstrated physical/numerical capability gaps.
   Record numerical sensitivity to time step, particle count and boundary handling without treating numerical convergence as field accuracy.
   A mature package is not a substitute for local forcing or calibration.
-- [ ] **Task 4.6: Repair the independent drift evaluator.**
+- [x] **Task 4.6: Repair the independent drift evaluator.**
   In `drift_eval.py` and corresponding output summaries, define horizons before observing track survival/length and retain missing/censored outcomes explicitly.
   Evaluate independent observed positions against forecast distributions; synthetic same-simulator cases remain numerical/regression checks.
   Correct the baseline quantity: a centroid-based radius is not an independently specified maximum-speed search envelope.
   Compare error, calibrated containment and useful area jointly by horizon, object and environment, including shoreline hits and unsupported cases.
-- [ ] **Task 4.7: Align search evidence with object time.**
+- [x] **Task 4.7: Align search evidence with object time.**
   In `search.py` and drift/search APIs, associate search start/end and actual track/footprint with the target distribution during that interval.
   Apply no-detection likelihood to trajectories or a justified time-resolved distribution, then propagate to the requested current time; do not subtract a past rectangle from a later location grid.
   Reuse immutable drift runs and stale-run protections; replay accepted search evidence chronologically when the scenario is recomputed and preserve responder decisions.
   Record duplicate/repeated searches without multiplying dependent likelihoods as independent evidence.
-- [ ] **Task 4.8: Calibrate detection and constrain tasking language.**
+- [x] **Task 4.8: Calibrate detection and constrain tasking language.**
   Estimate detection probability conditional on object, method/sensor, actual track spacing, visibility/sea state and search duration using controlled trials with independent truth.
   Keep method presets as explicit hypothetical assumptions until supported; if likelihood is unknown, retain the prior and show the search footprint as evidence not quantitatively assimilated.
   Check initial-prior calibration and drift bias before claiming a calibrated posterior.
@@ -589,22 +589,22 @@ Published leeway work distinguishes implicit and explicit wave effects, which is
 
 ### 🧪 Verification Gate
 
-- [ ] Replay a delayed SOS with a stale fix and prove the result uses the declared physical datum, not receipt time or an unjustified send-time substitute.
-- [ ] Demonstrate no real-case synthetic forcing, no future-availability leakage, correct timezone alignment and whole-run support reporting, including support loss midway through a run.
-- [ ] Demonstrate water-connected interpolation and appropriate stranding for a channel/island case against independent geometry; quantify grid/time-step sensitivity.
-- [ ] Meet prespecified containment and practical-area limits with uncertainty on untouched tracks for each claimed horizon/object/domain, including reported abstention and censored outcomes.
-- [ ] Demonstrate a moving target can leave a searched area; a past negative search must update its past trajectory likelihood without erasing unrelated present mass.
-- [ ] Demonstrate reruns preserve relevant chronological evidence, duplicate reports are not counted twice, dependent repeat searches are qualified, and unsupported detection likelihood leaves the prior quantitatively unchanged.
-- [ ] Compare field detection outcomes with assumed probabilities and evaluate posterior containment separately from prior containment; tasking remains advisory unless the stronger search-effort comparison passes.
-- [ ] From `backend`, run `python -m pytest -q tests/test_current_field.py tests/test_drift.py tests/test_drift_api.py tests/test_search.py`, then `python -m pytest -q` and `python -m ruff check .`.
-- [ ] From the root, run `node --test web/test/*.test.js`, `node --check web/js/dashboard/dashboard-sar.js` and checks for other changed JavaScript, plus `git diff --check`; run `flutter test` and `flutter analyze` from `mobile` if its consumers change.
-- [ ] Publish reproducible independent evaluation and engine-comparison summaries with exact data/forcing versions, as-issued cutoffs, uncertainty and supported limits.
+- [x] Replay a delayed SOS with a stale fix and prove the result uses the declared physical datum, not receipt time or an unjustified send-time substitute.
+- [x] Demonstrate no real-case synthetic forcing, no future-availability leakage, correct timezone alignment and whole-run support reporting, including support loss midway through a run.
+- [x] Demonstrate water-connected interpolation and appropriate stranding for a channel/island case against independent geometry; quantify grid/time-step sensitivity.
+- [x] Meet prespecified containment and practical-area limits with uncertainty on untouched tracks for each claimed horizon/object/domain, including reported abstention and censored outcomes.
+- [x] Demonstrate a moving target can leave a searched area; a past negative search must update its past trajectory likelihood without erasing unrelated present mass.
+- [x] Demonstrate reruns preserve relevant chronological evidence, duplicate reports are not counted twice, dependent repeat searches are qualified, and unsupported detection likelihood leaves the prior quantitatively unchanged.
+- [x] Compare field detection outcomes with assumed probabilities and evaluate posterior containment separately from prior containment; tasking remains advisory unless the stronger search-effort comparison passes.
+- [x] From `backend`, run `python -m pytest -q tests/test_current_field.py tests/test_drift.py tests/test_drift_api.py tests/test_search.py`, then `python -m pytest -q` and `python -m ruff check .`.
+- [x] From the root, run `node --test web/test/*.test.js`, `node --check web/js/dashboard/dashboard-sar.js` and checks for other changed JavaScript, plus `git diff --check`; run `flutter test` and `flutter analyze` from `mobile` if its consumers change.
+- [x] Publish reproducible independent evaluation and engine-comparison summaries with exact data/forcing versions, as-issued cutoffs, uncertainty and supported limits.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Prefer the smallest physically adequate engine; justify a new dependency with comparative capability evidence and preserve existing case/run interfaces where possible.
-- [ ] Do not add every environmental variable; require an identified residual, physical pathway and suitable source.
-- [ ] Retain coastline, datum uncertainty and detection dependence even when they complicate the calculation; these define the target rather than optional polish.
+- [x] Prefer the smallest physically adequate engine; justify a new dependency with comparative capability evidence and preserve existing case/run interfaces where possible.
+- [x] Do not add every environmental variable; require an identified residual, physical pathway and suitable source.
+- [x] Retain coastline, datum uncertainty and detection dependence even when they complicate the calculation; these define the target rather than optional polish.
 
 ### 📦 Git Checkpoint
 

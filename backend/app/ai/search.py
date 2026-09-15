@@ -10,6 +10,7 @@ The grid is the state — the particle simulation is not re-run on each update.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -46,6 +47,58 @@ def _grid_to_dict(
     }
 
 
+def update_trajectory_weights(
+    trajectory_lats: np.ndarray,
+    trajectory_lons: np.ndarray,
+    step_times: list[datetime],
+    sectors: list[dict[str, Any]],
+    weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """Apply Bayesian likelihood updates to particle trajectory weights (Task 4.7).
+
+    trajectory_lats and trajectory_lons have shape (n_steps, n_particles).
+    For each sector, applies (1 - detection_probability) only to particles that were
+    within the searched footprint during the search time.
+
+    A moving target that was outside the sector at search time but drifts into that
+    location at a later horizon is NOT attenuated, preserving unrelated present mass.
+    Unsupported detection likelihood (dp <= 0.0) leaves weights quantitatively unchanged.
+    """
+    n_steps, n_particles = trajectory_lats.shape
+    w = np.ones(n_particles, dtype=float) / n_particles if weights is None else weights.copy()
+
+    for sector in sectors:
+        dp = float(sector.get('detection_probability', 0.0))
+        if dp <= 0.0:
+            continue
+
+        searched_at = sector.get('searched_at')
+        if searched_at is not None:
+            s_dt = datetime.fromisoformat(searched_at) if isinstance(searched_at, str) else searched_at
+            diffs = [abs((t - s_dt).total_seconds()) for t in step_times]
+            t_idx = int(np.argmin(diffs))
+        else:
+            t_idx = n_steps - 1
+
+        lats = trajectory_lats[t_idx]
+        lons = trajectory_lons[t_idx]
+
+        if 'south' in sector and 'north' in sector:
+            in_sector = (
+                (lats >= sector['south']) & (lats <= sector['north']) &
+                (lons >= sector['west']) & (lons <= sector['east'])
+            )
+        else:
+            in_sector = np.zeros(n_particles, dtype=bool)
+
+        w[in_sector] *= 1.0 - dp
+
+    total = w.sum()
+    if total > 0:
+        w /= total
+    return w
+
+
 def update_posterior(
     grid_dict: dict[str, Any],
     sectors: list[dict[str, Any]],
@@ -53,9 +106,10 @@ def update_posterior(
     """Apply Bayesian updates for all searched sectors to the prior grid.
 
     Each sector is a dict with keys: x_min_m, x_max_m, y_min_m, y_max_m,
-    detection_probability.  Cells whose centres fall inside the sector bounding
+    detection_probability. Cells whose centres fall inside the sector bounding
     box are multiplied by (1 - detection_probability), then the grid is
     renormalised to sum to 1.
+    If detection_probability <= 0.0, the prior is left quantitatively unchanged.
 
     Returns the updated grid dict (the posterior).
     """
@@ -66,13 +120,19 @@ def update_posterior(
     xx, yy = np.meshgrid(x_centers, y_centers)
 
     for sector in sectors:
+        dp = float(sector.get('detection_probability', 0.0))
+        if dp <= 0.0:
+            continue
+        if sector.get('dependent', False):
+            dp = dp * 0.25
+
         mask = (
             (xx >= sector['x_min_m'])
             & (xx <= sector['x_max_m'])
             & (yy >= sector['y_min_m'])
             & (yy <= sector['y_max_m'])
         )
-        values[mask] *= 1.0 - sector['detection_probability']
+        values[mask] *= 1.0 - dp
 
     total = values.sum()
     if total > 0:
@@ -101,13 +161,21 @@ def contours_from_grid(
 def recommend_next_area(grid_dict: dict[str, Any]) -> dict[str, Any]:
     """The single highest remaining-mass cell of the posterior, as a
     geographic rectangle/centroid plus its probability mass (docs/40 Phase 3
-    item 5). A recommendation for responder review - never an asset
-    assignment, route, or automatic re-tasking.
+    item 5). An advisory recommendation for responder review - never an automatic
+    tasking, asset assignment, or forced re-routing.
     """
     values, x_edges, y_edges, origin_lat, origin_lon = _grid_from_dict(grid_dict)
     label = 'recommendation for responder review'
+    advisory_note = 'advisory recommendation for responder review, not an automatic tasking'
     if values.size == 0 or float(values.sum()) <= 0.0:
-        return {'label': label, 'bounds': None, 'centroid': None, 'remaining_mass': 0.0}
+        return {
+            'label': label,
+            'advisory_note': advisory_note,
+            'is_advisory': True,
+            'bounds': None,
+            'centroid': None,
+            'remaining_mass': 0.0,
+        }
 
     row, col = (int(i) for i in np.unravel_index(np.argmax(values), values.shape))
     x0, x1 = float(x_edges[col]), float(x_edges[col + 1])
@@ -119,6 +187,8 @@ def recommend_next_area(grid_dict: dict[str, Any]) -> dict[str, Any]:
 
     return {
         'label': label,
+        'advisory_note': advisory_note,
+        'is_advisory': True,
         'bounds': {
             'south': float(lat[0]), 'west': float(lon[0]),
             'north': float(lat[1]), 'east': float(lon[1]),

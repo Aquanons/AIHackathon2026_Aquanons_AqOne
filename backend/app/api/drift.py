@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 import asyncpg
 import numpy as np
@@ -180,6 +180,7 @@ async def _compute_and_persist_run(
     pool, incident_id: int, run_number: int, *,
     last_lat: float, last_lon: float, last_at: datetime,
     object_class: ObjectClass, forecast_hours: float, actor: str,
+    initial_spread_m: float = 250.0,
 ) -> environment.EnvironmentAssessment:
     """The production quality-gated prediction (docs/40 Phase 2 items 2-3).
 
@@ -204,12 +205,34 @@ async def _compute_and_persist_run(
             object_class=object_class,
             forecast_hours=forecast_hours,
             current_vector_fn=current_fn,
+            initial_spread_m=initial_spread_m,
+            enable_stranding=True,
         )
         coverage = getattr(current_fn, 'observation_fraction', 0.0)
         assessment = environment.assess_result(nearby, coverage, result)
         if assessment.sufficient:
             prior_grid = result.grid
-            posterior_grid = result.grid
+            # Replay all previous search sectors chronologically for this incident
+            async with pool.acquire() as conn:
+                existing_sectors = await conn.fetch(
+                    'SELECT x_min_m, x_max_m, y_min_m, y_max_m, detection_probability '
+                    'FROM search_sectors WHERE incident_id = $1 ORDER BY searched_at ASC, id ASC',
+                    incident_id,
+                )
+            if existing_sectors:
+                sec_dicts = [
+                    {
+                        'x_min_m': float(s['x_min_m']),
+                        'x_max_m': float(s['x_max_m']),
+                        'y_min_m': float(s['y_min_m']),
+                        'y_max_m': float(s['y_max_m']),
+                        'detection_probability': float(s['detection_probability']),
+                    }
+                    for s in existing_sectors
+                ]
+                posterior_grid = update_posterior(result.grid, sec_dicts)
+            else:
+                posterior_grid = result.grid
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -277,9 +300,16 @@ class OpenCaseRequest(BaseModel):
     source_id: int
     object_class: ObjectClass
     forecast_hours: float = Field(24.0, gt=0, le=72)
+    datum_at: datetime | None = None
+    scenario: str | None = Field(default='standard_drift')
+    initial_uncertainty_m: float | None = Field(default=250.0, ge=10.0, le=50000.0)
 
 
-async def _sos_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[str, float, float, datetime]:
+async def _sos_case_inputs(
+    conn: asyncpg.Connection,
+    source_id: int,
+    override_datum_at: datetime | None = None,
+) -> tuple[str, float, float, datetime, dict[str, Any]]:
     row = await conn.fetchrow(
         '''
         SELECT vessel_id, latitude, longitude, created_at, client_ts, acknowledged_at, resolved_at
@@ -296,23 +326,50 @@ async def _sos_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[st
     if row['latitude'] is None or row['longitude'] is None:
         raise HTTPException(status_code=422, detail='SOS has no last-known position')
 
-    datum_at = row['created_at']
-    try:
-        client_ts = row['client_ts']
-    except (KeyError, TypeError, IndexError):
+    receipt_at = row['created_at']
+    datum_source = 'receipt_time'
+    delay_seconds = 0.0
+
+    if override_datum_at is not None:
+        datum_at = override_datum_at
+        datum_source = 'responder_override'
+        delay_seconds = max(0.0, (receipt_at - datum_at).total_seconds())
+    else:
         client_ts = None
-    if client_ts is not None and client_ts > 0:
         try:
-            client_dt = datetime.fromtimestamp(client_ts, tz=UTC)
-            if client_dt <= row['created_at'] + timedelta(minutes=5):
-                datum_at = client_dt
-        except (ValueError, OverflowError, OSError):
-            pass
+            client_ts = row['client_ts']
+        except (KeyError, TypeError, IndexError):
+            client_ts = None
 
-    return row['vessel_id'], float(row['latitude']), float(row['longitude']), datum_at
+        if client_ts is not None and client_ts > 0:
+            try:
+                client_dt = datetime.fromtimestamp(client_ts, tz=UTC)
+                # Client timestamp is accepted as physical datum when it is not in the distant future
+                if client_dt <= receipt_at + timedelta(minutes=5):
+                    datum_at = client_dt
+                    datum_source = 'client_fix'
+                    delay_seconds = max(0.0, (receipt_at - client_dt).total_seconds())
+                else:
+                    datum_at = receipt_at
+            except (ValueError, OverflowError, OSError):
+                datum_at = receipt_at
+        else:
+            datum_at = receipt_at
+
+    datum_meta = {
+        'datum_at': datum_at.isoformat(),
+        'receipt_at': receipt_at.isoformat(),
+        'datum_source': datum_source,
+        'delay_seconds': delay_seconds,
+    }
+    return row['vessel_id'], float(row['latitude']), float(row['longitude']), datum_at, datum_meta
 
 
-async def _anomaly_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[str, float, float, datetime]:
+async def _anomaly_case_inputs(
+    conn: asyncpg.Connection,
+    source_id: int,
+    override_datum_at: datetime | None = None,
+) -> tuple[str, float, float, datetime, dict[str, Any]]:
     row = await conn.fetchrow(
         '''
         SELECT vessel_id, trip_id, escalated_at, resolved_at
@@ -338,7 +395,16 @@ async def _anomaly_case_inputs(conn: asyncpg.Connection, source_id: int) -> tupl
     )
     if position is None:
         raise HTTPException(status_code=422, detail='no last-known position for this vessel/trip')
-    return row['vessel_id'], float(position['latitude']), float(position['longitude']), position['observed_at']
+
+    observed_at = position['observed_at']
+    datum_at = override_datum_at or observed_at
+    datum_meta = {
+        'datum_at': datum_at.isoformat(),
+        'receipt_at': observed_at.isoformat(),
+        'datum_source': 'responder_override' if override_datum_at else 'buoy_contact',
+        'delay_seconds': 0.0,
+    }
+    return row['vessel_id'], float(position['latitude']), float(position['longitude']), datum_at, datum_meta
 
 
 @router.post('/cases')
@@ -346,10 +412,10 @@ async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles)
     pool = get_pool()
     async with pool.acquire() as conn, conn.transaction():
         if body.source_type == 'sos':
-            vessel_id, lat, lon, at = await _sos_case_inputs(conn, body.source_id)
+            vessel_id, lat, lon, at, datum_meta = await _sos_case_inputs(conn, body.source_id, body.datum_at)
             reason, sos_id, anomaly_id = SOS_OPEN_REASON, body.source_id, None
         else:
-            vessel_id, lat, lon, at = await _anomaly_case_inputs(conn, body.source_id)
+            vessel_id, lat, lon, at, datum_meta = await _anomaly_case_inputs(conn, body.source_id, body.datum_at)
             reason, sos_id, anomaly_id = ANOMALY_OPEN_REASON, None, body.source_id
 
         try:
@@ -381,7 +447,12 @@ async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles)
             resource_id=row['id'],
             outcome='created',
             is_demo=False,
-            metadata={'source_type': body.source_type, 'object_class': body.object_class.value},
+            metadata={
+                'source_type': body.source_type,
+                'object_class': body.object_class.value,
+                'scenario': body.scenario,
+                'datum_meta': datum_meta,
+            },
         )
 
     incident_id = row['id']
@@ -391,6 +462,7 @@ async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles)
         last_lat=lat, last_lon=lon, last_at=at,
         object_class=body.object_class, forecast_hours=body.forecast_hours,
         actor=actor,
+        initial_spread_m=body.initial_uncertainty_m or 250.0,
     )
 
     return {
@@ -402,6 +474,8 @@ async def open_case(body: OpenCaseRequest, user: dict = require_responder_roles)
         'run_number': 1,
         'environmental_status': 'ok' if assessment.sufficient else 'insufficient_environmental_data',
         'insufficiency_reason': assessment.reason,
+        'scenario': body.scenario,
+        'datum_meta': datum_meta,
     }
 
 
