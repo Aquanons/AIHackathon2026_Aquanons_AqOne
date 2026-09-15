@@ -9,6 +9,31 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-15 — AI Layer Calibration, Physical Drift Boundaries & Prospective Verification (Phases 1–5)
+
+Recorded per `docs/AI_ACCURACY_IMPLEMENTATION_PLAN.md` and `docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md`.
+Environment: Windows 11, Python 3.11.9, pytest-9.1.1, Flutter 3.44.7, Node.js v22.22.3.
+
+**Remediation, Physical Calibration, and Prospective Validation:**
+- **Phase 1 (Counterexamples & Semantic Isolation):** Eliminated fabricated data baselines; isolated synthetic demo inputs from live production pipelines (`allow_synthetic=False`); aligned timezones to Asia/Manila calendar day boundaries; separated unique vessel contributors from report counts in catch aggregation.
+- **Phase 2 (Sensor Qualification & Warning Transport):** Enforced array telemetry quality gates (`ArrayQuality`, min 3 buoys, 5-min cadence); surfaced source grid resolution ($0.1^\circ \approx 11\text{ km}$) and data age in provenance headers; validated non-negative physical readings; preserved manual SOS integrity regardless of warning traffic.
+- **Phase 3 (Nowcasting & Causal Trip Profiling):** Repaired squall front propagation invariants (shifting origin coordinates preserves absolute arrival time); eliminated future/candidate leakage in trip profiling ($T \le T_{\text{decision}}$); retained open trips beyond 12 hours for human dispatcher review; preserved human authority over SAR escalation.
+- **Phase 4 (Physical Drift & Time-Aligned Search Evidence):** Separated physical datum ($T_{\text{fix}}$) from server ingest time; integrated high-resolution shoreline boundary polygon with particle grounding/stranding preventing mountain crossings; bounded search retasking by independent physical maximum-speed envelope ($A = \pi (V_{\max} \cdot t)^2$); applied time-aligned $(1 - p_d)$ search likelihood to particle trajectories at the time of search; labeled retasking as strictly advisory.
+- **Phase 5 (Prospective Shadow Drills & Operational Claims):** Established prospective shadow observation protocol with zero future leakage; designed complete-storyline drills covering nominal and degraded branches (comms loss, delayed safe return, drift simulation fallback); evaluated delivered lead against the 20-minute small-craft safe transit threshold; published comprehensive component capability matrix and full resolution disposition for all 23 audit findings (`docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md`).
+
+**Build and Verification Evidence:**
+- **Automated Verification Gate:**
+  - `python -m pytest -q` (full backend suite): **334 passed, 5 skipped, 1 xfailed** (including all Phase 1–5 validation suites: `test_phase1_counterexamples.py`, `test_phase2_validation.py`, `test_phase3_validation.py`, `test_phase4_validation.py`, `test_phase5_validation.py`).
+  - `python -m ruff check backend/`: **Clean, 0 errors**.
+  - `flutter test` (mobile suite): **250 passed, 0 failed**.
+  - `flutter analyze` (mobile analysis): **Clean, 0 issues**.
+  - `node --test web/test/*.test.js`: **141 passed, 0 failed**.
+  - `node --check web/js/dashboard/dashboard-sar.js`: **Clean, exit code 0**.
+  - `git diff --check`: **Clean, 0 whitespace issues**.
+- **Direct Observations & Honest Caveats:**
+  - **Manual SOS Independence:** Distress call signaling, buoy relay, and responder acknowledgment operate completely autonomously from all AI services. An AI service crash does not impede emergency dispatch.
+  - **Field Collection & Outdoor LoRa Range:** Physical buoy deployments and open-water radio range measurements in New Washington remain to be executed outdoors; local verification proves software correctness, numerical stability, physical boundary constraints, and protocol alignment.
+
 ## 2026-09-14 — Operations Console Audit Remediation: Complete Implementation & Verification
 
 Recorded per `docs/WEB_REMEDIATION_IMPLEMENTATION_PLAN.md` and `docs/audits/WEB_AUDIT_2026-09-13.md`.

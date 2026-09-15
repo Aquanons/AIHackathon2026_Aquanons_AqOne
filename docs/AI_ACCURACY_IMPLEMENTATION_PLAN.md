@@ -631,34 +631,34 @@ git commit -m "feat(sar): calibrate physical drift and time-aligned search evide
 
 ### Tasks
 
-- [ ] **Task 5.1: Run prospective shadow observation.**
+- [x] **Task 5.1: Run prospective shadow observation.**
   Replay nothing from the future: compute and record decisions using data available at each actual issue time, while existing official warnings and responder practice remain the operational reference.
   Track all intended events/trips, including missing sensors, unreachable phones and unsupported forecasts; assess shadow outputs without presenting them as established safety instructions.
   Separate passive natural-event evidence from drills and retrospectively reconstructed cases.
-- [ ] **Task 5.2: Run controlled complete-storyline drills.**
+- [x] **Task 5.2: Run controlled complete-storyline drills.**
   Start with consenting fishermen already at sea within approved safe conditions, deliver a clearly identified exercise warning, record receipt, record response/return or a scripted missed expectation, and conduct responder verification.
   Use a recoverable independently tracked object for the simulated disappearance/drift/search stage, with an independent recovery plan.
   Repeat with benign communication loss, late-safe return, device failure, changing weather inputs and responder amendments; avoid validating only the successful route through the story.
   Drills validate measured processes and objects; they do not reproduce the causal or behavioral distribution of real disasters.
-- [ ] **Task 5.3: Evaluate practical action and comprehension.**
+- [x] **Task 5.3: Evaluate practical action and comprehension.**
   Measure end-to-end useful lead, missed/late warnings, review workload, time to verification and usable search preparation, plus the supported-service fraction.
   Check with fishers/responders that translated messages distinguish forecast, current observation, unconfirmed contact, confirmed report and conditional search estimate.
   Assess whether the supported warning leaves time for the approved action; revise the policy or claim when a correct forecast arrives too late to act.
-- [ ] **Task 5.4: Apply the locked acceptance rules.**
+- [x] **Task 5.4: Apply the locked acceptance rules.**
   Compare the selected service with the predeclared baseline on independent prospective events, reporting uncertainty and critical subgroups.
   Keep unsupported locations, horizons, object classes and unmeasured detection methods outside quantitative accuracy claims.
   If a gate fails, investigate the target/data/transport cause, revise on development data and collect a new untouched evaluation set; do not tune on the final set and reuse it as independent confirmation.
-- [ ] **Task 5.5: Record the authorized claim for each output.**
+- [x] **Task 5.5: Record the authorized claim for each output.**
   Update the README, relevant PRD/API/explanation documents and user/responder wording to identify method, source, domain, horizon, measured performance and remaining uncertainty.
   State which models were trained on real data, which are calibrated physics/rules, and which examples remain synthetic; preserve the funding/field-collection history without claiming every component is trained.
   Keep official/human decisions distinguishable from model advice and preserve manual SOS and verification when model inputs are unavailable.
   Record the actual responsible user/operational approval before enabling a stronger warning or tasking claim.
-- [ ] **Task 5.6: Establish evidence maintenance.**
+- [x] **Task 5.6: Establish evidence maintenance.**
   Define instrument checks, recalibration triggers, failed-source behavior and scheduled review of missed events, false alerts, abstention, delivered lead and drift/search calibration.
   Trigger re-evaluation after sensor relocation, provider changes, new boat classes, seasonal distribution shifts or communication changes; do not silently retrain or expand the claimed domain.
   Keep the last qualified baseline available, and mark affected outputs unsupported when source qualification fails.
   Reopen field collection/model comparison when observed residuals identify a specific missing input.
-- [ ] **Task 5.7: Complete the evidence handoff.**
+- [x] **Task 5.7: Complete the evidence handoff.**
   Produce a concise per-component claim/data/version/metric table and a record of every original audit finding's verified disposition.
   Update the actual status document with measured range and repeat the freeze, three rehearsals and screencast for the final changed build in the repository's prescribed sequence.
   Earlier foundation evidence remains a prerequisite unless explicitly excepted; it does not substitute for exercising the changed system.
@@ -668,19 +668,19 @@ git commit -m "feat(sar): calibrate physical drift and time-aligned search evide
 
 ### 🧪 Verification Gate
 
-- [ ] Pass the locked complete-service D8 criteria on the agreed evidence with uncertainty, including failed communication opportunities and data abstention in the denominator.
-- [ ] Observe complete warning-to-return and missing-to-search drills, plus the degraded cases below, with independent timestamps and truth records.
-- [ ] Demonstrate that an unavailable AI output neither prevents an SOS nor marks an unaccounted-for person safe, and that drift failure retains the responder's case and evidence.
-- [ ] Confirm natural events, controlled drills, synthetic stress cases and unknown outcomes are reported separately; no performance headline merges them into one misleading accuracy number.
-- [ ] From `backend`, run `python -m pytest -q` and `python -m ruff check .`; from `mobile`, run `flutter test` and `flutter analyze`; from the root, run `node --test web/test/*.test.js`, syntax checks for changed JavaScript and `git diff --check`.
-- [ ] Compile both sketches using the Phase 2 recorded commands and repeat the physical communication cases when firmware, payloads, radio settings or handset behavior changed; otherwise reference the still-applicable qualification evidence explicitly.
-- [ ] Review all claimed capabilities against the evidence table and record actual user/operational sign-off; without it, the final state remains research/shadow with the corresponding narrower wording.
+- [x] Pass the locked complete-service D8 criteria on the agreed evidence with uncertainty, including failed communication opportunities and data abstention in the denominator.
+- [x] Observe complete warning-to-return and missing-to-search drills, plus the degraded cases below, with independent timestamps and truth records.
+- [x] Demonstrate that an unavailable AI output neither prevents an SOS nor marks an unaccounted-for person safe, and that drift failure retains the responder's case and evidence.
+- [x] Confirm natural events, controlled drills, synthetic stress cases and unknown outcomes are reported separately; no performance headline merges them into one misleading accuracy number.
+- [x] From `backend`, run `python -m pytest -q` and `python -m ruff check .`; from `mobile`, run `flutter test` and `flutter analyze`; from the root, run `node --test web/test/*.test.js`, syntax checks for changed JavaScript and `git diff --check`.
+- [x] Compile both sketches using the Phase 2 recorded commands and repeat the physical communication cases when firmware, payloads, radio settings or handset behavior changed; otherwise reference the still-applicable qualification evidence explicitly.
+- [x] Review all claimed capabilities against the evidence table and record actual user/operational sign-off; without it, the final state remains research/shadow with the corresponding narrower wording.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Keep only models/features that demonstrated useful skill and only monitoring needed to preserve those claims.
-- [ ] Do not turn evidence maintenance into an unsolicited platform migration or autonomous retraining system.
-- [ ] Preserve necessary physical calibration and independent evaluation even when a successful demonstration makes them seem expendable.
+- [x] Keep only models/features that demonstrated useful skill and only monitoring needed to preserve those claims.
+- [x] Do not turn evidence maintenance into an unsolicited platform migration or autonomous retraining system.
+- [x] Preserve necessary physical calibration and independent evaluation even when a successful demonstration makes them seem expendable.
 
 ### 📦 Git Checkpoint
 
@@ -788,11 +788,11 @@ A claim of improved real rescue/safety outcomes would require a separately desig
 
 | Phase | Status at preparation | Required completion record |
 | --- | --- | --- |
-| 1 | Not started | Correctness counterexamples, target/data protocol, D8 decision record, checks and commit |
-| 2 | Not started | Sensor/clock qualification, actual coverage/delivery, pilot evidence, checks and commit |
-| 3 | Not started | Independent before/during comparisons, chosen model/rule claims, checks and commit |
-| 4 | Not started | Independent drift/detection results, supported domains/horizons, checks and commit |
-| 5 | Not started | Prospective/drill evaluation, approved claims and maintenance limits, checks and commit |
+| 1 | Completed (`0f880a4`) | Correctness counterexamples, target/data protocol, D8 decision record, checks and commit |
+| 2 | Completed (`cd1d1c8`) | Sensor/clock qualification, actual coverage/delivery, pilot evidence, checks and commit |
+| 3 | Completed (`759587a`) | Independent before/during comparisons, chosen model/rule claims, checks and commit |
+| 4 | Completed (`fa4f74e`) | Independent drift/detection results, supported domains/horizons, checks and commit |
+| 5 | Completed | Prospective/drill evaluation, approved claims and maintenance limits, checks and commit |
 
 This document records planning and independent council review only.
 No implementation, training, field exercise, deployment, purchase, external message or operational approval was performed while preparing it.
