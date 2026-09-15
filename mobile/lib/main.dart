@@ -148,10 +148,11 @@ class _AqOneAppState extends State<AqOneApp> {
     _identityStore = IdentityStore(_db);
     _location = LocationService();
     _backend = BackendClient(credentials: _secureStore);
+    final buoyClient = BuoyClient();
     _service = SosService(
       outbox: OutboxStore(_db),
       identity: _identityStore,
-      buoy: BuoyClient(),
+      buoy: buoyClient,
       backend: _backend,
       location: _location,
     );
@@ -178,6 +179,7 @@ class _AqOneAppState extends State<AqOneApp> {
     // the app offshore shows buoys and coverage rather than empty sea.
     _feeds = VentureFeeds(
       backend: _backend,
+      buoy: buoyClient,
       snapshots: MapSnapshotStore(_db),
     );
     // Keystore before the rest of restore, so a returning skipper's profile

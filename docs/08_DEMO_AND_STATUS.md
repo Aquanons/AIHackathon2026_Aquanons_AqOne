@@ -9,6 +9,28 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-15 — AI Safety Remediation Phase 1: Offline Warning Delivery & Verification
+
+Recorded per `docs/AI_SAFETY_REMEDIATION_IMPLEMENTATION_PLAN_GEMINI_3_8.md`.
+Environment: Windows 11, Python 3.11.9, pytest-9.1.1, Flutter 3.44.7, Node.js v22.22.3.
+
+**Offline Warning Delivery & Mesh Codec Verification (W1–W10):**
+- **W1 (Offline Warning Feed):** Mobile `VentureFeeds.advisories()` connected to `BuoyClient.warnings()` so handset in airplane mode fetches and renders active advisories over buoy WiFi SoftAP when backend cellular HTTP is unreachable.
+- **W2 (Calendar & Expiry Policy):** Publication dates and active queries adhere strictly to Philippine Standard Time (PHT, UTC+8); advisories missing explicit expiration dates are bounded by 48-hour retention from publication rather than remaining silently immortal.
+- **W3 (LoAM Codec & HMAC Tamper Rejection):** Implemented reference Python LoAM binary frame codec and verified round-trip serialization; HMAC-SHA256 neutralizes relay-mutable bytes (`RELAY_ID` at offsets 8..11, and `TTL`/`HOPS` at offsets 18..19); tampered bytes, invalid HMAC keys, or excessive hops (> 15) are strictly dropped.
+- **W4 (Bounded Retries & Backoff):** Gateway rebroadcast retry queue enforces exponential backoff (30s, 60s, 120s) and terminates at 3 maximum attempts, preventing permanent channel saturation.
+- **W5 (Revision Superseding & Cancellation Tombstones):** Warning cache enforces 6 maximum slots, expiration pruning, and revision ordering; cancelled warnings store tombstones that prevent resurrected display by older delayed frames.
+- **W6 (Delivery State Deduplication):** `POST /api/advisories/delivery` enforces deduplication on `(warning_id, delivery_state, vessel_id, buoy_id)` returning `deduped: true` on replay, and requires `vessel_id` for `user_acknowledged`.
+- **W7 (SOS Radio Priority):** Emergency distress SOS packets (`0x01`) take absolute priority over warning frames (`0x07`); warning rebroadcasts yield immediately when SOS traffic arrives.
+- **W8 (Disconnected Handset Honesty):** Handset preserves last-known status while out of range; cache age remains honest without claiming false delivery while offline.
+- **W9 (Explicit Downlink & Attribution):** Research alerts retain explicit `sig_type: "research"` and uncalibrated status, preventing automated return commands or confusion with official human-authored LGU directives.
+- **W10 (Strict Parser Validation):** Mobile `Advisory.parseList` rejects malformed strings with `FormatException` rather than silently presenting a clear list; honors exact second-precision expiration for instants and 23:59:59 PHT for date-only calendar days.
+
+**Verification Results:**
+- Backend: 338 passed, 5 skipped, 1 xfailed (`python -m pytest -q`); Ruff check clean.
+- Mobile: 256 passed, 0 failed (`flutter test`); `flutter analyze` clean (0 issues).
+- Web: 141 passed, 0 failed (`node --test web/test/*.test.js`).
+
 ## 2026-09-15 — AI Layer Calibration, Physical Drift Boundaries & Prospective Verification (Phases 1–5)
 
 Recorded per `docs/AI_ACCURACY_IMPLEMENTATION_PLAN.md` and `docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md`.
@@ -887,28 +909,10 @@ false claim invalidates every true one.
 
 ---
 
-## Submission checklist — treat as due 5:00 pm Aug 4
+## Historical event materials
 
-- [ ] Deadline confirmed **in writing** with organisers (the two documents disagree)
-- [ ] GitHub repo **public** — private links are stated grounds for immediate disqualification
-- [ ] Secret scan clean (`07_SECURITY.md`)
-- [ ] README: setup instructions + this status table
-- [ ] Demo URL live and reachable **from outside the venue network** — test on mobile data
-- [ ] Pitch deck: problem-solution fit, AI architecture, data strategy & ethics
-- [ ] **Hardware declared** in the deck, and how its data is used (explicitly required)
-- [ ] External models/libraries cited (RadioLib, FastAPI, etc.)
-- [ ] Screencast recorded and uploaded
-- [ ] Status table matches reality
+The completed AI Fest submission checklist and Day 3 logistics are archived in
+[`archive/AI_FEST_2026_DEADLINES.md`](archive/AI_FEST_2026_DEADLINES.md).
 
----
-
-## Day 3 logistics
-
-Closing Ceremony is **1:00–4:00 pm at Iloilo Convention Center** — a different
-venue from Sam's 21 Hotel.
-
-- Hard stop on code ~10:30 am.
-- Pack hardware in something padded. Bring spares and the antennas.
-- Confirm whether you pitch at Sam's 21 before moving venues.
-- Bring: laptop chargers, phone chargers, a power strip, USB cables, the
-  hotspot, and a printed copy of the status table.
+Current external event deadlines live in
+[`53_EXTERNAL_DEADLINES.md`](53_EXTERNAL_DEADLINES.md).
