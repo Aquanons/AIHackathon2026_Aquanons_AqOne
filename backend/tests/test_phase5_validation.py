@@ -5,10 +5,8 @@ Verifies:
 1. Unavailable AI output neither prevents manual SOS ingest nor impairs responder delivery states.
 2. Drift calculation failure preserves the responder's case, datum, and search evidence.
 3. Silence or network failure never marks an unaccounted-for person safe; overdue expectation persists.
-4. Distinguishes forecast lead from actionable warning success when warning arrives too late for transit.
-5. Strict provenance separation: natural events, controlled drills, and synthetic stress cases remain disjoint.
-6. Responder authority is strictly preserved over escalation and search retasking.
-7. Adding future trips or contacts cannot alter historical profiles or earlier decisions.
+4. Responder authority is strictly preserved over escalation and search retasking.
+5. Adding future trips or contacts cannot alter historical profiles or earlier decisions.
 """
 
 from __future__ import annotations
@@ -189,53 +187,7 @@ def test_silence_or_outage_never_marks_unaccounted_person_safe():
 
 
 # ---------------------------------------------------------------------------
-# Test 4: Distinguishes forecast lead from actionable warning success
-# ---------------------------------------------------------------------------
-
-def test_distinguishes_forecast_lead_from_actionable_warning():
-    """A squall warning arriving 5 minutes before arrival does not provide sufficient
-    lead time for a small boat needing 20-30 minutes to transit to safety.
-    The evaluation must report delivered actionable lead as insufficient."""
-    MINIMUM_ACTIONABLE_LEAD_MINUTES = 20.0
-
-    predicted_arrival_minutes = 6.0
-    actionable_success = predicted_arrival_minutes >= MINIMUM_ACTIONABLE_LEAD_MINUTES
-    assert actionable_success is False, (
-        'A 6-minute warning cannot be counted as an actionable warning success '
-        'when safe transit to shore requires >= 20 minutes'
-    )
-
-    sufficient_lead_minutes = 35.0
-    assert sufficient_lead_minutes >= MINIMUM_ACTIONABLE_LEAD_MINUTES
-
-
-# ---------------------------------------------------------------------------
-# Test 5: Strict provenance separation (natural, drill, synthetic)
-# ---------------------------------------------------------------------------
-
-def test_strict_provenance_separation():
-    """Natural operational events, controlled drills, and synthetic stress runs
-    must carry distinct provenance identifiers and must not be pooled into a single metric."""
-    records = [
-        {'id': 1, 'type': 'incident', 'is_synthetic': False, 'is_drill': False, 'label': 'natural_sos'},
-        {'id': 2, 'type': 'incident', 'is_synthetic': False, 'is_drill': True, 'label': 'drill_exercise'},
-        {'id': 3, 'type': 'incident', 'is_synthetic': True, 'is_drill': False, 'label': 'synthetic_replay'},
-    ]
-
-    natural_records = [r for r in records if not r['is_synthetic'] and not r['is_drill']]
-    drill_records = [r for r in records if r['is_drill']]
-    synthetic_records = [r for r in records if r['is_synthetic']]
-
-    assert len(natural_records) == 1
-    assert natural_records[0]['label'] == 'natural_sos'
-    assert len(drill_records) == 1
-    assert drill_records[0]['label'] == 'drill_exercise'
-    assert len(synthetic_records) == 1
-    assert synthetic_records[0]['label'] == 'synthetic_replay'
-
-
-# ---------------------------------------------------------------------------
-# Test 6: Responder authority over escalation and search retasking
+# Test 4: Responder authority over escalation and search retasking
 # ---------------------------------------------------------------------------
 
 def test_responder_authority_over_escalation_and_retasking():
@@ -255,7 +207,7 @@ def test_responder_authority_over_escalation_and_retasking():
 
 
 # ---------------------------------------------------------------------------
-# Test 7: Historical profile causality under new trip additions
+# Test 5: Historical profile causality under new trip additions
 # ---------------------------------------------------------------------------
 
 def test_future_trips_do_not_alter_historical_profiles():

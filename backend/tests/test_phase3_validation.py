@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from app.ai.anomaly_service import eligible_latest_trips
@@ -27,6 +28,19 @@ def _sample_buoys() -> dict[str, BuoyMeta]:
     ])
 
 
+def _base_bundle(prop: PropagationEstimate, as_of: datetime) -> SquallFeatureBundle:
+    return SquallFeatureBundle(
+        as_of=as_of,
+        feature_names=[],
+        values=[],
+        buoy_rows=[],
+        propagation=prop,
+        array_mean_pressure=1010.0,
+        array_mean_trace=[],
+        pressure_trace={},
+    )
+
+
 def test_coordinate_origin_invariance_in_arrival_projection():
     """Verification Gate: Demonstrate that changing the coordinate origin
     consistently preserves predicted absolute arrival time.
@@ -48,16 +62,7 @@ def test_coordinate_origin_invariance_in_arrival_projection():
         geometry_degenerate=False,
         fit_intercept_minutes=0.0,
     )
-    bundle1 = SquallFeatureBundle(
-        as_of=as_of,
-        feature_names=[],
-        values=[],
-        buoy_rows=[],
-        propagation=prop1,
-        array_mean_pressure=1010.0,
-        array_mean_trace=[],
-        pressure_trace={},
-    )
+    bundle1 = _base_bundle(prop1, as_of)
     arr1 = _arrival_projection(bundle1, buoys)
     assert len(arr1) == 4
 
@@ -70,29 +75,13 @@ def test_coordinate_origin_invariance_in_arrival_projection():
     shifted_lat = 11.6892 + (delta_north_m / 110574.0)
     shifted_lon = 122.3667 + (delta_east_m / (111320.0 * math.cos(math.radians(11.6892))))
 
-    prop2 = PropagationEstimate(
-        bearing_deg=90.0,
-        speed_mps=15.0,
-        r2=0.95,
-        residual_minutes=1.2,
-        onset_coverage=1.0,
-        onset_span_minutes=30.0,
+    prop2 = replace(
+        prop1,
         origin_lat=shifted_lat,
         origin_lon=shifted_lon,
-        onset_anchor=anchor,
-        geometry_degenerate=False,
         fit_intercept_minutes=shifted_intercept,
     )
-    bundle2 = SquallFeatureBundle(
-        as_of=as_of,
-        feature_names=[],
-        values=[],
-        buoy_rows=[],
-        propagation=prop2,
-        array_mean_pressure=1010.0,
-        array_mean_trace=[],
-        pressure_trace={},
-    )
+    bundle2 = replace(bundle1, propagation=prop2)
     arr2 = _arrival_projection(bundle2, buoys)
 
     for item1, item2 in zip(arr1, arr2, strict=True):
@@ -126,41 +115,11 @@ def test_timestamp_shift_invariance_in_arrival_projection():
         geometry_degenerate=False,
         fit_intercept_minutes=1.5,
     )
-    bundle = SquallFeatureBundle(
-        as_of=as_of,
-        feature_names=[],
-        values=[],
-        buoy_rows=[],
-        propagation=prop,
-        array_mean_pressure=1010.0,
-        array_mean_trace=[],
-        pressure_trace={},
-    )
+    bundle = _base_bundle(prop, as_of)
     arr_orig = _arrival_projection(bundle, buoys)
 
-    prop_shifted = PropagationEstimate(
-        bearing_deg=85.0,
-        speed_mps=12.0,
-        r2=0.92,
-        residual_minutes=2.0,
-        onset_coverage=1.0,
-        onset_span_minutes=25.0,
-        origin_lat=11.6892,
-        origin_lon=122.3667,
-        onset_anchor=anchor + delta,
-        geometry_degenerate=False,
-        fit_intercept_minutes=1.5,
-    )
-    bundle_shifted = SquallFeatureBundle(
-        as_of=as_of + delta,
-        feature_names=[],
-        values=[],
-        buoy_rows=[],
-        propagation=prop_shifted,
-        array_mean_pressure=1010.0,
-        array_mean_trace=[],
-        pressure_trace={},
-    )
+    prop_shifted = replace(prop, onset_anchor=anchor + delta)
+    bundle_shifted = replace(bundle, as_of=as_of + delta, propagation=prop_shifted)
     arr_shifted = _arrival_projection(bundle_shifted, buoys)
 
     for item_orig, item_sh in zip(arr_orig, arr_shifted, strict=True):
@@ -175,27 +134,28 @@ def test_poorly_constrained_or_degenerate_front_rejected():
     buoys = _sample_buoys()
     as_of = datetime(2026, 9, 15, 8, 0, tzinfo=UTC)
 
-    prop_degen = PropagationEstimate(
-        bearing_deg=90.0, speed_mps=10.0, r2=0.0, residual_minutes=999.0,
-        onset_coverage=0.5, onset_span_minutes=10.0, origin_lat=11.6892,
-        origin_lon=122.3667, onset_anchor=as_of, geometry_degenerate=True,
+    prop_base = PropagationEstimate(
+        bearing_deg=90.0, speed_mps=10.0, r2=0.95, residual_minutes=1.0,
+        onset_coverage=1.0, onset_span_minutes=15.0, origin_lat=11.6892,
+        origin_lon=122.3667, onset_anchor=as_of, geometry_degenerate=False,
     )
-    bundle_degen = SquallFeatureBundle(
-        as_of=as_of, feature_names=[], values=[], buoy_rows=[],
-        propagation=prop_degen, array_mean_pressure=1010.0,
-        array_mean_trace=[], pressure_trace={},
+
+    bundle_degen = _base_bundle(
+        replace(
+            prop_base,
+            r2=0.0,
+            residual_minutes=999.0,
+            onset_coverage=0.5,
+            onset_span_minutes=10.0,
+            geometry_degenerate=True,
+        ),
+        as_of=as_of,
     )
     assert _arrival_projection(bundle_degen, buoys) == []
 
-    prop_low_r2 = PropagationEstimate(
-        bearing_deg=90.0, speed_mps=10.0, r2=0.12, residual_minutes=15.0,
-        onset_coverage=0.8, onset_span_minutes=15.0, origin_lat=11.6892,
-        origin_lon=122.3667, onset_anchor=as_of, geometry_degenerate=False,
-    )
-    bundle_low_r2 = SquallFeatureBundle(
-        as_of=as_of, feature_names=[], values=[], buoy_rows=[],
-        propagation=prop_low_r2, array_mean_pressure=1010.0,
-        array_mean_trace=[], pressure_trace={},
+    bundle_low_r2 = _base_bundle(
+        replace(prop_base, r2=0.12, residual_minutes=15.0, onset_coverage=0.8),
+        as_of=as_of,
     )
     assert _arrival_projection(bundle_low_r2, buoys) == []
 
