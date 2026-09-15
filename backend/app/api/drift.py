@@ -181,6 +181,7 @@ async def _compute_and_persist_run(
     last_lat: float, last_lon: float, last_at: datetime,
     object_class: ObjectClass, forecast_hours: float, actor: str,
     initial_spread_m: float = 250.0,
+    decision_cutoff_at: datetime | None = None,
 ) -> environment.EnvironmentAssessment:
     """The production quality-gated prediction (docs/40 Phase 2 items 2-3).
 
@@ -190,13 +191,17 @@ async def _compute_and_persist_run(
     sufficient, `insufficient_environmental_data` (with its diagnostic
     snapshot) otherwise. Never falls back to the synthetic current field.
     """
-    nearby = await count_nearby_fresh_buoys(pool, last_lat, last_lon, last_at, include_synthetic=False)
+    cutoff = decision_cutoff_at or datetime.now(UTC)
+    nearby = await count_nearby_fresh_buoys(
+        pool, last_lat, last_lon, last_at, include_synthetic=False, max_depth_m=2.5,
+    )
     assessment = environment.assess_geometry(nearby)
     prior_grid = posterior_grid = None
+    result = None
 
     if assessment is None:
         current_fn = await create_current_field_factory(
-            pool, include_synthetic=False, allow_synthetic=False, as_of=last_at
+            pool, include_synthetic=False, allow_synthetic=False, as_of=cutoff, max_depth_m=2.5,
         )
         result = predict_drift(
             last_lat=last_lat,
@@ -234,6 +239,26 @@ async def _compute_and_persist_run(
             else:
                 posterior_grid = result.grid
 
+    afloat_count = None
+    stranded_count = None
+    outside_domain_count = None
+    support_lost_at = None
+    supported_horizon_hours = None
+    if assessment.sufficient and result is not None:
+        stranded_count = result.stranded_count
+        afloat_count = max(0, 2000 - stranded_count)
+        outside_domain_count = 0
+        if result.support_lost_at:
+            try:
+                support_lost_at = datetime.fromisoformat(result.support_lost_at)
+                supported_horizon_hours = max(0.0, (support_lost_at - last_at).total_seconds() / 3600.0)
+            except (ValueError, TypeError):
+                pass
+        else:
+            supported_horizon_hours = forecast_hours
+    elif not assessment.sufficient:
+        supported_horizon_hours = 0.0
+
     async with pool.acquire() as conn:
         await conn.execute(
             '''
@@ -242,8 +267,10 @@ async def _compute_and_persist_run(
               computed_by, environmental_status, insufficiency_reason,
               observed_coverage, current_max_age_seconds, nearby_buoy_count,
               wind_source, wind_degraded, max_wind_age_seconds,
-              prior_grid, posterior_grid
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+              prior_grid, posterior_grid,
+              decision_cutoff_at, is_retrospective, supported_horizon_hours,
+              support_lost_at, afloat_count, stranded_count, outside_domain_count
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
             ''',
             incident_id, run_number, object_class.value, forecast_hours, MODEL_VERSION,
             actor, 'ok' if assessment.sufficient else 'insufficient_environmental_data',
@@ -252,6 +279,13 @@ async def _compute_and_persist_run(
             assessment.max_wind_age_seconds,
             json.dumps(prior_grid) if prior_grid is not None else None,
             json.dumps(posterior_grid) if posterior_grid is not None else None,
+            cutoff,
+            False,
+            supported_horizon_hours,
+            support_lost_at,
+            afloat_count,
+            stranded_count,
+            outside_domain_count,
         )
     return assessment
 
@@ -312,7 +346,8 @@ async def _sos_case_inputs(
 ) -> tuple[str, float, float, datetime, dict[str, Any]]:
     row = await conn.fetchrow(
         '''
-        SELECT vessel_id, latitude, longitude, created_at, client_ts, acknowledged_at, resolved_at
+        SELECT vessel_id, latitude, longitude, created_at, client_ts, acknowledged_at, resolved_at,
+               fix_acquired_at, fix_accuracy_m
         FROM sos_events WHERE id = $1
         ''',
         source_id,
@@ -335,26 +370,40 @@ async def _sos_case_inputs(
         datum_source = 'responder_override'
         delay_seconds = max(0.0, (receipt_at - datum_at).total_seconds())
     else:
-        client_ts = None
+        fix_acquired_at = None
         try:
-            client_ts = row['client_ts']
+            fix_acquired_at = row['fix_acquired_at']
         except (KeyError, TypeError, IndexError):
-            client_ts = None
+            fix_acquired_at = None
 
-        if client_ts is not None and client_ts > 0:
-            try:
-                client_dt = datetime.fromtimestamp(client_ts, tz=UTC)
-                # Client timestamp is accepted as physical datum when it is not in the distant future
-                if client_dt <= receipt_at + timedelta(minutes=5):
-                    datum_at = client_dt
-                    datum_source = 'client_fix'
-                    delay_seconds = max(0.0, (receipt_at - client_dt).total_seconds())
-                else:
-                    datum_at = receipt_at
-            except (ValueError, OverflowError, OSError):
-                datum_at = receipt_at
+        if fix_acquired_at is not None:
+            datum_at = fix_acquired_at
+            datum_source = 'gnss_fix'
+            delay_seconds = max(0.0, (receipt_at - datum_at).total_seconds())
         else:
-            datum_at = receipt_at
+            client_ts = None
+            try:
+                client_ts = row['client_ts']
+            except (KeyError, TypeError, IndexError):
+                client_ts = None
+
+            if client_ts is not None and client_ts > 0:
+                try:
+                    client_dt = datetime.fromtimestamp(client_ts, tz=UTC)
+                    # Handset transmission time is distinct from an authenticated GNSS fix
+                    if client_dt <= receipt_at + timedelta(minutes=5):
+                        datum_at = client_dt
+                        datum_source = 'client_send'
+                        delay_seconds = max(0.0, (receipt_at - client_dt).total_seconds())
+                    else:
+                        datum_at = receipt_at
+                        datum_source = 'receipt_time'
+                except (ValueError, OverflowError, OSError):
+                    datum_at = receipt_at
+                    datum_source = 'receipt_time'
+            else:
+                datum_at = receipt_at
+                datum_source = 'receipt_time'
 
     datum_meta = {
         'datum_at': datum_at.isoformat(),
@@ -362,6 +411,13 @@ async def _sos_case_inputs(
         'datum_source': datum_source,
         'delay_seconds': delay_seconds,
     }
+    try:
+        fix_acc = row['fix_accuracy_m']
+        if fix_acc is not None:
+            datum_meta['fix_accuracy_m'] = float(fix_acc)
+    except (KeyError, TypeError, IndexError):
+        pass
+
     return row['vessel_id'], float(row['latitude']), float(row['longitude']), datum_at, datum_meta
 
 

@@ -246,6 +246,7 @@ class _FakePool:
                 observed_coverage, current_max_age_seconds, nearby_buoy_count,
                 wind_source, wind_degraded, max_wind_age_seconds,
                 prior_grid, posterior_grid,
+                *extra,
             ) = args
             run_id = self._next_run_id
             self._next_run_id += 1
