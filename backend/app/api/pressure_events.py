@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hmac
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -9,7 +7,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.contacts import require_gateway_key
+from app.api.contacts import require_gateway_key, require_synthetic_demo_gate
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/v1', tags=['pressure-events'])
@@ -28,28 +26,6 @@ _PRESSURE_MAX_HPA = 1100.0
 # observed_at and must still be accepted; Phase 2's freshness gate decides
 # separately whether old data is still trustworthy for a live nowcast.
 _MAX_FUTURE_SKEW = timedelta(minutes=5)
-
-
-async def _require_synthetic_demo_gate(x_demo_key: str | None) -> None:
-    """Synthetic pressure writes are demo-only (docs/39 Phase 1 item 5).
-
-    Stricter than app/api/contacts.py's ContactEventIn, which accepts
-    `source: 'synthetic'` through the gateway key alone: a squall reading can
-    reach a handset RETURN NOW alarm, so synthetic pressure data must not be
-    injectable in production even by a gateway-key holder. Requires both
-    DEMO_MODE (mirrors app/main.py's demo-router gate) and the same
-    X-Demo-Key/DEMO_CONTROL_KEY credential app/api/demo.py's
-    require_demo_key checks.
-    """
-    demo_mode = os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
-    configured_key = os.environ.get('DEMO_CONTROL_KEY', '')
-    if (
-        not demo_mode
-        or not configured_key
-        or x_demo_key is None
-        or not hmac.compare_digest(x_demo_key, configured_key)
-    ):
-        raise HTTPException(status_code=403, detail='synthetic pressure data requires demo mode')
 
 
 class PressureEventIn(BaseModel):
@@ -89,7 +65,7 @@ async def ingest_pressure_event(
     the already-stored reading rather than creating a second logical one.
     """
     if payload.source == 'synthetic':
-        await _require_synthetic_demo_gate(x_demo_key)
+        await require_synthetic_demo_gate(x_demo_key, 'pressure')
 
     pool = get_pool()
     async with pool.acquire() as conn:
