@@ -115,6 +115,7 @@ class PropagationEstimate:
     origin_lon: float
     onset_anchor: datetime | None
     geometry_degenerate: bool
+    fit_intercept_minutes: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -301,6 +302,7 @@ def estimate_propagation_vector(onset_times: dict[str, datetime], buoys: dict[st
     best_speed = float('inf') if geometry_degenerate else 0.0
     best_bearing = 0.0
     best_residual = float('inf')
+    best_intercept = 0.0
     for bearing_deg in range(0, 360, 5):
         theta = math.radians(bearing_deg)
         along = x * math.sin(theta) + y * math.cos(theta)
@@ -327,11 +329,12 @@ def estimate_propagation_vector(onset_times: dict[str, datetime], buoys: dict[st
             best_speed = speed
             best_bearing = float(bearing_deg)
             best_residual = residual
+            best_intercept = float(intercept)
 
     if best_r2 < 0.0:
         coverage = len(onset_times) / max(1, len(buoys))
         return PropagationEstimate(
-            0.0, 0.0, 0.0, 0.0, coverage, 0.0, origin_lat, origin_lon, anchor, geometry_degenerate
+            0.0, 0.0, 0.0, 0.0, coverage, 0.0, origin_lat, origin_lon, anchor, geometry_degenerate, 0.0
         )
 
     if geometry_degenerate:
@@ -351,6 +354,7 @@ def estimate_propagation_vector(onset_times: dict[str, datetime], buoys: dict[st
         origin_lon=origin_lon,
         onset_anchor=anchor,
         geometry_degenerate=geometry_degenerate,
+        fit_intercept_minutes=best_intercept,
     )
 
 
@@ -574,24 +578,33 @@ def _polygon_from_buoys(items: list[dict[str, object]]) -> dict[str, object]:
 
 def _arrival_projection(feature_bundle: SquallFeatureBundle, buoys: dict[str, BuoyMeta]) -> list[dict[str, object]]:
     propagation = feature_bundle.propagation
-    if propagation.speed_mps <= 1e-9 or propagation.onset_anchor is None:
+    if (
+        propagation.speed_mps <= 1e-9
+        or propagation.onset_anchor is None
+        or propagation.geometry_degenerate
+        or propagation.r2 < 0.20
+    ):
         return []
 
     theta = math.radians(propagation.bearing_deg)
     origin_lat = propagation.origin_lat
     origin_lon = propagation.origin_lon
-    elapsed_s = max(0.0, (feature_bundle.as_of - propagation.onset_anchor).total_seconds())
-    anchor_progress_m = propagation.speed_mps * elapsed_s
+    slope = 1.0 / (propagation.speed_mps * 60.0)
+    uncertainty = max(5.0, propagation.residual_minutes * 1.5)
     results: list[dict[str, object]] = []
     for buoy_id, buoy in buoys.items():
         x, y = _to_xy(np.asarray([buoy.lat], dtype=float), np.asarray([buoy.lon], dtype=float), origin_lat, origin_lon)
         along_m = float(x[0] * math.sin(theta) + y[0] * math.cos(theta))
-        delay_minutes = max(0.0, (along_m - anchor_progress_m) / max(propagation.speed_mps, 1e-9) / 60.0)
+        arrival_offset_minutes = slope * along_m + propagation.fit_intercept_minutes
+        arrival_dt = propagation.onset_anchor + timedelta(minutes=arrival_offset_minutes)
+        delay_minutes = max(0.0, (arrival_dt - feature_bundle.as_of).total_seconds() / 60.0)
         results.append(
             {
                 'buoy_id': buoy_id,
                 'arrival_minutes': round(delay_minutes, 1),
-                'arrival_at': (feature_bundle.as_of + timedelta(minutes=delay_minutes)).isoformat(),
+                'arrival_at': arrival_dt.isoformat(),
+                'arrival_window_min_minutes': max(0.0, round(delay_minutes - uncertainty, 1)),
+                'arrival_window_max_minutes': round(delay_minutes + uncertainty, 1),
                 'lat': buoy.lat,
                 'lon': buoy.lon,
             }
@@ -612,13 +625,14 @@ def detect_squall(
     bundle: SquallModelBundle,
 ) -> SquallDetection | None:
     probability = float(bundle.pipeline.predict_proba([feature_bundle.values])[0, 1])
-    probability = max(probability, _window_score(feature_bundle))
-    if probability < bundle.threshold:
+    rule_score = _window_score(feature_bundle)
+    alert_score = max(probability, rule_score)
+    if alert_score < bundle.threshold:
         return None
 
     arrival_by_buoy = _arrival_projection(feature_bundle, buoys)
     selected = [item for item in arrival_by_buoy if item['arrival_minutes'] <= 90.0]
-    if len(selected) < 3:
+    if len(selected) < 3 and arrival_by_buoy:
         selected = arrival_by_buoy[: max(3, len(arrival_by_buoy))]
     if not selected:
         selected = [
@@ -626,6 +640,8 @@ def detect_squall(
                 'buoy_id': buoy_id,
                 'arrival_minutes': 0.0,
                 'arrival_at': feature_bundle.as_of.isoformat(),
+                'arrival_window_min_minutes': 0.0,
+                'arrival_window_max_minutes': 0.0,
                 'lat': buoy.lat,
                 'lon': buoy.lon,
             }
@@ -633,10 +649,10 @@ def detect_squall(
         ]
     polygon = _polygon_from_buoys(selected)
     return SquallDetection(
-        probability=probability,
-        confidence=probability * (0.35 if feature_bundle.propagation.geometry_degenerate else 1.0),
+        probability=alert_score,
+        confidence=alert_score * (0.35 if feature_bundle.propagation.geometry_degenerate else 1.0),
         affected_polygon=polygon,
-        arrival_by_buoy=selected,
+        arrival_by_buoy=arrival_by_buoy if arrival_by_buoy else selected,
         propagation={
             'bearing_deg': feature_bundle.propagation.bearing_deg,
             'speed_mps': feature_bundle.propagation.speed_mps,
@@ -645,6 +661,7 @@ def detect_squall(
             'onset_coverage': feature_bundle.propagation.onset_coverage,
             'onset_span_minutes': feature_bundle.propagation.onset_span_minutes,
             'geometry_degenerate': feature_bundle.propagation.geometry_degenerate,
+            'fit_intercept_minutes': feature_bundle.propagation.fit_intercept_minutes,
         },
         features=feature_bundle.to_features(),
         calibration=CALIBRATION,
@@ -704,10 +721,12 @@ def _samples_from_rows(
     protected_ranges: list[tuple[datetime, datetime]] = []
 
     for event in squalls:
-        started_at = _ensure_tz(event['started_at'])
-        protected_ranges.append((started_at - timedelta(minutes=LOOKBACK_MINUTES), started_at + timedelta(minutes=180)))
+        has_peak = event.get('peak_at') is not None and event.get('is_synthetic')
+        raw_target = event['peak_at'] if has_peak else event['started_at']
+        target_at = _ensure_tz(raw_target)
+        protected_ranges.append((target_at - timedelta(minutes=LOOKBACK_MINUTES), target_at + timedelta(minutes=180)))
         for lead in (30, 45, 60, 75, 90):
-            as_of = started_at - timedelta(minutes=lead)
+            as_of = target_at - timedelta(minutes=lead)
             features = extract_pressure_features(history, buoys, as_of).values
             samples.append(TrainingSample(features, 1, f'event-{event["id"]}', lead))
 

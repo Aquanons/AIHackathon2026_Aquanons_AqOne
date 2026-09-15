@@ -43,14 +43,18 @@ class SafetyScore {
 
     // Gusts, not mean wind. A 24 km/h average with 50 km/h gusts is what
     // actually swamps a small boat, and the mean hides it.
+    final bool hasExplicitGust = day.gustKph != null;
     final double? gust = day.gustKph ?? day.windKph;
     if (gust != null) {
+      final String windDesc = hasExplicitGust
+          ? 'gusts ${gust.round()} km/h'
+          : 'wind ${gust.round()} km/h';
       if (gust >= AqOneConfig.dangerGustKph) {
         raise(RiskLevel.danger);
-        reasons.add('gusts ${gust.round()} km/h');
+        reasons.add(windDesc);
       } else if (gust >= AqOneConfig.cautionGustKph) {
         raise(RiskLevel.caution);
-        reasons.add('gusts ${gust.round()} km/h');
+        reasons.add(windDesc);
       }
     }
 
@@ -119,11 +123,15 @@ class SafetyScore {
       return RiskAssessment.unknown;
     }
 
+    final String defaultReason = wave == null
+        ? 'No adverse conditions forecast (wave data unassessed)'
+        : 'No adverse conditions forecast';
+
     return RiskAssessment(
       level: level,
       source: RiskSource.device,
       score: _score(gust: gust, wave: wave, precip: precip),
-      reason: reasons.isEmpty ? 'No adverse conditions forecast' : _sentence(reasons),
+      reason: reasons.isEmpty ? defaultReason : _sentence(reasons),
       inputs: inputs,
     );
   }

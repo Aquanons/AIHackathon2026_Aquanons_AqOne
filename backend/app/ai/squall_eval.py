@@ -102,12 +102,14 @@ def _build_windows(
     protected_ranges: list[tuple[datetime, datetime]] = []
     for split, group in (('train', train_events), ('test', test_events)):
         for event in group:
-            started_at = _ensure_tz(event['started_at'])
+            has_peak = event.get('peak_at') is not None and event.get('is_synthetic')
+            raw_target = event['peak_at'] if has_peak else event['started_at']
+            target_at = _ensure_tz(raw_target)
             protected_ranges.append(
-                (started_at - timedelta(minutes=LOOKBACK_MINUTES), started_at + timedelta(minutes=180))
+                (target_at - timedelta(minutes=LOOKBACK_MINUTES), target_at + timedelta(minutes=180))
             )
             for lead in LEAD_TIMES_MINUTES:
-                windows.append(EvalWindow(started_at - timedelta(minutes=lead), 1, f'event-{event["id"]}', lead, split))
+                windows.append(EvalWindow(target_at - timedelta(minutes=lead), 1, f'event-{event["id"]}', lead, split))
 
     all_times = sorted({reading.observed_at for series in history.values() for reading in series})
     rng = np.random.default_rng(seed)

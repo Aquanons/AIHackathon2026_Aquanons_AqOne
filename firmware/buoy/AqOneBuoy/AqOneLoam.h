@@ -198,6 +198,7 @@ static const uint8_t T_PING   = 0x03;
 static const uint8_t T_STATUS = 0x04;
 static const uint8_t T_CHAT   = 0x05;
 static const uint8_t T_ETA    = 0x06;
+static const uint8_t T_WARN   = 0x07;
 
 static const uint8_t F_SIGNED    = 0x01;
 static const uint8_t F_WANTS_ACK = 0x02;

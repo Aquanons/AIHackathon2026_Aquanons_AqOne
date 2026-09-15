@@ -135,20 +135,16 @@
     return { key: 'low', label: 'Lower risk', color: '#22c55e' };
   }
 
-  function reasonsFor(features, degradedCount) {
+  function reasonsFor(features) {
     var reasons = [];
-    if (features.wave_height >= 2 && (features.wind_gusts_10m >= 40 || features.wind_speed_10m >= 30)) {
-      reasons.push('Super-strong live wind and waves detected at the same time');
-    }
-    if (features.wave_height >= 2) reasons.push('Wave height at or above 2.0 m');
+    if (features.wave_height >= 2.0) reasons.push('Wave height at or above 2.0 m');
     else if (features.wave_height >= 1.4) reasons.push('Elevated live wave height');
     if (features.wind_gusts_10m >= 40) reasons.push('Wind gusts at or above 40 km/h');
+    else if (features.wind_speed_10m >= 30) reasons.push('Sustained surface wind at or above 30 km/h');
     else if (features.wind_speed_10m >= 24) reasons.push('Strong live surface winds');
     if (features.weather_code >= 95) reasons.push('Live thunderstorm signal');
     if (features.precipitation >= 5) reasons.push('Heavy live precipitation');
-    if (features.depth_m <= 50) reasons.push('Shallow-water bathymetry');
-    if (degradedCount) reasons.push(degradedCount + ' degraded live buoy signal' + (degradedCount === 1 ? '' : 's'));
-    if (!reasons.length) reasons.push('Gradient-boosted historical weather and marine pattern');
+    if (!reasons.length) reasons.push('Historical weather and marine pattern');
     return reasons;
   }
 
@@ -160,8 +156,6 @@
     if (weatherLocations.length !== sectors.length || marineLocations.length !== sectors.length) {
       throw new Error('Live data did not return every configured offshore scan cell');
     }
-    var degradedCount = degradedBuoyCount(buoys);
-    var buoyAdjustment = buoys && buoys.length ? Math.min(0.08, degradedCount * 0.025) : 0;
     var now = new Date();
     var angle = 2 * Math.PI * now.getUTCMonth() / 12;
 
@@ -180,16 +174,20 @@
         month_cos: Math.cos(angle)
       };
       var modelProbability = predictProbability(features);
-      var probability = clamp(modelProbability + buoyAdjustment, 0.01, 0.99);
+      var probability = clamp(modelProbability, 0.01, 0.99);
       var score = Math.round(probability * 100);
       var trigger = 'Model probability';
-      var measuredDanger = features.wave_height >= 2 &&
-        (features.wind_gusts_10m >= 40 || features.wind_speed_10m >= 30);
-      var measuredWatch = features.wave_height >= 1.4 || features.wind_gusts_10m >= 30 ||
-        features.wind_speed_10m >= 24 || features.precipitation >= 5 || features.weather_code >= 95;
+      var measuredDanger = features.wave_height >= 2.0 ||
+        features.wind_gusts_10m >= 40 ||
+        features.wind_speed_10m >= 30 ||
+        features.weather_code >= 95;
+      var measuredWatch = features.wave_height >= 1.4 ||
+        features.wind_gusts_10m >= 30 ||
+        features.wind_speed_10m >= 24 ||
+        features.precipitation >= 5;
       if (measuredDanger) {
         score = Math.max(score, 65);
-        trigger = 'Simultaneous live wind + wave danger threshold';
+        trigger = 'Live wind, wave, or storm danger threshold';
       } else if (measuredWatch || score >= 40) {
         score = clamp(score, 40, 64);
         trigger = measuredWatch ? 'Single-condition live watch threshold' : 'Elevated AI probability';
@@ -206,12 +204,12 @@
         depthM: sector.depth_m,
         score: score,
         modelProbability: Math.round(modelProbability * 100),
-        buoyAdjustment: Math.round(buoyAdjustment * 100),
+        buoyAdjustment: 0,
         trigger: trigger,
         level: level.key,
         label: level.label,
         color: level.color,
-        reasons: reasonsFor(features, buoys && buoys.length ? degradedCount : 0),
+        reasons: reasonsFor(features),
         source: 'Open-Meteo live weather/marine + GEBCO bathymetry',
         observedAt: weather.time || marine.time || now.toISOString(),
         features: features

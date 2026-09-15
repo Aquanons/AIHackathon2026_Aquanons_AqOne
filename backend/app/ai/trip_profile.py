@@ -77,6 +77,10 @@ class VesselProfile:
     rebuilt_at: str
     source: str = 'synthetic'
 
+    @property
+    def is_synthetic(self) -> bool:
+        return self.source == 'synthetic'
+
     def to_json(self) -> dict[str, Any]:
         return {
             'vessel_id': self.vessel_id,
@@ -224,9 +228,25 @@ def build_profiles_from_contacts(
     rows: list[dict[str, Any]],
     *,
     built_at: datetime | None = None,
+    as_of: datetime | None = None,
+    exclude_trip_ids: set[str] | list[str] | None = None,
 ) -> dict[str, VesselProfile]:
     built_at = _ensure_tz(built_at or datetime.now(MANILA_TZ))
-    grouped = _group_trip_samples(rows)
+    as_of_tz = _ensure_tz(as_of) if as_of else None
+    exclude_set = set(exclude_trip_ids) if exclude_trip_ids else set()
+
+    # Leakage prevention (Task 3.6): only use historical contacts strictly
+    # before as_of, and exclude candidate trip_ids so the candidate trip
+    # never leaks into its own historical profile baseline.
+    filtered_rows = rows
+    if as_of_tz or exclude_set:
+        filtered_rows = [
+            r for r in rows
+            if (as_of_tz is None or _ensure_tz(r['observed_at']) < as_of_tz)
+            and (not exclude_set or str(r.get('trip_id')) not in exclude_set)
+        ]
+
+    grouped = _group_trip_samples(filtered_rows)
     all_trips = [trip for trips in grouped.values() for trip in trips]
     fleet = _build_profile('fleet', all_trips, built_at, low_confidence=False)
     profiles: dict[str, VesselProfile] = {}
@@ -235,6 +255,13 @@ def build_profiles_from_contacts(
             profiles[vessel_id] = fleet.for_vessel(vessel_id, low_confidence=True)
         else:
             profiles[vessel_id] = _build_profile(vessel_id, trips, built_at, low_confidence=False)
+
+    # Ensure all vessels in original rows have a profile entry even if all contacts were filtered
+    for r in rows:
+        v_id = str(r['vessel_id'])
+        if v_id not in profiles:
+            profiles[v_id] = fleet.for_vessel(v_id, low_confidence=True)
+
     return profiles
 
 
@@ -436,13 +463,18 @@ def weather_severity(snapshot: WeatherSnapshot) -> float:
 
 
 def _sequence_deviation(profile: VesselProfile, route: list[str]) -> float:
-    if not profile.typical_sequence:
+    if not profile.typical_sequence or not route:
         return 0.0
     prefix = 0
     for left, right in zip(route, profile.typical_sequence):  # noqa: B905
         if left != right:
             break
         prefix += 1
+
+    # An unfinished normal prefix along the typical sequence is on-route, not anomalous
+    if prefix == len(route) and len(route) <= len(profile.typical_sequence):
+        return 0.0
+
     expected_len = max(len(profile.typical_sequence), len(route), 1)
     mismatch = 1.0 - (prefix / expected_len)
     if route and prefix < len(route) and prefix < len(profile.typical_sequence):
@@ -455,15 +487,18 @@ def score_trip(
     contacts: list[ContactPoint],
     *,
     as_of: datetime | None = None,
+    trip_id: str | None = None,
+    trip_state: dict[str, Any] | None = None,
     weather_provider: Callable[[float, float, datetime], WeatherSnapshot] | None = None,
 ) -> AnomalyScore:
     as_of = _ensure_tz(as_of or (contacts[-1].observed_at if contacts else datetime.now(MANILA_TZ)))
+    effective_trip_id = trip_id or (contacts[0].observed_at.date().isoformat() if contacts else 'unknown')
     if not contacts:
         expected = ExpectedContact(None, as_of, as_of, as_of, 0)
         factor = _score_factor(0.0, 1.0, 'No contacts observed yet.', 'empty')
         return AnomalyScore(
             profile.vessel_id,
-            'unknown',
+            effective_trip_id,
             0.0,
             'normal',
             [factor],
@@ -479,6 +514,37 @@ def score_trip(
     overdue_minutes = max(0.0, (as_of - expected.window_end).total_seconds() / 60.0)
     overdue_scale = max(10.0, (expected.window_end - expected.window_start).total_seconds() / 120.0)
     overdue_factor = 1.0 - math.exp(-overdue_minutes / overdue_scale) if overdue_minutes > 0 else 0.0
+    overdue_explanation = 'Late beyond the expected-contact window.'
+
+    # Task 3.5 & 3.7: evaluate explicit trip expectations and welfare state if known
+    if trip_state:
+        exp_ret = trip_state.get('expected_return_at')
+        if exp_ret:
+            if isinstance(exp_ret, datetime):
+                exp_ret_tz = _ensure_tz(exp_ret)
+            else:
+                exp_ret_tz = _ensure_tz(datetime.fromisoformat(str(exp_ret)))
+            overdue_return_minutes = max(0.0, (as_of - exp_ret_tz).total_seconds() / 60.0)
+            if overdue_return_minutes > 0:
+                ret_factor = 1.0 - math.exp(-overdue_return_minutes / 30.0)
+                overdue_factor = max(overdue_factor, ret_factor)
+                overdue_explanation = f'Overdue past expected return deadline ({exp_ret_tz.strftime("%H:%M")}).'
+            elif overdue_minutes > 0:
+                # Still before expected return; contact delay may be inter-buoy or gateway outage
+                overdue_factor = min(overdue_factor, 0.30)
+                time_str = exp_ret_tz.strftime("%H:%M")
+                overdue_explanation = f'Inter-buoy contact delay before expected return ({time_str}).'
+            else:
+                overdue_explanation = 'Within expected return window.'
+
+        welfare = trip_state.get('welfare_status')
+        if welfare == 'safe':
+            overdue_factor = min(overdue_factor, 0.15)
+            overdue_explanation += ' (Vessel self-reported safe).'
+        elif welfare == 'distress':
+            overdue_factor = 1.0
+            overdue_explanation = 'Vessel or responder reported distress.'
+
     sequence_factor = _sequence_deviation(profile, route)
     current_distance = max(_distance_km(CENTER_LAT, CENTER_LON, c.latitude, c.longitude) for c in contacts)
     typical_distance = profile.typical_max_distance_km['mean'] or current_distance or 1.0
@@ -490,34 +556,60 @@ def score_trip(
             / max(1.0, profile.typical_max_distance_km['std'] * 2.0 + 1.0),
         ),
     )
-    weather = (weather_provider or _synthetic_weather_snapshot)(
-        contacts[-1].latitude, contacts[-1].longitude, contacts[-1].observed_at
-    )
-    weather_factor = weather_severity(weather)
+    weather_factor = 0.0
+    weather_reason = 'Weather conditions not assessed (no connected provider).'
+    if weather_provider is not None:
+        weather = weather_provider(
+            contacts[-1].latitude, contacts[-1].longitude, contacts[-1].observed_at
+        )
+        weather_factor = weather_severity(weather)
+        weather_reason = (
+            'Adverse weather at the last known position/time.'
+            if weather_factor > 0
+            else 'Weather conditions normal at last known position.'
+        )
+    elif profile.is_synthetic:
+        weather = _synthetic_weather_snapshot(
+            contacts[-1].latitude, contacts[-1].longitude, contacts[-1].observed_at
+        )
+        weather_factor = weather_severity(weather)
+        weather_reason = (
+            'Adverse weather at the last known position/time.'
+            if weather_factor > 0
+            else 'Weather conditions normal at last known position.'
+        )
+
+    if (as_of - contacts[-1].observed_at) > timedelta(hours=2):
+        weather_reason += ' (Position is stale).'
+
     weights = ANOMALY_CONFIG['weights']
     factors = [
         _score_factor(
             overdue_factor,
             weights['overdue'],
-            'Late beyond the expected-contact window.',
+            overdue_explanation,
             'overdue',
         ),
         _score_factor(
             sequence_factor,
             weights['sequence'],
-            'Observed buoy sequence diverges from the habitual route.',
+            (
+                'Observed buoy sequence diverges from the habitual route.'
+                if sequence_factor > 0
+                else 'Following expected route sequence.'
+            ),
             'sequence',
         ),
         _score_factor(
             distance_factor,
             weights['distance'],
-            'Current offshore distance exceeds the vessel norm.',
+            'Distance from departure origin exceeds typical trip radius.',
             'distance',
         ),
         _score_factor(
             weather_factor,
             weights['weather'],
-            'Adverse weather at the last known position/time.',
+            weather_reason,
             'weather',
         ),
     ]
@@ -527,7 +619,7 @@ def score_trip(
     status = score_to_status(score)
     return AnomalyScore(
         vessel_id=profile.vessel_id,
-        trip_id=contacts[0].observed_at.date().isoformat(),
+        trip_id=effective_trip_id,
         score=score,
         status=status,
         factors=factors,

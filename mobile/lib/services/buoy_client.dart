@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
 import '../core/endpoint_guard.dart';
+import '../models/advisory.dart';
 import '../models/buoy_contact.dart';
 import '../models/sos_record.dart';
 import 'backend_client.dart' show RemoteSos;
@@ -159,6 +160,37 @@ class BuoyClient {
       throw BuoyRejected(response.statusCode, 'sos status query failed');
     }
     return _decodeEvents(response.body);
+  }
+
+  /// `GET /v1/warnings` - what an offline handset polls to retrieve active
+  /// weather warnings and safety advisories downlinked to the buoy over LoRa.
+  Future<List<Advisory>> warnings() async {
+    final uri = EndpointGuard.buoy(_baseUrl, '/v1/warnings');
+    http.Response response;
+    try {
+      response = await _send(_request('GET', uri)).timeout(AqOneConfig.buoyTimeout);
+    } catch (error) {
+      throw BuoyUnreachable(describeBuoyError(error));
+    }
+
+    if (response.statusCode != 200) {
+      throw BuoyRejected(response.statusCode, 'warnings query failed');
+    }
+    return _decodeWarnings(response.body);
+  }
+
+  List<Advisory> _decodeWarnings(String body) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (_) {
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
+    }
+    try {
+      return Advisory.parseList(decoded);
+    } catch (_) {
+      throw const BuoyInvalidResponse('buoy sent an unreadable reply');
+    }
   }
 
   List<RemoteSos> _decodeEvents(String body) {

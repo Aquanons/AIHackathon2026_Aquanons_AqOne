@@ -494,6 +494,120 @@ void pollChat() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Warning downlink (Task 2.5)
+// ---------------------------------------------------------------------------
+
+struct WarningWatch {
+  int      warningId;
+  uint32_t signature;
+  bool     used;
+};
+
+static const int MAX_WARN_WATCH = 10;
+WarningWatch warnWatched[MAX_WARN_WATCH];
+
+void reportWarningDelivery(int warningId, const char* state) {
+  if (!online()) return;
+  WiFiClientSecure client;
+  HTTPClient https;
+  String url = String(BACKEND_HOST) + "/api/advisories/delivery";
+  if (!httpsBegin(client, https, url)) return;
+  https.addHeader("Content-Type", "application/json");
+  https.setTimeout(5000);
+
+  JsonDocument doc;
+  doc["warning_id"] = warningId;
+  doc["delivery_state"] = state;
+  doc["buoy_id"] = NODE_NAME;
+
+  String body;
+  serializeJson(doc, body);
+  https.POST(body);
+  https.end();
+}
+
+size_t buildWarnPayload(const JsonObject& adv, char* out, size_t cap) {
+  JsonDocument doc;
+  doc["v"]   = 1;
+  doc["id"]  = adv["id"];
+  doc["src"] = adv["source"] | "MDRRMO";
+  doc["pr"]  = adv["priority"] | "Warning";
+  doc["area"]= adv["municipality"] | "All";
+  if (clockValid()) doc["now"] = (uint32_t)time(nullptr);
+
+  uint32_t pubAt = iso8601ToEpoch(adv["publish_date"] | "");
+  uint32_t expAt = iso8601ToEpoch(adv["expiration_date"] | "");
+  if (pubAt) doc["iss"] = pubAt;
+  if (expAt) doc["exp"] = expAt;
+
+  String title = adv["title"] | "";
+  if (title.length()) doc["ttl"] = title.substring(0, 48);
+
+  String desc = adv["description"] | "";
+  if (desc.length()) doc["txt"] = desc.substring(0, 80);
+
+  size_t n = serializeJson(doc, out, cap);
+  return (n > 0 && n <= LOAM_MAX_PAYLOAD) ? n : 0;
+}
+
+void pollWarnings() {
+  if (!online()) return;
+
+  WiFiClientSecure client;
+  HTTPClient https;
+  String url = String(BACKEND_HOST) + "/api/public/advisories";
+  if (!httpsBegin(client, https, url)) return;
+  https.setTimeout(10000);
+
+  if (https.GET() != 200) { https.end(); return; }
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, https.getStream());
+  https.end();
+  if (err) return;
+
+  for (JsonObject adv : doc["advisories"].as<JsonArray>()) {
+    int wid = adv["id"] | 0;
+    if (!wid) continue;
+
+    const char* prio = adv["priority"] | "";
+    if (strcmp(prio, "Warning") != 0 && strcmp(prio, "Emergency") != 0) continue;
+
+    uint32_t sig = 2166136261UL;
+    sig = fnv1a(sig, adv["title"] | "");
+    sig = fnv1a(sig, adv["priority"] | "");
+    sig = fnv1a(sig, adv["publish_date"] | "");
+    sig = fnv1a(sig, adv["expiration_date"] | "");
+    sig = fnv1a(sig, adv["description"] | "");
+
+    bool known = false;
+    int freeSlot = -1;
+    for (int i = 0; i < MAX_WARN_WATCH; i++) {
+      if (warnWatched[i].used && warnWatched[i].warningId == wid) {
+        if (warnWatched[i].signature == sig) { known = true; break; }
+        freeSlot = i;
+        break;
+      }
+      if (!warnWatched[i].used && freeSlot < 0) freeSlot = i;
+    }
+    if (known) continue;
+    if (freeSlot < 0) freeSlot = 0;
+
+    char payload[LOAM_MAX_PAYLOAD + 1];
+    size_t n = buildWarnPayload(adv, payload, sizeof(payload));
+    if (!n) continue;
+
+    if (meshSend(T_WARN, 0, payload, n, 200 + random(300))) {
+      warnWatched[freeSlot].warningId = wid;
+      warnWatched[freeSlot].signature = sig;
+      warnWatched[freeSlot].used = true;
+      Serial.printf("[warn] downlink id=%d prio=%s\n", wid, prio);
+      reportWarningDelivery(wid, "gateway_accepted");
+    }
+  }
+}
+
 // A heartbeat so buoys can tell "the shore is quiet" from "the shore is gone",
 // and so a buoy that booted with no clock gets one without waiting for someone
 // to send an SOS.
@@ -630,6 +744,7 @@ unsigned long lastDisplay  = 0;
 unsigned long lastPoll     = 0;
 unsigned long lastChatPoll = 0;
 unsigned long lastBeacon   = 0;
+unsigned long lastWarnPoll = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -686,6 +801,11 @@ void loop() {
   if (now - lastChatPoll > 20000) {
     lastChatPoll = now;
     pollChat();
+  }
+
+  if (now - lastWarnPoll > 60000) {
+    lastWarnPoll = now;
+    pollWarnings();
   }
 
   // Reconnect the uplink if it drops.

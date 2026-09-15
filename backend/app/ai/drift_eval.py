@@ -105,6 +105,7 @@ async def main() -> None:
                 prediction,
                 float(row['last_contact_lat']),
                 float(row['last_contact_lon']),
+                forecast_hours=forecast_hours,
             )
         )
         if current_fn is not None:
@@ -141,9 +142,22 @@ async def main() -> None:
     )
 
 
-def _area_reduction_factor(prediction, last_lat: float, last_lon: float) -> float:
-    final_radius = max_radius_m(prediction, last_lat, last_lon)
-    baseline_area = 3.141592653589793 * final_radius * final_radius
+MAX_DRIFT_SPEED_MPS = 1.5  # Physical maximum coastal current+wind envelope (~3 knots)
+EVAL_HORIZONS = [1.0, 3.0, 6.0, 12.0, 24.0]
+
+
+def _independent_baseline_area_m2(forecast_hours: float) -> float:
+    """Independently specified maximum-speed search envelope area (pi * (v_max * t)^2)."""
+    radius_m = MAX_DRIFT_SPEED_MPS * (forecast_hours * 3600.0)
+    return 3.141592653589793 * radius_m * radius_m
+
+
+def _area_reduction_factor(prediction, last_lat: float, last_lon: float, forecast_hours: float | None = None) -> float:
+    if forecast_hours is not None and forecast_hours > 0:
+        baseline_area = _independent_baseline_area_m2(forecast_hours)
+    else:
+        final_radius = max_radius_m(prediction, last_lat, last_lon)
+        baseline_area = 3.141592653589793 * final_radius * final_radius
     contour = prediction.contours[-1]['geometry']['coordinates'][0]
     area = abs(_polygon_area_m2(contour))
     if area <= 1e-9:
