@@ -26,6 +26,7 @@ The detailed naming, status, and authoring rules live in [`README.md`](README.md
 | Delivery states | [`06_DELIVERY_STATES.md`](06_DELIVERY_STATES.md) |
 | Mobile localization | [`22_LOCALIZATION_PLAN.md`](22_LOCALIZATION_PLAN.md) |
 | Mobile test fixtures | [`21_WEEK1_CONTRACT_FIXTURES.md`](21_WEEK1_CONTRACT_FIXTURES.md) |
+| AI accuracy and data protocol | [`49_AI_ACCURACY_DATA_PROTOCOL.md`](49_AI_ACCURACY_DATA_PROTOCOL.md) |
 
 ## Find documents by lifecycle
 

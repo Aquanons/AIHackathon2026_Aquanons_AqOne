@@ -234,11 +234,16 @@ class WeatherCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Wind ${value.windSpeed.toStringAsFixed(0)} km/h — '
-                    'above the ${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h '
-                    'threshold. Source: Open-Meteo. '
-                    'This is not a PAGASA warning. '
-                    'Always check the official sea condition and advisories.',
+                    value.hasHighWind
+                        ? 'Wind ${value.windSpeed.toStringAsFixed(0)} km/h — '
+                            'above the ${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h '
+                            'threshold. Source: Open-Meteo. '
+                            'This is not a PAGASA warning. '
+                            'Always check the official sea condition and advisories.'
+                        : '${value.condition.label} forecast — '
+                            'adverse condition. Source: Open-Meteo. '
+                            'This is not a PAGASA warning. '
+                            'Always check the official sea condition and advisories.',
                     style: const TextStyle(
                       fontSize: 11.5,
                       height: 1.35,

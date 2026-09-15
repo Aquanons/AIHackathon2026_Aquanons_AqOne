@@ -42,14 +42,28 @@ def _haversine_m(lat1: np.ndarray, lon1: np.ndarray, lat2: float, lon2: float) -
     return 6_371_000.0 * 2.0 * np.arctan2(np.sqrt(a), np.sqrt(1.0 - a))
 
 
-async def _load_buoy_observations(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
+async def _load_buoy_observations(
+    conn: asyncpg.Connection,
+    include_synthetic: bool = False,
+    as_of: datetime | None = None,
+) -> dict[str, dict[str, Any]]:
     """Load buoy positions and their observation time-series from the DB.
 
     Only ``observed_u_mps`` / ``observed_v_mps`` are loaded.  The ``true_*``
     columns are never selected.
+    Synthetic rows are excluded unless ``include_synthetic=True``.
+    Observations after ``as_of`` are excluded to prevent future leakage in replay.
     """
-    rows = await conn.fetch(
-        '''
+    conditions = ["b.lat IS NOT NULL", "b.lon IS NOT NULL"]
+    args: list[Any] = []
+    if not include_synthetic:
+        conditions.append("co.is_synthetic = FALSE")
+    if as_of is not None:
+        args.append(as_of)
+        conditions.append(f"co.observed_at <= ${len(args)}")
+
+    where_clause = " AND ".join(conditions)
+    query = f"""
         SELECT b.id AS buoy_id,
                b.lat AS buoy_lat,
                b.lon AS buoy_lon,
@@ -58,10 +72,10 @@ async def _load_buoy_observations(conn: asyncpg.Connection) -> dict[str, dict[st
                co.observed_v_mps
         FROM current_observations co
         JOIN buoys b ON b.id = co.buoy_id
-        WHERE b.lat IS NOT NULL AND b.lon IS NOT NULL
+        WHERE {where_clause}
         ORDER BY co.observed_at
-        '''
-    )
+    """
+    rows = await conn.fetch(query, *args)
     buoys: dict[str, dict[str, Any]] = {}
     for row in rows:
         bid = row['buoy_id']
@@ -83,7 +97,13 @@ async def _load_buoy_observations(conn: asyncpg.Connection) -> dict[str, dict[st
     return buoys
 
 
-async def count_nearby_fresh_buoys(pool: asyncpg.Pool, lat: float, lon: float, at: datetime) -> int:
+async def count_nearby_fresh_buoys(
+    pool: asyncpg.Pool,
+    lat: float,
+    lon: float,
+    at: datetime,
+    include_synthetic: bool = False,
+) -> int:
     """How many distinct buoys have a current observation within
     ``MAX_RADIUS_M`` of ``(lat, lon)`` and within ``MAX_AGE_SECONDS`` of
     ``at``.
@@ -92,9 +112,10 @@ async def count_nearby_fresh_buoys(pool: asyncpg.Pool, lat: float, lon: float, a
     One buoy gives a single point value, not a spatial gradient - a
     production run needs more than one to interpolate a direction rather
     than extrapolate blindly from a lone reading.
+    Observations after ``at`` are excluded.
     """
     async with pool.acquire() as conn:
-        buoys = await _load_buoy_observations(conn)
+        buoys = await _load_buoy_observations(conn, include_synthetic=include_synthetic, as_of=at)
 
     target_time = at.astimezone(UTC).timestamp()
     count = 0
@@ -112,6 +133,9 @@ async def count_nearby_fresh_buoys(pool: asyncpg.Pool, lat: float, lon: float, a
 
 async def create_current_field_factory(
     pool: asyncpg.Pool,
+    include_synthetic: bool = False,
+    allow_synthetic: bool = True,
+    as_of: datetime | None = None,
 ) -> Callable[[np.ndarray, np.ndarray, datetime], tuple[np.ndarray, np.ndarray]]:
     """Load observations once and return a vectorised current-field callable.
 
@@ -119,22 +143,33 @@ async def create_current_field_factory(
     :func:`app.ai.drift.predict_drift`'s ``current_vector_fn`` parameter:
     ``(lat_array, lon_array, timestamp) -> (u_mps, v_mps)``.
 
-    If the database contains no observations the callable degrades gracefully
-    to the synthetic field for every particle.
+    If ``allow_synthetic=False`` (for real-case production runs), particles without
+    qualifying observations receive zero velocity and are counted as unobserved,
+    ensuring synthetic fallback never masquerades as observation-driven drift.
+    Whole-run observation fraction is tracked across all particle steps.
     """
     async with pool.acquire() as conn:
-        buoys = await _load_buoy_observations(conn)
+        buoys = await _load_buoy_observations(conn, include_synthetic=include_synthetic, as_of=as_of)
 
     buoy_list = list(buoys.values())
     n_buoys = len(buoy_list)
 
     if n_buoys == 0:
-        def _empty_field(
-            lat: np.ndarray, lon: np.ndarray, at: datetime,
-        ) -> tuple[np.ndarray, np.ndarray]:
-            return _synthetic_current_vector(lat, lon, at)
-        _empty_field.observation_fraction = 0.0  # type: ignore[attr-defined]
-        return _empty_field
+        if allow_synthetic:
+            def _empty_field(
+                lat: np.ndarray, lon: np.ndarray, at: datetime,
+            ) -> tuple[np.ndarray, np.ndarray]:
+                return _synthetic_current_vector(lat, lon, at)
+            _empty_field.observation_fraction = 0.0  # type: ignore[attr-defined]
+            return _empty_field
+        else:
+            def _zero_field(
+                lat: np.ndarray, lon: np.ndarray, at: datetime,
+            ) -> tuple[np.ndarray, np.ndarray]:
+                n = len(lat)
+                return np.zeros(n, dtype=float), np.zeros(n, dtype=float)
+            _zero_field.observation_fraction = 0.0  # type: ignore[attr-defined]
+            return _zero_field
 
     buoy_lats = np.array([b['lat'] for b in buoy_list], dtype=float)
     buoy_lons = np.array([b['lon'] for b in buoy_list], dtype=float)
@@ -142,9 +177,13 @@ async def create_current_field_factory(
     buoy_u = [b['u'] for b in buoy_list]
     buoy_v = [b['v'] for b in buoy_list]
 
+    total_particles = 0
+    total_observed = 0
+
     def _estimated_field(
         lat: np.ndarray, lon: np.ndarray, at: datetime,
     ) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal total_particles, total_observed
         n = len(lat)
         target_time = at.astimezone(UTC).timestamp()
         u_out = np.zeros(n, dtype=float)
@@ -202,11 +241,19 @@ async def create_current_field_factory(
         v_out[has_obs] /= weights[has_obs]
 
         if n_observed < n:
-            synthetic_u, synthetic_v = _synthetic_current_vector(lat[~has_obs], lon[~has_obs], at)
-            u_out[~has_obs] = synthetic_u
-            v_out[~has_obs] = synthetic_v
+            if allow_synthetic:
+                synthetic_u, synthetic_v = _synthetic_current_vector(lat[~has_obs], lon[~has_obs], at)
+                u_out[~has_obs] = synthetic_u
+                v_out[~has_obs] = synthetic_v
+            else:
+                u_out[~has_obs] = 0.0
+                v_out[~has_obs] = 0.0
 
-        _estimated_field.observation_fraction = n_observed / n  # type: ignore[attr-defined]
+        total_particles += n
+        total_observed += n_observed
+        _estimated_field.observation_fraction = (
+            total_observed / total_particles if total_particles > 0 else 0.0
+        )  # type: ignore[attr-defined]
         return u_out, v_out
 
     return _estimated_field

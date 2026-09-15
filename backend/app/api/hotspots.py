@@ -64,6 +64,7 @@ def aggregate_hotspots(
                 'cell_size_degrees': CELL_SIZE_DEGREES,
                 'score': round(score, 3),
                 'observations': observations,
+                'reporters': reporters,
             }
         )
     cells.sort(key=lambda cell: (-float(cell['score']), -int(cell['observations'])))
@@ -92,5 +93,8 @@ async def public_hotspots() -> dict[str, object]:
         'model_version': 'catch-density-v1',
         'min_reporters': MIN_REPORTERS,
         'window_days': WINDOW_DAYS,
+        'location_type': 'catch_location',
+        'activity_type': 'consented_catch_reports',
+        'is_truncated': len(rows) >= 20000,
         'cells': aggregate_hotspots(rows),
     }

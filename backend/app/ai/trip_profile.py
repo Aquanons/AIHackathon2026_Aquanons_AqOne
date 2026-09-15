@@ -77,6 +77,10 @@ class VesselProfile:
     rebuilt_at: str
     source: str = 'synthetic'
 
+    @property
+    def is_synthetic(self) -> bool:
+        return self.source == 'synthetic'
+
     def to_json(self) -> dict[str, Any]:
         return {
             'vessel_id': self.vessel_id,
@@ -490,10 +494,29 @@ def score_trip(
             / max(1.0, profile.typical_max_distance_km['std'] * 2.0 + 1.0),
         ),
     )
-    weather = (weather_provider or _synthetic_weather_snapshot)(
-        contacts[-1].latitude, contacts[-1].longitude, contacts[-1].observed_at
-    )
-    weather_factor = weather_severity(weather)
+    weather_factor = 0.0
+    weather_reason = 'Weather conditions not assessed (no connected provider).'
+    if weather_provider is not None:
+        weather = weather_provider(
+            contacts[-1].latitude, contacts[-1].longitude, contacts[-1].observed_at
+        )
+        weather_factor = weather_severity(weather)
+        weather_reason = (
+            'Adverse weather at the last known position/time.'
+            if weather_factor > 0
+            else 'Weather conditions normal at last known position.'
+        )
+    elif profile.is_synthetic:
+        weather = _synthetic_weather_snapshot(
+            contacts[-1].latitude, contacts[-1].longitude, contacts[-1].observed_at
+        )
+        weather_factor = weather_severity(weather)
+        weather_reason = (
+            'Adverse weather at the last known position/time.'
+            if weather_factor > 0
+            else 'Weather conditions normal at last known position.'
+        )
+
     weights = ANOMALY_CONFIG['weights']
     factors = [
         _score_factor(
@@ -517,7 +540,7 @@ def score_trip(
         _score_factor(
             weather_factor,
             weights['weather'],
-            'Adverse weather at the last known position/time.',
+            weather_reason,
             'weather',
         ),
     ]

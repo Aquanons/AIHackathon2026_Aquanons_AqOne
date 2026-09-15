@@ -399,6 +399,8 @@ async def public_forecast(
     return {
         'source': 'open-meteo',
         'generated_at': datetime.now(UTC).isoformat(),
+        'requested_latitude': lat,
+        'requested_longitude': lon,
         'latitude': resp_lat if resp_lat is not None else lat,
         'longitude': resp_lon if resp_lon is not None else lon,
         'timezone': timezone_name,
@@ -426,4 +428,7 @@ async def public_squall() -> dict[str, object]:
     pool = get_pool()
     async with pool.acquire() as conn:
         readings, _, buoy_rows = await _load_rows(conn, live=True)
-    return build_squall_status(readings, buoy_rows, source='live', allow_return_now=_return_now_enabled())
+    status = build_squall_status(readings, buoy_rows, source='live', allow_return_now=_return_now_enabled())
+    status['signal_type'] = 'pressure_pattern_research'
+    status['is_calibrated'] = False
+    return status

@@ -384,7 +384,7 @@ class FishingWindowCalculator {
         availability: FishingWindowAvailability.currentCaution,
       );
     }
-    if (currentIsIncomplete && currentHour == null) {
+    if (currentHour == null || currentIsIncomplete) {
       return const FishingWindowResult(
         currentRisk: RiskLevel.unknown,
         availability: FishingWindowAvailability.incompleteData,
@@ -424,7 +424,7 @@ class FishingWindowCalculator {
       );
     }
 
-    DateTime lastEnd = currentHour?.time ?? now;
+    DateTime lastEnd = currentHour.time;
     bool hasGap = false;
     DateTime? deteriorationTime;
     Duration? durationUntilDeterioration;

@@ -535,8 +535,29 @@ class _VenturePageState extends State<VenturePage> {
 
   void _showSafetyDialog() {
     final weather = _weather;
-    final unsafe = weather?.looksUnsafe ?? true;
+    final bool unsafe = weather?.looksUnsafe ?? true;
+    final bool highWind = weather?.hasHighWind ?? false;
     final color = unsafe ? const Color(0xFFD97706) : _success;
+
+    final String titleText;
+    if (weather == null) {
+      titleText = 'Weather unavailable';
+    } else if (highWind) {
+      titleText = 'Wind above threshold';
+    } else if (unsafe) {
+      titleText = '${weather.condition.label} forecast';
+    } else {
+      titleText = 'Conditions look calm';
+    }
+
+    final String thresholdNote = highWind
+        ? 'Source: Open-Meteo · threshold '
+            '${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h. '
+            'This is not a PAGASA warning. '
+            'Always follow the official sea condition and advisories.'
+        : 'Source: Open-Meteo. '
+            'This is not a PAGASA warning. '
+            'Always follow the official sea condition and advisories.';
 
     showDialog<void>(
       context: context,
@@ -552,7 +573,7 @@ class _VenturePageState extends State<VenturePage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                unsafe ? 'Wind above threshold' : 'Conditions look calm',
+                titleText,
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -581,10 +602,7 @@ class _VenturePageState extends State<VenturePage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Source: Open-Meteo · threshold '
-                    '${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h. '
-                    'This is not a PAGASA warning. '
-                    'Always follow the official sea condition and advisories.',
+                thresholdNote,
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: Color(0xFF8A5A12),

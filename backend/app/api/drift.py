@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import asyncpg
@@ -189,12 +189,14 @@ async def _compute_and_persist_run(
     sufficient, `insufficient_environmental_data` (with its diagnostic
     snapshot) otherwise. Never falls back to the synthetic current field.
     """
-    nearby = await count_nearby_fresh_buoys(pool, last_lat, last_lon, last_at)
+    nearby = await count_nearby_fresh_buoys(pool, last_lat, last_lon, last_at, include_synthetic=False)
     assessment = environment.assess_geometry(nearby)
     prior_grid = posterior_grid = None
 
     if assessment is None:
-        current_fn = await create_current_field_factory(pool)
+        current_fn = await create_current_field_factory(
+            pool, include_synthetic=False, allow_synthetic=False, as_of=last_at
+        )
         result = predict_drift(
             last_lat=last_lat,
             last_lon=last_lon,
@@ -280,7 +282,7 @@ class OpenCaseRequest(BaseModel):
 async def _sos_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[str, float, float, datetime]:
     row = await conn.fetchrow(
         '''
-        SELECT vessel_id, latitude, longitude, created_at, acknowledged_at, resolved_at
+        SELECT vessel_id, latitude, longitude, created_at, client_ts, acknowledged_at, resolved_at
         FROM sos_events WHERE id = $1
         ''',
         source_id,
@@ -293,7 +295,21 @@ async def _sos_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[st
         raise HTTPException(status_code=409, detail='SOS is already resolved')
     if row['latitude'] is None or row['longitude'] is None:
         raise HTTPException(status_code=422, detail='SOS has no last-known position')
-    return row['vessel_id'], float(row['latitude']), float(row['longitude']), row['created_at']
+
+    datum_at = row['created_at']
+    try:
+        client_ts = row['client_ts']
+    except (KeyError, TypeError, IndexError):
+        client_ts = None
+    if client_ts is not None and client_ts > 0:
+        try:
+            client_dt = datetime.fromtimestamp(client_ts, tz=UTC)
+            if client_dt <= row['created_at'] + timedelta(minutes=5):
+                datum_at = client_dt
+        except (ValueError, OverflowError, OSError):
+            pass
+
+    return row['vessel_id'], float(row['latitude']), float(row['longitude']), datum_at
 
 
 async def _anomaly_case_inputs(conn: asyncpg.Connection, source_id: int) -> tuple[str, float, float, datetime]:
