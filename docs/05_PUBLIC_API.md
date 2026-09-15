@@ -974,25 +974,42 @@ applies to a real case). Response shape matches `POST /cases`' tail:
 ### `POST /api/ai/drift/incident/{id}/searched` — report a searched sector (Phase 3)
 
 Real cases only — a case with no drift run (demo/synthetic, or a case that
-predates Phase 2) cannot report through this route. The responder draws a
-rectangle on the map; the backend converts it to the grid's local metre
-space, not the other way around:
+predates Phase 2) cannot report through this route. The responder specifies the
+geodetic footprint (`south`, `west`, `north`, `east`) and optional search occurrence
+timing (`searched_at` or `search_start_at`/`search_end_at`):
 
 ```json
-{ "run_number": 1, "south": 11.65, "west": 122.30, "north": 11.68, "east": 122.34, "method": "moderate", "idempotency_key": "b1e2c3-...", "notes": "surface pattern, calm seas" }
+{
+  "run_number": 1,
+  "south": 11.65,
+  "west": 122.30,
+  "north": 11.68,
+  "east": 122.34,
+  "method": "moderate",
+  "searched_at": "2026-08-29T10:00:00Z",
+  "search_start_at": null,
+  "search_end_at": null,
+  "detection_probability": null,
+  "dependent": false,
+  "idempotency_key": "b1e2c3-...",
+  "notes": "surface pattern, calm seas"
+}
 ```
 
 `run_number` is whatever the client last saw from `GET /incident/{id}` — a
 report against a run that has since been superseded by a rerun is rejected.
 `method` is one of the responder-approved detection-probability presets
-(docs/05 table below); the UI submits the preset name, never a raw
-probability. `idempotency_key` is client-generated (e.g. a UUID); a retry
-with the same key against the same case is a no-op, returning the current
-state (`"duplicate": true`) rather than applying the negative evidence
-twice. `notes` is optional, ≤ 280 characters.
+(docs/05 table below) or an operational label; optional explicit `detection_probability`
+is accepted for illustrative testing or calibrated instruments (0.0 to 1.0).
+`searched_at` or `search_start_at`/`search_end_at` specify the search occurrence
+time; if omitted or outside the modeled trajectory interval, the report is recorded
+as unassimilated (`is_unassimilated: true`) rather than substituted with the latest step.
+`dependent` indicates correlated repeat sweeps and discounts effective probability.
+`idempotency_key` is client-generated (e.g. a UUID); a retry with the same key
+against the same case is a no-op, returning the current state (`"duplicate": true`)
+rather than applying the negative evidence twice. `notes` is optional, ≤ 280 characters.
 
-**Detection-method presets** — approved by the project owner alongside the
-Phase 2 policy, same date/source:
+**Detection-method presets** — policy approximations for responder review:
 
 | `method` | Probability | Meaning |
 |---|---|---|
@@ -1003,13 +1020,13 @@ Phase 2 policy, same date/source:
 No preset reaches 1.0 — a search is never perfect.
 
 Atomic: locks the case and its current run, rejects a stale/superseded run,
-deduplicates the idempotency key, applies the Bayesian update exactly once,
-saves the new posterior, and appends the audit record (`reported_by`,
-`method`, `notes`, `idempotency_key`) — all in one transaction. Rejects with
-`409` if the case is `resolved`/`cancelled`, the run is stale, or the
-current run is `insufficient_environmental_data` (no field to search), and
-`422` for a reversed/degenerate rectangle or one that doesn't overlap the
-grid at all. Response `200`:
+deduplicates the idempotency key, applies the time-aligned trajectory update,
+saves the new posterior and trajectory weights, and appends the audit record
+(`reported_by`, `method`, `notes`, `idempotency_key`, `searched_at`) — all in one transaction.
+Rejects with `409` if the case is `resolved`/`cancelled`, the run is stale, the
+current run is `insufficient_environmental_data` (no field to search), or the
+run lacks trajectory state, and `422` for a reversed/degenerate rectangle or invalid probability.
+Response `200`:
 
 ```json
 {
