@@ -9,6 +9,25 @@
 > dashboard/Flutter contract sprint" section and
 > [`20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md`](20_WEEK_1_DASHBOARD_FLUTTER_IMPLEMENTATION_PLAN.md).
 
+## 2026-09-15 — AI Safety Remediation Phase 4: Calibration Lineage, Historical Replay & Claim Boundaries
+
+Recorded per `docs/AI_SAFETY_REMEDIATION_IMPLEMENTATION_PLAN_GEMINI_3_8.md`.
+Environment: Windows 11, Python 3.11.9, pytest-9.1.1, Node.js v22.22.3, Ruff 0.15.5.
+
+**Calibration Lineage, Historical Replay & Behavioral Scenarios (C1–C8):**
+- **C1 (Gated Squall Promotion):** `build_squall_status` checks model calibration; unvalidated or synthetic calibration bundles (`calibration == 'synthetic'`) are strictly capped at `watch` with explicit reason (`unvalidated_synthetic_calibration`), preventing automated promotion to operational `return_now` during live operations.
+- **C2 (Composed Decision & Distinct Probabilities):** Squall detector exposes `classifier_probability` and `pattern_score` as separate fields rather than conflating them into a single score; threshold selection and offline evaluation scripts evaluate the composed decision rule `max(p, rule_score)`.
+- **C3 & C4 (Event-Level Dataset Manifest Validation):** Implemented `validate_manifest` (`app/ai/manifest.py`) enforcing disjoint event partitions across development/test splits (preventing leaking time windows from the same storm), rejecting empty datasets, placeholder SHA-256 hashes, and single-class target sets.
+- **C5 (Overdue Open Trips Under Outage):** Open vessel trips with zero buoy contacts during gateway outages remain fully visible and reviewable as overdue when `expected_return_at < as_of`, preserving expected return obligations with `low_confidence = True`.
+- **C6 (Robust Trip Loading & Historical Baselines):** Removed silent error swallowing in `_load_trip_states`; historical normal baselines filter strictly for completed, normal trips (`status == 'completed'`), preventing unfinished or abnormal trips from contaminating normal vessel duration profiles.
+- **C7 (Database & Manual SOS Survival Under Model Outage):** Model crashes or numerical explosions in particle integration during drift case creation leave underlying incident records and manual SOS intake (`POST /api/sos`) 100% operational.
+- **C8 (Controlled Drift Evaluation with Supported Horizons):** Implemented `evaluate_drift_track` (`app/ai/drift_eval.py`) computing exact polygon containment, area, reduction factor, and miss distance; horizons exceeding the model's supported horizon are reported as unsupported (`is_supported = False`) and not counted as containment successes.
+
+**Verification Results:**
+- Backend: **361 passed, 5 skipped, 1 xfailed** (`python -m pytest -q`); Ruff check clean (`All checks passed!`).
+- Dedicated calibration and replay suite (`tests/test_calibration_and_replay.py`): **8/8 passed**.
+- Web: **141 passed, 0 failed** (`node --test web/test/*.test.js`).
+
 ## 2026-09-15 — AI Safety Remediation Phase 1: Offline Warning Delivery & Verification
 
 Recorded per `docs/AI_SAFETY_REMEDIATION_IMPLEMENTATION_PLAN_GEMINI_3_8.md`.
