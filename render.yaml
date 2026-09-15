@@ -1,0 +1,26 @@
+databases:
+  - name: aqone-db
+    plan: free
+    databaseName: aqone
+    user: aqone
+
+services:
+  - type: web
+    name: aqone-backend
+    runtime: docker
+    repo: https://github.com/Aquanons/Aquanons_AqOne
+    branch: Jade-branch
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/ready
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aqone-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_SETUP_KEY
+        generateValue: true
+      - key: JWT_EXPIRY_HOURS
+        value: "168"
