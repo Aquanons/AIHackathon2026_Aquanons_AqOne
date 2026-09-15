@@ -85,6 +85,7 @@ The app must never display a later state without observing evidence for it.
 | Work on localization | [`mobile/lib/l10n/README.md`](mobile/lib/l10n/README.md) and [`docs/22_LOCALIZATION_PLAN.md`](docs/22_LOCALIZATION_PLAN.md) |
 | Work on visual design | [`docs/47_VISUAL_DESIGN_GUIDE.md`](docs/47_VISUAL_DESIGN_GUIDE.md) |
 | Find active and historical project records | [`docs/README.md`](docs/README.md) |
+| Find external event deadlines | [`docs/53_EXTERNAL_DEADLINES.md`](docs/53_EXTERNAL_DEADLINES.md) |
 
 When documents conflict, do not choose a winner by filename or age alone.
 Use the PRD for product scope, the relevant contract for an interface, the newest dated verification for observed results, and source plus tests for current implementation evidence.
