@@ -252,6 +252,62 @@ void main() {
     expect(updated.remoteId, '7');
   });
 
+  test(
+      'an ack read-back that reports resolved_at stores it and closes the incident',
+      () async {
+    final record = _record('local-resolved');
+    await outbox.insert(record);
+    await outbox.advance(record.localId, DeliveryState.acknowledged);
+
+    const resolvedAt = '2026-09-15T00:35:00Z';
+    final backend = BackendClient(
+      client: _FakeBackendClient((request) async {
+        if (request.url.path == '/healthz') {
+          return _direct(200);
+        }
+        if (request.url.path == '/api/sos/ack/local-resolved') {
+          return http.StreamedResponse(
+            Stream<List<int>>.value(utf8.encode(jsonEncode(<String, Object?>{
+              'vessel_id': 'fisher-7f3a',
+              'server_time': '2026-09-15T00:36:00Z',
+              'event': <String, Object?>{
+                'id': 8,
+                'local_id': 'local-resolved',
+                'seq': null,
+                'client_ts': 1755248500,
+                'delivery_state': 'acknowledged',
+                'acknowledged_at': '2026-09-15T00:05:00Z',
+                'acked_by': 'ranger@example.com',
+                'eta_at': '2026-09-15T00:30:00Z',
+                'responder_status': 2,
+                'responder_status_label': 'Rescue boat on the way',
+                'responder_note': null,
+                'fisher_reply': null,
+                'resolved_at': resolvedAt,
+              },
+            }))),
+            200,
+          );
+        }
+        throw Exception('unexpected ${request.url.path}');
+      }),
+    );
+    final buoy = BuoyClient(
+      baseUrl: 'http://192.168.4.1',
+      client: MockClient((request) async {
+        throw const FormatException('no buoy in range');
+      }),
+    );
+
+    final service = buildService(buoy: buoy, backend: backend);
+    await service.reconcile();
+
+    final updated = await outbox.byLocalId(record.localId);
+    expect(updated!.resolvedAt, resolvedAt);
+    expect(updated.isResolved, isTrue);
+    expect(updated.isStoodDown, isFalse);
+  });
+
   test('a 404 from the ack read-back leaves the delivered record untouched',
       () async {
     final record = _record('local-pending');

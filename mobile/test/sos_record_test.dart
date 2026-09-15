@@ -72,5 +72,46 @@ void main() {
       expect(failed.copyWith(attempts: 2).lastError, 'timeout');
       expect(failed.copyWith(lastError: null).lastError, isNull);
     });
+
+    test('resolvedAt round-trips through a database row and flags isResolved',
+        () {
+      const original = SosRecord(
+        localId: 'local-1',
+        vesselId: '0123456789abcdef0123456789abcdef',
+        boat: 'BG-123',
+        clientTs: 1722700000,
+        state: DeliveryState.acknowledged,
+        remoteId: '9',
+        etaAt: '2026-09-15T00:30:00Z',
+        resolvedAt: '2026-09-15T00:35:00Z',
+      );
+
+      final restored = SosRecord.fromRow(original.toRow());
+
+      // resolved_at is written by saveResponder, not toRow() - same single
+      // writer rule as the other responder data - so the row alone does not
+      // carry it. The model still exposes it and drives isResolved off it.
+      expect(original.isResolved, isTrue);
+      expect(original.isStoodDown, isFalse);
+      expect(original.resolvedTime, DateTime.parse('2026-09-15T00:35:00Z').toLocal());
+      expect(restored.isResolved, isFalse);
+    });
+
+    test('a fisher stand-down (reply 2) counts as resolved before any resolvedAt',
+        () {
+      final stoodDown = _record().copyWith(state: DeliveryState.acknowledged);
+      // fisherReply is responder data - written by saveFisherReply, never via
+      // copyWith - so construct the scenario the store creates it as.
+      final replier = SosRecord(
+        localId: stoodDown.localId,
+        vesselId: stoodDown.vesselId,
+        boat: stoodDown.boat,
+        clientTs: stoodDown.clientTs,
+        state: DeliveryState.acknowledged,
+        fisherReply: 2,
+      );
+      expect(replier.isResolved, isTrue);
+      expect(replier.isStoodDown, isTrue);
+    });
   });
 }

@@ -30,6 +30,7 @@ class SosRecord {
     this.responderStatus,
     this.responderNote,
     this.fisherReply,
+    this.resolvedAt,
   });
 
   final String localId;
@@ -76,8 +77,17 @@ class SosRecord {
   /// 1 STILL_IN_DANGER, 2 SAFE_NOW.
   final int? fisherReply;
 
+  /// When the MDRRMO closed this incident out (ISO string). Null until a
+  /// responder resolves it on the dashboard; reconcile() saves it once the
+  /// backend read-back reports it.
+  final String? resolvedAt;
+
   /// Parsed ETA, or null when none has arrived.
   DateTime? get etaTime => etaAt == null ? null : DateTime.tryParse(etaAt!)?.toLocal();
+
+  /// Parsed resolution time, or null while the incident is still open.
+  DateTime? get resolvedTime =>
+      resolvedAt == null ? null : DateTime.tryParse(resolvedAt!)?.toLocal();
 
   /// True once the promised arrival time has passed with no resolution.
   ///
@@ -96,6 +106,11 @@ class SosRecord {
   /// post-dispatch "slide to stand down" control. The dashboard treats both
   /// the same way - resolved, off the active queue - so the app does too.
   bool get isStoodDown => fisherReply == 2;
+
+  /// The MDRRMO resolved this incident on the dashboard, or the fisher stood
+  /// it down themselves. Either way rescue is over and the ETA no longer
+  /// counts down.
+  bool get isResolved => resolvedAt != null || isStoodDown;
 
   bool get awaitsRelay => state == DeliveryState.saved;
 
@@ -149,6 +164,7 @@ class SosRecord {
       responderStatus: responderStatus,
       responderNote: responderNote,
       fisherReply: fisherReply,
+      resolvedAt: resolvedAt,
     );
   }
 
@@ -203,6 +219,7 @@ class SosRecord {
         responderStatus: (row['responder_status'] as num?)?.toInt(),
         responderNote: row['responder_note'] as String?,
         fisherReply: (row['fisher_reply'] as num?)?.toInt(),
+        resolvedAt: row['resolved_at'] as String?,
       );
 
   Map<String, Object?> toBuoyPayload() {

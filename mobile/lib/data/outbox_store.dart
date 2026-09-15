@@ -169,11 +169,18 @@ class OutboxStore {
     String? etaAt,
     int? responderStatus,
     String? responderNote,
+    String? resolvedAt,
   }) async {
     final db = await _db.database;
     final existing = await db.query(
       'outbox',
-      columns: <String>['remote_id', 'eta_at', 'responder_status', 'responder_note'],
+      columns: <String>[
+        'remote_id',
+        'eta_at',
+        'responder_status',
+        'responder_note',
+        'resolved_at',
+      ],
       where: 'local_id = ?',
       whereArgs: <Object?>[localId],
       limit: 1,
@@ -190,6 +197,8 @@ class OutboxStore {
         'responder_status': responderStatus,
       if (responderNote != null && row['responder_note'] != responderNote)
         'responder_note': responderNote,
+      if (resolvedAt != null && row['resolved_at'] != resolvedAt)
+        'resolved_at': resolvedAt,
     };
     if (next.isEmpty) {
       return false;

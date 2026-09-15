@@ -13,6 +13,18 @@ class EndpointGuard {
   static const String buoyHost = '192.168.4.1';
   static const int buoyWsPort = 81;
 
+  /// Hosts the app may reach over cleartext HTTP.
+  ///
+  /// Only loopback / emulator-loopback addresses that resolve to the developer's
+  /// own machine belong here. `10.0.2.2` is the Android emulator's alias for
+  /// the host's loopback; `localhost` and `127.0.0.1` cover desktop and local
+  /// testing. Everything else on the public internet must stay behind TLS.
+  static const Set<String> cleartextAllowedHosts = <String>{
+    '10.0.2.2',
+    'localhost',
+    '127.0.0.1',
+  };
+
   static void validateStaticConfig({
     required String buoyBaseUrl,
     required String backendBaseUrl,
@@ -39,7 +51,10 @@ class EndpointGuard {
   static Uri requireHttpsAbsolute(String raw, {required String label}) {
     final Uri uri = Uri.parse(raw);
     _requireNoUserInfo(uri, label);
-    if (!uri.isAbsolute || uri.scheme != 'https' || uri.host.isEmpty) {
+    if (!uri.isAbsolute || uri.host.isEmpty) {
+      throw EndpointConfigurationError('$label must be an absolute URL');
+    }
+    if (uri.scheme != 'https' && !cleartextAllowedHosts.contains(uri.host)) {
       throw EndpointConfigurationError('$label must be an absolute HTTPS URL');
     }
     if (uri.fragment.isNotEmpty) {

@@ -57,6 +57,27 @@ void main() {
         throwsA(isA<EndpointConfigurationError>()),
       );
     });
+
+    test('accepts cleartext HTTP to a developer-loopback host', () {
+      for (final String host in EndpointGuard.cleartextAllowedHosts) {
+        final Uri uri = EndpointGuard.requireHttpsAbsolute(
+          'http://$host:8000/api',
+          label: 'test URL',
+        );
+        expect(uri.scheme, 'http');
+        expect(uri.host, host);
+      }
+    });
+
+    test('still rejects cleartext HTTP to an arbitrary host', () {
+      expect(
+        () => EndpointGuard.requireHttpsAbsolute(
+          'http://10.0.3.60:8000/api',
+          label: 'test URL',
+        ),
+        throwsA(isA<EndpointConfigurationError>()),
+      );
+    });
   });
 
   group('EndpointGuard.requireBuoyBase', () {
