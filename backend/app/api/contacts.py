@@ -31,6 +31,19 @@ async def require_gateway_key(
         raise HTTPException(status_code=401, detail='invalid gateway key')
 
 
+async def require_synthetic_demo_gate(x_demo_key: str | None, resource: str = 'telemetry') -> None:
+    """Synthetic telemetry writes are demo-only. Requires DEMO_MODE and valid DEMO_CONTROL_KEY."""
+    demo_mode = os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    configured_key = os.environ.get('DEMO_CONTROL_KEY', '')
+    if (
+        not demo_mode
+        or not configured_key
+        or x_demo_key is None
+        or not hmac.compare_digest(x_demo_key, configured_key)
+    ):
+        raise HTTPException(status_code=403, detail=f'synthetic {resource} data requires demo mode')
+
+
 class ContactEventIn(BaseModel):
     """One routine vessel-buoy contact, from the gateway only.
 

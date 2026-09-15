@@ -25,7 +25,7 @@ Obtain current evaluator access from Team Aquanons rather than relying on creden
 | Buoy firmware | 🟡 Buoy and shore sketches exist, compile clean | SOS, responder ETA and chat all cross LoRa; the buoy has no internet of its own. Neither sketch has run on hardware. |
 | Multi-hop LoRa mesh | 🟡 Implemented, unproven | TTL flood, seen-set and relay logic are written. No middle node has been built and no outdoor range has been measured — every figure in `docs/33_LORA_RF_BUDGET.md` is modelled. |
 | Responder acknowledgement and ETA | 🟡 Implemented, needs a credential | The gateway reads `GET /api/sos/active` and pushes the ETA back down the mesh. That endpoint needs an operator bearer token, which must be configured before this path works. |
-| AI safety features | 🟡 Prototype software exists | Most operational evaluations use synthetic data. Field validation and deployment remain incomplete. |
+| AI safety features | 🟡 Prototype software exists | No component has been trained and validated on locally collected New Washington data. Synthetic scenarios support most calibration/evaluation; the marine-hazard model uses historical environmental proxy data. Field validation and deployment remain incomplete. |
 | Catch activity features | 🟡 Foundation exists | Offline logging and coarse aggregation exist. The intended BFAR workflow has not been validated. |
 
 The dated evidence ledger is [`docs/08_DEMO_AND_STATUS.md`](docs/08_DEMO_AND_STATUS.md).
@@ -36,7 +36,7 @@ Read its newest dated entry first; older entries record earlier repository state
 | Phase | Goal | Acceptance evidence |
 |---|---|---|
 | **1 - Manual SOS handshake** | Fisher sends SOS, MDRRMO receives it, acknowledges it, and the handset recovers the acknowledgement over a verified return path. | Repeat the complete path on real devices, record the transport used, reload the dashboard, restart the handset, and measure range. |
-| **2 - AI safety support** | Add weather risk, squall detection, overdue-trip review, and drift-based search support without making SOS delivery depend on a model. | Validate missed events, false alarms, lead time, data age, and environmental coverage using appropriate evidence. |
+| **2 - AI safety support** | Add weather risk, squall detection, overdue-trip review, and drift-based search support without making SOS delivery depend on a model. | Validate missed events, false alarms, lead time, data age, and environmental coverage using appropriate evidence. If funding is secured, collect real measurements and run controlled drills in New Washington before claiming local model performance. |
 | **3 - Fisheries information** | Develop consented catch activity into coarse information for BFAR planning. | Agree on the BFAR use case and validate privacy, aggregation, and decision value. |
 
 The detailed product scope is [`docs/Aqone_PRD (2).md`](docs/Aqone_PRD%20(2).md).
@@ -223,16 +223,19 @@ Before flashing:
 
 ## AI and data
 
-| Function | Current method | Evidence status |
-|---|---|---|
-| Marine hazard | Gradient-boosted decision trees | Trained on historical weather, cyclone, marine, and bathymetry data; local incident validation is still required. |
-| Squall nowcasting | Logistic regression on pressure-array features | Synthetic calibration; live alarms remain gated on field validation. |
-| Trip anomaly | Per-vessel statistical profiling | Synthetic evaluation; the previously reported false-alarm result was retracted. |
-| Drift and search re-tasking | Monte Carlo drift simulation and Bayesian update | Physics-informed synthetic evaluation; real environmental inputs and responder acceptance remain incomplete. |
+The AI layer is structured into calibrated physical models, causal rules, and decision-support estimators designed specifically for the New Washington and Batan Bay coastal domain. No component operates as an autonomous authority: manual SOS and rescue dispatch function independently of all model outputs, and all predictive alerts serve as advisory inputs for MDRRMO human responders. Comprehensive prospective protocols, drill frameworks, and audit resolutions are detailed in [`docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md`](docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md).
+
+| Function | Model version & method | Domain & horizon | Input sources | Evidence & calibration status |
+|---|---|---|---|---|
+| **Marine hazard** | `aqone-hazard-v2`: GBDT + physical threshold floor | Batan Bay / coastal Aklan; 0–48h | Open-Meteo marine models, ERA5 reanalysis, bathymetry | Trained on historical weather and marine proxy data; local incident validation required. |
+| **Squall nowcasting** | `aqone-squall-v2`: Barometric drop rate & front propagation vector | Buoy array baseline (~10 km); 15–90 min | Buoy telemetry array (min. 3 buoys, 5-min cadence) | Calibrated with synthetic & physical pressure drop dynamics; requires active multi-buoy telemetry. |
+| **Trip anomaly** | `trip-profile-v2`: Causal empirical quantile profiling | Port to coastal grounds; 0–12h post-contact | Buoy contact logs, declared trip deadlines | Causal historical profiles ($T \le T_{\text{decision}}$); flags overdue vessels exceeding $Q_{90}$ duration for dispatcher verification. |
+| **Drift simulation** | `aqone-drift-v2`: Monte Carlo leeway + shoreline stranding | Coastal water polygon; 0.5–6.0h (up to 12h conditioned) | Buoy currents, high-res coastline polygon, GFS/ECMWF wind | Physics-based leeway with land-barrier stranding; bounded by physical maximum-speed envelope ($A = \pi (V_{\max} t)^2$). |
+| **Search retasking** | `aqone-search-v2`: Time-aligned negative search likelihood | Active incident drift grid; search execution time | Timed search sector bounding boxes ($p_d$) | Evaluates trajectory presence at search time; advisory recommendation for responder review, not automatic tasking. |
 
 No foundation model or external LLM inference API runs inside the product.
 AI coding assistants were used during development.
-Dataset sources, licences, limitations, and measured results are documented in [`docs/16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md) and [`web/ml/model-card.json`](web/ml/model-card.json).
+Dataset sources, licences, limitations, and measured results are documented in [`docs/16_QA_DISCLOSURES.md`](docs/16_QA_DISCLOSURES.md), [`docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md`](docs/45_AI_PROSPECTIVE_EVALUATION_AND_CLAIMS.md), and [`web/ml/model-card.json`](web/ml/model-card.json).
 
 ## Safety and limitations
 

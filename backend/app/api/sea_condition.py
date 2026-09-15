@@ -50,19 +50,21 @@ async def _buoy_telemetry(conn) -> dict[str, object] | None:
         math.hypot(float(row['observed_u_mps']), float(row['observed_v_mps']))
         for row in rows
     ) / len(rows)
-    direction = math.degrees(
-        math.atan2(
-            sum(float(row['observed_u_mps']) for row in rows),
-            sum(float(row['observed_v_mps']) for row in rows),
-        )
-    ) % 360
-    observed_at = max(row['observed_at'] for row in rows)
+    mean_u = sum(float(row['observed_u_mps']) for row in rows) / len(rows)
+    mean_v = sum(float(row['observed_v_mps']) for row in rows) / len(rows)
+    vector_speed = math.hypot(mean_u, mean_v)
+    direction = math.degrees(math.atan2(mean_u, mean_v)) % 360
+    newest_observed_at = max(row['observed_at'] for row in rows)
+    oldest_observed_at = min(row['observed_at'] for row in rows)
     return {
         'source': 'buoy',
         'buoy_count': len(rows),
         'current_speed_mps': round(speed, 2),
+        'vector_speed_mps': round(vector_speed, 2),
         'current_direction_deg': round(direction, 1),
-        'observed_at': observed_at.isoformat(),
+        'observed_at': newest_observed_at.isoformat(),
+        'newest_observed_at': newest_observed_at.isoformat(),
+        'oldest_observed_at': oldest_observed_at.isoformat(),
     }
 
 

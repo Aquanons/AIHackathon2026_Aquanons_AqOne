@@ -62,15 +62,15 @@ class WeatherSnapshot {
   /// treated as safe here, which is too permissive - but this only drives the
   /// current-conditions note, and the forecast strip's SafetyScore is the
   /// place where that judgement is made properly.
-  bool get looksUnsafe {
-    if (windSpeed > AqOneConfig.unsafeWindKph) {
-      return true;
-    }
-    return condition == WeatherCondition.thunderstorm ||
-        condition == WeatherCondition.severeThunderstorm ||
-        condition == WeatherCondition.heavyRain ||
-        condition == WeatherCondition.rainy;
-  }
+  bool get hasHighWind => windSpeed > AqOneConfig.unsafeWindKph;
+
+  bool get hasAdverseCondition =>
+      condition == WeatherCondition.thunderstorm ||
+      condition == WeatherCondition.severeThunderstorm ||
+      condition == WeatherCondition.heavyRain ||
+      condition == WeatherCondition.rainy;
+
+  bool get looksUnsafe => hasHighWind || hasAdverseCondition;
 }
 
 /// WMO code buckets, one per distinguishable icon.

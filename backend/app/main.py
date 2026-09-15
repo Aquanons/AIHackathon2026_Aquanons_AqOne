@@ -16,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.catch import protected_router as catch_read_router
 from app.api.catch import router as catch_ingest_router
 from app.api.contacts import router as contacts_router
+from app.api.current_events import router as current_events_router
 from app.api.demo import router as demo_router
 from app.api.drift import router as drift_router
 from app.api.hotspots import router as hotspots_router
@@ -29,6 +30,7 @@ from app.api.sos import protected_router as sos_read_router
 from app.api.sos import router as sos_ingest_router
 from app.api.spots import router as spots_router
 from app.api.squall import router as squall_router
+from app.api.trips import router as trips_router
 from app.api.vessel_auth import router as vessel_auth_router
 from app.auth import require_user
 from app.db import get_pool, shutdown_db, startup_db
@@ -80,6 +82,13 @@ app.include_router(contacts_router)
 # per-route require_gateway_key guard as contacts_router, for the same
 # reason. See app/api/pressure_events.py.
 app.include_router(pressure_events_router)
+
+# Gateway-only current-event ingest (Phase 2 Task 2.2). Guarded per-route by
+# require_gateway_key, matching contacts_router and pressure_events_router.
+app.include_router(current_events_router)
+
+# Explicit vessel trips and welfare evidence collection (Phase 2 Task 2.4).
+app.include_router(trips_router)
 
 # Fishing spots (community-reported "fish hotspots") - both ingest and read
 # are unauthenticated here, unlike catch logging: this is public, shared

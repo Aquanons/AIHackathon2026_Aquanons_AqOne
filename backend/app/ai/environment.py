@@ -64,6 +64,7 @@ class EnvironmentAssessment:
     wind_source: str | None
     wind_degraded: bool | None
     max_wind_age_seconds: float
+    support_lost_at: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -75,6 +76,7 @@ class EnvironmentAssessment:
             'wind_source': self.wind_source,
             'wind_degraded': self.wind_degraded,
             'max_wind_age_seconds': self.max_wind_age_seconds,
+            'support_lost_at': self.support_lost_at,
         }
 
 
@@ -92,6 +94,7 @@ def assess_geometry(nearby_buoy_count: int) -> EnvironmentAssessment | None:
         wind_source=None,
         wind_degraded=None,
         max_wind_age_seconds=MAX_WIND_AGE_SECONDS,
+        support_lost_at=None,
     )
 
 
@@ -113,4 +116,5 @@ def assess_result(nearby_buoy_count: int, observed_coverage: float, result: Drif
         wind_source=result.wind_source,
         wind_degraded=result.degraded,
         max_wind_age_seconds=MAX_WIND_AGE_SECONDS,
+        support_lost_at=result.support_lost_at,
     )

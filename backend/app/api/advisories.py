@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -386,3 +387,94 @@ async def trigger_danger_alert(
     )
 
     return {'status': 'success', 'advisory': _serialise(row)}
+
+
+class WarningDeliveryIn(BaseModel):
+    """A delivery-state transition event for a warning (Task 2.5).
+
+    States: generated -> gateway_accepted -> buoy_received -> phone_received -> user_acknowledged.
+    """
+
+    warning_id: int
+    delivery_state: Literal[
+        'generated',
+        'gateway_accepted',
+        'buoy_received',
+        'phone_received',
+        'user_acknowledged',
+    ]
+    vessel_id: str | None = None
+    buoy_id: str | None = None
+    occurred_at: datetime | None = None
+    details: dict[str, Any] = {}
+
+
+@router.post('/delivery', status_code=200)
+async def record_warning_delivery(payload: WarningDeliveryIn) -> dict[str, Any]:
+    """Record a hop or acknowledgement event in the warning delivery lifecycle."""
+    occurred_at = payload.occurred_at or datetime.now(UTC)
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        adv = await conn.fetchrow('SELECT id FROM advisories WHERE id = $1', payload.warning_id)
+        if adv is None:
+            raise HTTPException(status_code=404, detail='warning/advisory not found')
+
+        row = await conn.fetchrow(
+            '''
+            INSERT INTO warning_delivery_events (
+              warning_id, vessel_id, buoy_id, delivery_state, occurred_at, details
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            RETURNING id, warning_id, delivery_state, occurred_at, recorded_at
+            ''',
+            payload.warning_id,
+            payload.vessel_id,
+            payload.buoy_id,
+            payload.delivery_state,
+            occurred_at,
+            json.dumps(payload.details),
+        )
+
+    return {
+        'accepted': True,
+        'delivery_id': row['id'],
+        'warning_id': row['warning_id'],
+        'delivery_state': row['delivery_state'],
+        'occurred_at': row['occurred_at'].isoformat(),
+        'recorded_at': row['recorded_at'].isoformat(),
+    }
+
+
+@router.get('/{advisory_id}/deliveries', status_code=200)
+async def get_warning_deliveries(advisory_id: int) -> dict[str, Any]:
+    """Fetch the delivery events and reached states for a warning."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        adv = await conn.fetchrow('SELECT id FROM advisories WHERE id = $1', advisory_id)
+        if adv is None:
+            raise HTTPException(status_code=404, detail='advisory not found')
+
+        rows = await conn.fetch(
+            '''
+            SELECT id, warning_id, vessel_id, buoy_id, delivery_state, occurred_at, recorded_at, details
+              FROM warning_delivery_events
+             WHERE warning_id = $1
+             ORDER BY occurred_at ASC, id ASC
+            ''',
+            advisory_id,
+        )
+
+    events = [
+        {
+            'id': r['id'],
+            'warning_id': r['warning_id'],
+            'vessel_id': r['vessel_id'],
+            'buoy_id': r['buoy_id'],
+            'delivery_state': r['delivery_state'],
+            'occurred_at': r['occurred_at'].isoformat(),
+            'recorded_at': r['recorded_at'].isoformat(),
+            'details': r['details'] if isinstance(r['details'], dict) else {},
+        }
+        for r in rows
+    ]
+    return {'warning_id': advisory_id, 'deliveries': events}
