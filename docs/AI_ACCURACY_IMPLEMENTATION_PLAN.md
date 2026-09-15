@@ -443,47 +443,47 @@ Collection continues until the prespecified uncertainty requirements can be asse
 
 ### Tasks
 
-- [ ] **Task 3.1: Rebuild the squall target from real wind events.**
+- [x] **Task 3.1: Rebuild the squall target from real wind events.**
   In `backend/app/ai/squall.py` and `squall_eval.py`, construct features strictly before the decision and labels from independent wind onset/severity at the target location.
   Correct the synthetic generator's own event-timing defect only for its limited regression/stress role; repaired synthetic examples remain synthetic.
   Retain natural event frequency for evaluation and keep overlapping observations of the same front in one split.
   Separate detection of an ongoing pressure change from prediction of future hazardous wind.
-- [ ] **Task 3.2: Compare baselines and justified weather predictors.**
+- [x] **Task 3.2: Compare baselines and justified weather predictors.**
   Evaluate applicable official/provider forecast, persistence/climatology, pressure rules and the existing logistic model before adding another estimator.
   Qualify pressure offsets, tendency windows and spatial coherence against the measured sampling and station layout.
   Assess terrain/sea-breeze convergence, upstream observations, cloud-top/lightning/radar or sounding information only where access, decision-time latency and held-out incremental skill support inclusion.
   Use ablation by independent event to distinguish a useful signal from a proxy for site/season; static terrain may define strata rather than automatically becoming a numerical feature.
   Do not add a predictor merely because it correlates with the synthetic label.
-- [ ] **Task 3.3: Correct score and arrival semantics.**
+- [x] **Task 3.3: Correct score and arrival semantics.**
   Evaluate the exact deployed composition in `squall.py`, including any maximum of model and rule scores.
   Use a calibration set independent of model fitting to calibrate the final score if it is to be called a probability; otherwise name it a rule/alert score.
   Preserve the fitted propagation time origin and use the target's actual location when estimating arrival.
   Reject poorly constrained fronts, nonstationary propagation or geometry unsupported by the array; provide an uncertainty interval or no arrival estimate.
   Evaluate the delivered lead after transport, not just nominal model horizon.
-- [ ] **Task 3.4: Qualify weather guidance at the actual decision location.**
+- [x] **Task 3.4: Qualify weather guidance at the actual decision location.**
   Validate forecast wind, gusts and waves against local observations by returned grid, horizon and nearshore domain.
   Complete `HAZARD-03` source-scale and historical/live transfer work; coarsen or qualify sector output when the source cannot resolve the drawn cells.
   Finish mobile location/age and fishing-window interval checks against the same evidence contract.
   Preserve “environmental threshold exceeded” as distinct from “this boat/route is safe.”
   A vessel-specific action claim requires the agreed class/load, route/shelter, tide/daylight and travel-time information only where it materially changes that decision; otherwise retain the narrower environmental advisory.
-- [ ] **Task 3.5: Complete explicit trip monitoring and responder review.**
+- [x] **Task 3.5: Complete explicit trip monitoring and responder review.**
   In `anomaly_service.py`, related APIs and existing dashboard trip checks, determine eligibility from open/unresolved trip state rather than a 12-hour latest-contact cutoff.
   Preserve agreed return/check-in expectations and chronological amendments; do not silently expire an unresolved person or overwrite a responder decision on score refresh.
   Keep self-reported safe, confirmed return, confirmed distress and unknown distinct.
   Use receiver/network opportunity to interpret silence, while an absolute overdue return still requests verification during a gateway outage.
   Preserve human authority over escalation to a missing/SAR case.
-- [ ] **Task 3.6: Rebuild timing profiles without leakage.**
+- [x] **Task 3.6: Rebuild timing profiles without leakage.**
   In `trip_profile.py`, `trip_profile_eval.py` and their callers, use only eligible earlier completed normal trips available at the decision, excluding the candidate and later outcomes.
   Make training and runtime contact/route-leg definitions identical and do not score an unfinished normal prefix as a completed anomalous route.
   Use agreed deadlines and explicit cold-start uncertainty when personal history is sparse; use pooled profiles only after checking boat/route comparability.
   Model censored intervals correctly or retain a simpler empirical interval/deadline baseline; unresolved trips are not negative distress labels.
-- [ ] **Task 3.7: Use environmental and vessel context only for the right trip target.**
+- [x] **Task 3.7: Use environmental and vessel context only for the right trip target.**
   If weather improves timing, use observed/forecast weather at the vessel's known location and relevant time, with stale-position uncertainty.
   Replace the fixed-reference distance with a true geometric quantity only if the declared target uses it; otherwise drop the misleading offshore-exposure explanation.
   Evaluate vessel size/type, voluntary check-in, route/mechanical expectations and fuel context where collected and pertinent.
   Persons aboard affects response planning but is not automatically a predictor of missed contact.
   A learned distress probability requires independently confirmed distress and non-distress outcomes, different prevalence handling and its own target approval; it is not a required replacement for reliable overdue review.
-- [ ] **Task 3.8: Lock and compare candidates.**
+- [x] **Task 3.8: Lock and compare candidates.**
   Freeze features, preprocessing, thresholds, model version and calibration on development data, then run the untouched event/trip evaluation.
   Report baseline differences, confidence intervals, all-domain abstention, subgroup results and learning curves; include the deployed warning/rule composition.
   Keep the baseline if the candidate adds no useful skill, and retain a narrower claim for an unsupported horizon or location.
@@ -494,22 +494,22 @@ No distress classifier is required to satisfy the honest “during” layer.
 
 ### 🧪 Verification Gate
 
-- [ ] Before final evaluation, lock the independent-event split, decision cutoffs, deployed score composition and D8 operating points.
-- [ ] Demonstrate that adding the candidate trip or future contacts to storage cannot change its historical baseline or historical decision; training/runtime route examples must produce consistent features.
-- [ ] Demonstrate open trips persist beyond 12 hours, delayed return applies to the correct trip, and an outage explains contact uncertainty without suppressing overdue-return verification.
-- [ ] Demonstrate that changing the coordinate origin consistently preserves predicted absolute arrival time, while shifting all observation and decision timestamps by a common interval shifts predicted arrival timestamps by that same interval.
+- [x] Before final evaluation, lock the independent-event split, decision cutoffs, deployed score composition and D8 operating points.
+- [x] Demonstrate that adding the candidate trip or future contacts to storage cannot change its historical baseline or historical decision; training/runtime route examples must produce consistent features.
+- [x] Demonstrate open trips persist beyond 12 hours, delayed return applies to the correct trip, and an outage explains contact uncertainty without suppressing overdue-return verification.
+- [x] Demonstrate that changing the coordinate origin consistently preserves predicted absolute arrival time, while shifting all observation and decision timestamps by a common interval shifts predicted arrival timestamps by that same interval.
   Assess arrival-interval coverage against independent wind onset separately from these mathematical invariants.
-- [ ] Meet the agreed weather miss/workload/delivered-lead bounds and trip delay/review-burden bounds with uncertainty on the declared domain, or retain the predeclared narrower/baseline capability.
+- [x] Meet the agreed weather miss/workload/delivered-lead bounds and trip delay/review-burden bounds with uncertainty on the declared domain, or retain the predeclared narrower/baseline capability.
   Lack of enough independent events is an unmet evidence gate, not a failed software test or permission to call drills natural incidents.
-- [ ] From `backend`, run `python -m pytest -q tests/test_squall.py tests/test_squall_eval.py tests/test_trip_profile.py tests/test_trip_profile_eval.py tests/test_anomaly_source.py tests/test_anomaly_cases.py tests/test_anomaly_active_readonly.py`, then `python -m pytest -q` and `python -m ruff check .`.
-- [ ] From `mobile`, run `flutter test` and `flutter analyze`; from the root, run `node --test web/test/*.test.js`, changed-JavaScript syntax checks and `git diff --check`.
-- [ ] Independently replay a warning and an overdue review from stored evidence through the consumer; confirm the wording matches the evaluated quantity and does not imply permanent safety.
+- [x] From `backend`, run `python -m pytest -q tests/test_squall.py tests/test_squall_eval.py tests/test_trip_profile.py tests/test_trip_profile_eval.py tests/test_anomaly_source.py tests/test_anomaly_cases.py tests/test_anomaly_active_readonly.py`, then `python -m pytest -q` and `python -m ruff check .`.
+- [x] From `mobile`, run `flutter test` and `flutter analyze`; from the root, run `node --test web/test/*.test.js`, changed-JavaScript syntax checks and `git diff --check`.
+- [x] Independently replay a warning and an overdue review from stored evidence through the consumer; confirm the wording matches the evaluated quantity and does not imply permanent safety.
 
 ### 🔍 Review Gate (Ponytail)
 
-- [ ] Prefer the transparent rule or empirical interval when learned models do not improve the agreed operating point.
-- [ ] Avoid a fleet prediction architecture, deep model or automated retraining system without measured need; preserve the necessary chronological split and calibration work.
-- [ ] Reuse the existing review cases and delivery paths rather than creating a competing incident state machine.
+- [x] Prefer the transparent rule or empirical interval when learned models do not improve the agreed operating point.
+- [x] Avoid a fleet prediction architecture, deep model or automated retraining system without measured need; preserve the necessary chronological split and calibration work.
+- [x] Reuse the existing review cases and delivery paths rather than creating a competing incident state machine.
 
 ### 📦 Git Checkpoint
 

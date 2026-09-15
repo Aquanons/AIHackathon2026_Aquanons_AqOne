@@ -102,23 +102,49 @@ def _trip_is_synthetic(rows: list[dict[str, object]]) -> dict[tuple[str, str], b
     return flags
 
 
-def eligible_latest_trips(
-    rows: list[dict[str, object]], *, as_of: datetime
-) -> list[tuple[str, str, list[ContactPoint]]]:
-    """The latest trip per vessel, excluding any whose last contact falls
-    outside OPEN_TRIP_FRESHNESS_WINDOW of as_of.
+async def _load_trip_states(conn) -> dict[str, dict[str, object]]:
+    try:
+        rows = await conn.fetch(
+            '''
+            SELECT trip_id, vessel_id, status, welfare_status, departure_at,
+                   expected_return_at, expected_checkin_interval_minutes, amendments
+            FROM vessel_trips
+            '''
+        )
+        return {str(r['trip_id']): dict(r) for r in rows}
+    except Exception:
+        return {}
 
-    A trip that ended long before as_of is not "possibly still open," it is
-    done - scoring it as overdue merely because as_of moved forward is
-    exactly the docs/31 design flaw this guards against. This is a
-    correctness guard on eligibility, not a change to score_trip's model.
+
+def eligible_latest_trips(
+    rows: list[dict[str, object]],
+    *,
+    as_of: datetime,
+    trip_states: dict[str, dict[str, object]] | None = None,
+) -> list[tuple[str, str, list[ContactPoint]]]:
+    """The latest trip per vessel.
+
+    Task 3.5: Determine eligibility from open/unresolved trip state rather
+    than an arbitrary 12-hour latest-contact cutoff. An open/unresolved trip
+    persists beyond 12 hours without silent expiration, while completed or
+    cancelled trips are excluded. Unrecorded legacy/synthetic trips fall back
+    to OPEN_TRIP_FRESHNESS_WINDOW.
     """
+    trip_states = trip_states or {}
     cutoff = as_of - OPEN_TRIP_FRESHNESS_WINDOW
-    return [
-        (vessel_id, trip_id, contacts)
-        for vessel_id, trip_id, contacts in _group_latest_trips(rows)
-        if contacts[-1].observed_at >= cutoff
-    ]
+    eligible: list[tuple[str, str, list[ContactPoint]]] = []
+    for vessel_id, trip_id, contacts in _group_latest_trips(rows):
+        state = trip_states.get(trip_id)
+        if state is not None:
+            status = str(state.get('status') or '')
+            if status in {'completed', 'cancelled'}:
+                continue
+            if status in {'open', 'overdue', 'unresolved'}:
+                eligible.append((vessel_id, trip_id, contacts))
+                continue
+        if contacts[-1].observed_at >= cutoff:
+            eligible.append((vessel_id, trip_id, contacts))
+    return eligible
 
 
 async def evaluate_and_persist(conn, *, as_of: datetime, include_synthetic: bool) -> list[dict[str, object]]:
@@ -132,8 +158,12 @@ async def evaluate_and_persist(conn, *, as_of: datetime, include_synthetic: bool
     `is_active = TRUE` without any row being deleted or truncated.
     """
     rows = await _load_trip_rows(conn, include_synthetic=include_synthetic)
-    profiles = build_profiles_from_contacts(rows, built_at=as_of)
-    eligible = eligible_latest_trips(rows, as_of=as_of)
+    trip_states = await _load_trip_states(conn)
+    eligible = eligible_latest_trips(rows, as_of=as_of, trip_states=trip_states)
+    candidate_trip_ids = {trip_id for _, trip_id, _ in eligible}
+    profiles = build_profiles_from_contacts(
+        rows, built_at=as_of, as_of=as_of, exclude_trip_ids=candidate_trip_ids
+    )
     trip_is_synthetic = _trip_is_synthetic(rows)
 
     scope = [True, False] if include_synthetic else [False]
@@ -145,7 +175,14 @@ async def evaluate_and_persist(conn, *, as_of: datetime, include_synthetic: bool
     score_rows: list[dict[str, object]] = []
     for vessel_id, trip_id, contacts in eligible:
         profile = profiles[vessel_id]
-        score = score_trip(profile, contacts, as_of=as_of)
+        trip_state = trip_states.get(trip_id)
+        score = score_trip(
+            profile,
+            contacts,
+            as_of=as_of,
+            trip_id=trip_id,
+            trip_state=trip_state,
+        )
         score_rows.append(score.to_response())
         is_synthetic = trip_is_synthetic.get((vessel_id, trip_id), True)
         await conn.execute(
