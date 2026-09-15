@@ -12,7 +12,6 @@ import '../data/identity_store.dart';
 import '../models/buoy_marker.dart';
 import '../models/delivery_state.dart';
 import '../models/hazard_alert.dart';
-import '../models/hotspot_cell.dart';
 import '../models/sos_record.dart';
 import '../models/squall_watch.dart';
 import '../models/weather_snapshot.dart';
@@ -36,16 +35,6 @@ const Color _surfaceDark = Color(0xFF1E293B);
 const Color _canvasDark = Color(0xFF0F172A);
 const Color _danger = Color(0xFFDC2626);
 const Color _success = Color(0xFF16A34A);
-
-/// Fill for a modelled hotspot cell. A single hue varied by opacity, not a
-/// traffic-light ramp: suitability is not a safety verdict, and green cells
-/// on a map a fisher reads before leaving would be taken as one.
-const Color _hotspotColor = Color(0xFF14B8A6);
-
-/// Fill for the illustrative cells the app ships before the model exists.
-/// A different hue from the real layer on purpose: the legend says EXAMPLE,
-/// but the colour says it too, for the fisherman who never reads legends.
-const Color _demoHotspotColor = Color(0xFF8B5CF6);
 
 /// How long a fisher has to slide-to-cancel before the SOS actually sends.
 /// Short enough to still read as "immediate" - the button does not gate the
@@ -118,7 +107,6 @@ class _VenturePageState extends State<VenturePage> {
   final RequestGuard _buoyGuard = RequestGuard();
   final RequestGuard _waveGuard = RequestGuard();
   final RequestGuard _capsizeGuard = RequestGuard();
-  final RequestGuard _hotspotGuard = RequestGuard();
   StreamSubscription<void>? _sosSub;
   Timer? _pollTimer;
 
@@ -153,16 +141,10 @@ class _VenturePageState extends State<VenturePage> {
 
   List<BuoyMarker> _buoys = const <BuoyMarker>[];
 
-  /// The modelled hotspot surface, or null while the endpoint does not exist.
-  /// Null draws nothing at all - see HotspotCell's doc comment for why there
-  /// is no client-side substitute.
-  HotspotSurface? _hotspots;
-
   /// When each cached feed was last fetched. Drives the offline banner, and
   /// is refreshed after every poll rather than on a timer of its own so it
   /// can never disagree with what is on the map.
   Map<String, DateTime> _snapshotAges = const <String, DateTime>{};
-  Timer? _hotspotTimer;
   final Map<HazardKind, List<HazardAlert>> _hazards =
       <HazardKind, List<HazardAlert>>{};
   final Set<String> _announcedHazardIds = <String>{};
@@ -194,16 +176,7 @@ class _VenturePageState extends State<VenturePage> {
       _locate(initial: true);
       _loadBuoys();
       _loadHazards();
-      if (!AqOneConfig.pitchMode) {
-        _loadHotspots();
-      }
       _refreshSosStatus();
-      if (!AqOneConfig.pitchMode) {
-        _hotspotTimer = Timer.periodic(
-          AqOneConfig.hotspotRefreshInterval,
-          (_) => _loadHotspots(),
-        );
-      }
       _refreshSnapshotAges();
       _pollTimer = Timer.periodic(AqOneConfig.hazardPollInterval, (_) {
         _loadBuoys();
@@ -218,7 +191,6 @@ class _VenturePageState extends State<VenturePage> {
     // Polling must stop with the screen. Left running it drains battery and
     // keeps hitting the backend while the phone is in a pocket at sea.
     _pollTimer?.cancel();
-    _hotspotTimer?.cancel();
     _sosSub?.cancel();
     // The magnetometer keeps the SoC awake while subscribed, so it must go
     // down with the screen.
@@ -261,24 +233,6 @@ class _VenturePageState extends State<VenturePage> {
       return;
     }
     setState(() => _buoys = buoys);
-  }
-
-  /// Loads the modelled hotspot surface.
-  ///
-  /// A 404 (the current state - the model is Phase 3) leaves _hotspots null
-  /// and the map draws nothing. There is no fallback by design: the honest
-  /// answer to "where are the fish" is silence until something has actually
-  /// been modelled.
-  Future<void> _loadHotspots() async {
-    if (AqOneConfig.pitchMode) {
-      return;
-    }
-    final version = _hotspotGuard.begin();
-    final surface = await widget.feeds.hotspots();
-    if (!mounted || !_hotspotGuard.isCurrent(version) || surface == null) {
-      return;
-    }
-    setState(() => _hotspots = surface);
   }
 
   Future<void> _initTileProvider() async {
@@ -537,8 +491,8 @@ class _VenturePageState extends State<VenturePage> {
             Text(
               weather == null
                   ? 'Weather could not be loaded, so this cannot be assessed.'
-                  : '${weather.condition.label} Â· '
-                      '${weather.temperature.toStringAsFixed(1)}Â°C Â· '
+                  : '${weather.condition.label} · '
+                      '${weather.temperature.toStringAsFixed(0)}°C · '
                       'wind ${weather.windSpeed.toStringAsFixed(0)} km/h',
               style: const TextStyle(fontSize: 14, height: 1.4),
             ),
@@ -550,7 +504,7 @@ class _VenturePageState extends State<VenturePage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Source: Open-Meteo Â· threshold '
+                'Source: Open-Meteo · threshold '
                     '${AqOneConfig.unsafeWindKph.toStringAsFixed(0)} km/h. '
                     'This is not a PAGASA warning. '
                     'Always follow the official sea condition and advisories.',
@@ -642,10 +596,6 @@ class _VenturePageState extends State<VenturePage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  if (!AqOneConfig.pitchMode && _hotspots != null) ...<Widget>[
-                    _buildHotspotLegend(isDark, _hotspots!),
-                    const SizedBox(height: 10),
-                  ],
                   _buildCompass(isDark),
                 ],
               ),
@@ -670,199 +620,6 @@ class _VenturePageState extends State<VenturePage> {
     );
   }
 
-  /// Legend for the hotspot layer, shown only when a surface is on the map.
-  ///
-  /// Deliberately states what the layer is not. A shaded blob on a sea chart
-  /// reads as authority, and this one is a suitability estimate that has never
-  /// promised anyone a fish. Kept to a single compact chip so the map - the
-  /// thing a fisherman is actually reading - keeps its screen: the full
-  /// wording is one tap away rather than permanently parked over the water.
-  Widget _buildHotspotLegend(bool isDark, HotspotSurface surface) {
-    final AppLocalizations t = AppLocalizations.of(context);
-    final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
-    final bool demo = surface.isDemo;
-    final Color accent = demo ? _demoHotspotColor : _hotspotColor;
-    final String? age = surface.ageLabel;
-    final int cells = surface.cells.length;
-    final int observations = surface.cells.fold<int>(
-      0,
-      (int sum, HotspotCell c) => sum + c.observations,
-    );
-
-    // The chip carries the short form; the long form - counts, age, model
-    // caveats, and for demo data the flat statement that nobody reported it -
-    // goes to the sheet behind the tap.
-    final String summary = demo
-        ? 'Demo'
-        : '${t.hotspotLegendTitle} Â· $cells areas';
-
-    return Semantics(
-      button: true,
-      label: demo
-          ? 'Example fishing zones, not real data. Tap for details.'
-          : 'Fishing zone legend. Tap for details.',
-      child: GestureDetector(
-        onTap: () => _showHotspotLegendDetail(
-          isDark: isDark,
-          demo: demo,
-          accent: accent,
-          cells: cells,
-          observations: observations,
-          age: age,
-          minReporters: surface.minReporters,
-          windowDays: surface.windowDays,
-          title: t.hotspotLegendTitle,
-          disclaimer: t.hotspotLegendDisclaimer,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: (isDark ? _canvasDark : Colors.white).withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: accent.withValues(alpha: demo ? 0.7 : 0.35),
-              width: demo ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.38),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                summary,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: demo ? FontWeight.w800 : FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.info_outline_rounded, size: 11, color: fg),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// The wording the chip no longer has room for, on demand.
-  Future<void> _showHotspotLegendDetail({
-    required bool isDark,
-    required bool demo,
-    required Color accent,
-    required int cells,
-    required int observations,
-    required String? age,
-    required int? minReporters,
-    required int? windowDays,
-    required String title,
-    required String disclaimer,
-  }) {
-    final Color fg = isDark ? Colors.white70 : const Color(0xFF475569);
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: isDark ? _canvasDark : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.38),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      color: isDark ? Colors.white : const Color(0xFF0F172A),
-                    ),
-                  ),
-                  if (demo) ...<Widget>[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'EXAMPLE',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (demo) ...<Widget>[
-                // No counts, no age, no model version. Every one of those makes
-                // invented data read as measured, and the numbers on these
-                // cells are inventions too.
-                Text(
-                  'Sample areas, to show how this map works.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                    color: fg,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'NOT real fishing data. Nobody reported these.',
-                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
-                ),
-              ] else ...<Widget>[
-                Text(
-                  '$cells areas Â· $observations catch reports'
-                  '${age == null ? '' : ' Â· $age'}'
-                  '${minReporters == null ? '' : ' Â· min $minReporters reporters'}'
-                  '${windowDays == null ? '' : ' Â· last $windowDays days'}',
-                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  disclaimer,
-                  style: TextStyle(fontSize: 13, height: 1.35, color: fg),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMap() {
     final markers = <Marker>[
       for (final buoy in _buoys)
@@ -880,27 +637,7 @@ class _VenturePageState extends State<VenturePage> {
       if (_userLocation != null) _buildUserMarker(_userLocation!),
     ];
 
-    final hotspots = _hotspots;
     final circles = <CircleMarker>[
-      // Drawn first so buoy coverage and every safety overlay paint on top.
-      // Â§6.2: safety warnings override and visually supersede hotspot
-      // guidance, which is a paint-order property before it is a policy.
-      if (!AqOneConfig.pitchMode && hotspots != null)
-        for (final cell in hotspots.cells)
-          CircleMarker(
-            point: LatLng(cell.centerLat, cell.centerLon),
-            radius: cell.approxRadiusMeters,
-            useRadiusInMeter: true,
-            // Opacity carries the score. Deliberately no red-to-green scale:
-            // this is suitability, and a green "go here" tier would read as a
-            // safety judgement the model has not made.
-            color: (hotspots.isDemo ? _demoHotspotColor : _hotspotColor)
-                .withValues(alpha: 0.10 + 0.28 * cell.score),
-            borderColor:
-                (hotspots.isDemo ? _demoHotspotColor : _hotspotColor)
-                    .withValues(alpha: 0.35),
-            borderStrokeWidth: 1,
-          ),
       for (final buoy in _buoys)
         CircleMarker(
           point: LatLng(buoy.latitude, buoy.longitude),
@@ -987,7 +724,7 @@ class _VenturePageState extends State<VenturePage> {
     final weather = _weather;
     final label = _weatherFailed
         ? 'Weather unavailable'
-        : weather?.condition.label ?? 'Loadingâ€¦';
+        : weather?.condition.label ?? 'Loading…';
     final icon = weather?.condition.icon ?? Icons.wb_sunny_rounded;
 
     return GestureDetector(
@@ -1033,7 +770,7 @@ class _VenturePageState extends State<VenturePage> {
             ),
             const SizedBox(width: 10),
             Text(
-              '${weather?.temperature.toStringAsFixed(1) ?? '--'}Â°C',
+              '${weather?.temperature.toStringAsFixed(0) ?? '--'}°C',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
@@ -1117,28 +854,39 @@ class _VenturePageState extends State<VenturePage> {
 
   Widget _buildSosStatus(bool isDark, SosRecord record) {
     final state = record.state;
-    final standDown = record.isStoodDown;
-    final color = standDown
-        ? const Color(0xFF64748B)
-        : switch (state) {
-            DeliveryState.saved => const Color(0xFFD97706),
-            DeliveryState.relayed => _brandPrimary,
-            DeliveryState.delivered => const Color(0xFF0284C7),
-            DeliveryState.acknowledged => _success,
-          };
+    final resolvedByMDRRMO = record.resolvedAt != null;
+    final standDown = !resolvedByMDRRMO && record.isStoodDown;
     final t = AppLocalizations.of(context);
-    final title = standDown ? 'Stood down' : state.title(t);
-    final description = standDown
-        ? 'Marked as a false alarm - the MDRRMO has been told to disregard.'
-        : state.description(t);
-    final icon = standDown
-        ? Icons.undo_rounded
-        : switch (state) {
-            DeliveryState.saved => Icons.hourglass_top_rounded,
-            DeliveryState.relayed => Icons.sync_rounded,
-            DeliveryState.delivered => Icons.cloud_done_rounded,
-            DeliveryState.acknowledged => Icons.check_circle_rounded,
-          };
+    final color = resolvedByMDRRMO
+        ? _success
+        : standDown
+            ? const Color(0xFF64748B)
+            : switch (state) {
+                DeliveryState.saved => const Color(0xFFD97706),
+                DeliveryState.relayed => _brandPrimary,
+                DeliveryState.delivered => const Color(0xFF0284C7),
+                DeliveryState.acknowledged => _success,
+              };
+    final title = resolvedByMDRRMO
+        ? t.resolvedTitle
+        : standDown
+            ? 'Stood down'
+            : state.title(t);
+    final description = resolvedByMDRRMO
+        ? t.resolvedDescription
+        : standDown
+            ? 'Marked as a false alarm - the MDRRMO has been told to disregard.'
+            : state.description(t);
+    final icon = resolvedByMDRRMO
+        ? Icons.task_alt_rounded
+        : standDown
+            ? Icons.undo_rounded
+            : switch (state) {
+                DeliveryState.saved => Icons.hourglass_top_rounded,
+                DeliveryState.relayed => Icons.sync_rounded,
+                DeliveryState.delivered => Icons.cloud_done_rounded,
+                DeliveryState.acknowledged => Icons.check_circle_rounded,
+              };
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 18),
@@ -1214,7 +962,7 @@ class _VenturePageState extends State<VenturePage> {
     return Semantics(
       button: true,
       // Screen-reader label reuses the tooltip strings rather than adding two
-      // more keys to translate: a blind user hearing "Heading 142Â°" is served
+      // more keys to translate: a blind user hearing "Heading 142°" is served
       // as well as one reading it, and every extra safety string is another
       // thing to get reviewed.
       label: sensorHeading == null
@@ -1265,7 +1013,7 @@ class _VenturePageState extends State<VenturePage> {
           ),
           const SizedBox(width: 8),
           Text(
-            'Locatingâ€¦',
+            'Locating…',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -1421,7 +1169,7 @@ class _ActionPill extends StatelessWidget {
   }
 }
 
-/// Full-screen "sending SOS in Nâ€¦" countdown with a slide-to-cancel bar.
+/// Full-screen "sending SOS in N…" countdown with a slide-to-cancel bar.
 ///
 /// Deliberately not a plain [AlertDialog]: this has to be impossible to
 /// dismiss by accident (no tap-outside, no back-gesture - see [PopScope]
@@ -1752,7 +1500,7 @@ class _EmergencyDetailsSheetState extends State<_EmergencyDetailsSheet> {
               ),
               const SizedBox(height: 8),
               _SlideToAction(
-                label: _standingDown ? 'Standing downâ€¦' : 'Slide to stand down',
+                label: _standingDown ? 'Standing down…' : 'Slide to stand down',
                 icon: Icons.undo_rounded,
                 accentColor: _danger,
                 onConfirmed: _submitting || _standingDown ? null : _standDown,

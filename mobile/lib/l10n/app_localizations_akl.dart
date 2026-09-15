@@ -655,4 +655,15 @@ class AppLocalizationsAkl extends AppLocalizations {
   @override
   String get rescueNotifBodyDelayed =>
       'Naulang ro sakayan nga panagip, pero nagapakadto pa gihapon. Pabilin sa imong sakayan.';
+
+  @override
+  String get resolvedTitle => 'Nasolbad ron ro insidente';
+
+  @override
+  String get resolvedNotifBody =>
+      'Gin-pundoe ron it MDRRMO ining insidente. Kon kinahanglan mo pa gihapon it bueig, magpadaea it bag-o nga SOS.';
+
+  @override
+  String get resolvedDescription =>
+      'Gin-pundoe ron it MDRRMO ining insidente. Indi na kinahanglan ro pagsagip.';
 }

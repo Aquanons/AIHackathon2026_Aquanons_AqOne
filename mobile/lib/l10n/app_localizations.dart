@@ -1173,6 +1173,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The rescue boat is delayed but still coming. Stay with your boat.'**
   String get rescueNotifBodyDelayed;
+
+  /// Heading (and system-notification title) shown when the MDRRMO has closed this SOS. Rescue is over - the ETA no longer counts down.
+  ///
+  /// In en, this message translates to:
+  /// **'Incident resolved'**
+  String get resolvedTitle;
+
+  /// SAFETY CRITICAL. System-notification body when the MDRRMO resolves the incident. Must not imply rescue is still coming, and must point to raising a new SOS if help is still needed.
+  ///
+  /// In en, this message translates to:
+  /// **'MDRRMO has closed this incident. If you still need help, raise a new SOS.'**
+  String get resolvedNotifBody;
+
+  /// SAFETY CRITICAL. Line under the Incident resolved heading on the SOS status card. Must not read as 'stay put, help is coming'.
+  ///
+  /// In en, this message translates to:
+  /// **'MDRRMO has closed this incident. Rescue is no longer needed.'**
+  String get resolvedDescription;
 }
 
 class _AppLocalizationsDelegate

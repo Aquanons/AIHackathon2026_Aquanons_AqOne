@@ -657,4 +657,15 @@ class AppLocalizationsFil extends AppLocalizations {
   @override
   String get rescueNotifBodyDelayed =>
       'Naantala ang bangkang panagip ngunit papunta pa rin. Manatili sa iyong bangka.';
+
+  @override
+  String get resolvedTitle => 'Nalutas na ang insidente';
+
+  @override
+  String get resolvedNotifBody =>
+      'Isinara na ng MDRRMO ang insidenteng ito. Kung kailangan mo pa rin ng tulong, magpadala ng bagong SOS.';
+
+  @override
+  String get resolvedDescription =>
+      'Isinara na ng MDRRMO ang insidenteng ito. Hindi na kailangan ang pagliligtas.';
 }

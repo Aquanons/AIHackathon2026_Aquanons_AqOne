@@ -116,5 +116,8 @@
   "rescueNotifBodyMinutes": "Darating ang bangkang panagip sa {minutes, plural, =1{1 minuto} other{{minutes} minuto}}",
   "rescueNotifBodySoon": "Darating ang bangkang panagip anumang oras.",
   "rescueNotifBodyDelayed": "Naantala ang bangkang panagip ngunit papunta pa rin. Manatili sa iyong bangka.",
+  "resolvedTitle": "Nalutas na ang insidente",
+  "resolvedNotifBody": "Isinara na ng MDRRMO ang insidenteng ito. Kung kailangan mo pa rin ng tulong, magpadala ng bagong SOS.",
+  "resolvedDescription": "Isinara na ng MDRRMO ang insidenteng ito. Hindi na kailangan ang pagliligtas.",
   "hotspotLegendDisclaimer": "Batay sa datos ng kapaligiran. Hindi ito pangako ng huli, at hindi rin ito hudyat ng ligtas na paglabas."
 }

@@ -645,4 +645,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get rescueNotifBodyDelayed =>
       'The rescue boat is delayed but still coming. Stay with your boat.';
+
+  @override
+  String get resolvedTitle => 'Incident resolved';
+
+  @override
+  String get resolvedNotifBody =>
+      'MDRRMO has closed this incident. If you still need help, raise a new SOS.';
+
+  @override
+  String get resolvedDescription =>
+      'MDRRMO has closed this incident. Rescue is no longer needed.';
 }

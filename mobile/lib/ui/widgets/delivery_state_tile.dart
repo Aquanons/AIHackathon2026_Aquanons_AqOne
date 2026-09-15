@@ -13,6 +13,9 @@ class DeliveryStateTile extends StatelessWidget {
   final SosRecord record;
 
   Color _accent() {
+    if (record.isResolved) {
+      return AqColors.success;
+    }
     switch (record.state) {
       case DeliveryState.saved:
         return AqColors.warning;
@@ -30,6 +33,7 @@ class DeliveryStateTile extends StatelessWidget {
     final palette = AqPalette.of(context);
     final t = AppLocalizations.of(context);
     final accent = _accent();
+    final resolved = record.isResolved;
 
     // Coordinates are numbers, not copy - they are formatted, never
     // translated. Only the "no fix" case has words in it.
@@ -60,7 +64,7 @@ class DeliveryStateTile extends StatelessWidget {
               ),
               const SizedBox(width: AqSpace.sm),
               Text(
-                record.state.title(t),
+                resolved ? t.resolvedTitle : record.state.title(t),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -80,7 +84,7 @@ class DeliveryStateTile extends StatelessWidget {
           ),
           const SizedBox(height: AqSpace.sm),
           Text(
-            record.state.description(t),
+            resolved ? t.resolvedDescription : record.state.description(t),
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
@@ -105,7 +109,12 @@ class DeliveryStateTile extends StatelessWidget {
             _MetaLine(label: t.deliveryMetaNote, value: record.note!),
           if (record.ackedBy != null)
             _MetaLine(label: t.deliveryMetaResponder, value: record.ackedBy!),
-          if (record.etaAt != null)
+          if (record.resolvedAt != null)
+            _MetaLine(
+              label: t.resolvedTitle,
+              value: _formatTime(record.resolvedTime!),
+            )
+          else if (record.etaAt != null)
             _EtaCountdownLine(
               label: t.deliveryMetaEta,
               eta: record.etaTime!,

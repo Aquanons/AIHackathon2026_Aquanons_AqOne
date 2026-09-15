@@ -844,5 +844,17 @@
   "rescueNotifBodyDelayed": "The rescue boat is delayed but still coming. Stay with your boat.",
   "@rescueNotifBodyDelayed": {
     "description": "SAFETY CRITICAL. System-notification body shown after the promised arrival time has passed; rescue is still en route."
+  },
+  "resolvedTitle": "Incident resolved",
+  "@resolvedTitle": {
+    "description": "Heading (and system-notification title) shown when the MDRRMO has closed this SOS. Rescue is over - the ETA no longer counts down."
+  },
+  "resolvedNotifBody": "MDRRMO has closed this incident. If you still need help, raise a new SOS.",
+  "@resolvedNotifBody": {
+    "description": "SAFETY CRITICAL. System-notification body when the MDRRMO resolves the incident. Must not imply rescue is still coming, and must point to raising a new SOS if help is still needed."
+  },
+  "resolvedDescription": "MDRRMO has closed this incident. Rescue is no longer needed.",
+  "@resolvedDescription": {
+    "description": "SAFETY CRITICAL. Line under the Incident resolved heading on the SOS status card. Must not read as 'stay put, help is coming'."
   }
 }

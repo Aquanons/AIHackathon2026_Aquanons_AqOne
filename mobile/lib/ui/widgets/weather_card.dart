@@ -207,7 +207,7 @@ class WeatherCard extends StatelessWidget {
               ),
             ),
             Text(
-              '${value.temperature.toStringAsFixed(1)}°C',
+              '${value.temperature.toStringAsFixed(0)}°C',
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w900,

@@ -91,6 +91,15 @@ class _AppShellState extends State<AppShell> {
   /// does not re-open the dialog for an acknowledgement already seen.
   final Set<String> _announced = <String>{};
 
+  /// localIds whose resolution has already been announced, so a routine poll
+  /// does not re-notify an incident the MDRRMO closed one reconcile ago.
+  final Set<String> _resolvedAnnounced = <String>{};
+
+  /// The ETA dialog's own context, captured from its builder so the resolved
+  /// follow-up can pop exactly that dialog (never a squall alert or some other
+  /// route sitting on top of it) the moment the incident closes.
+  BuildContext? _dialogContext;
+
   bool _dialogOpen = false;
 
   /// True from the moment a check starts until it has either found nothing
@@ -207,7 +216,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _checkForAcknowledgement() async {
-    if (!mounted || _dialogOpen || _checkingAcknowledgement) {
+    if (!mounted || _checkingAcknowledgement) {
       return;
     }
     _checkingAcknowledgement = true;
@@ -218,10 +227,21 @@ class _AppShellState extends State<AppShell> {
         return;
       }
 
+      // A resolution must surface even while the ETA dialog is still up:
+      // reconcile() only emits a changes event when something changed, so if
+      // this check were blocked on _dialogOpen the resolution could be seen
+      // and then never announced again until some unrelated change arrived.
+      _announceResolution(records);
+
+      if (_dialogOpen) {
+        return;
+      }
+
       SosRecord? pending;
       for (final record in records) {
-        final acknowledged = record.state == DeliveryState.acknowledged ||
-            record.etaAt != null;
+        final acknowledged = (record.state == DeliveryState.acknowledged ||
+                record.etaAt != null) &&
+            !record.isResolved;
         if (acknowledged && !_announced.contains(record.localId)) {
           pending = record;
           break;
@@ -252,20 +272,58 @@ class _AppShellState extends State<AppShell> {
       // Scheduled after the current frame so this can safely fire from a
       // stream callback during a build without tripping a
       // setState-during-build error.
+      final announced = pending;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) {
+          _dialogOpen = false;
+          return;
+        }
+        if (announced.isResolved) {
           _dialogOpen = false;
           return;
         }
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (_) => ResponderEtaDialog(record: pending!, sos: widget.sos),
+          builder: (dialogContext) {
+            _dialogContext = dialogContext;
+            return ResponderEtaDialog(record: announced, sos: widget.sos);
+          },
         );
         _dialogOpen = false;
+        _dialogContext = null;
       });
     } finally {
       _checkingAcknowledgement = false;
+    }
+  }
+
+  /// Tell the fisher the MDRRMO has closed their incident, once per record.
+  ///
+  /// Mirrors the acknowledgement watcher: the resolution arrives over the same
+  /// reconcile poll and must surface whether or not the fisher is looking at
+  /// the phone. Also closes the ETA dialog if it is still up - a countdown for
+  /// a finished rescue is stale information.
+  void _announceResolution(List<SosRecord> records) {
+    final t = AppLocalizations.of(context);
+    var announcedAny = false;
+    for (final record in records) {
+      final mdrrmoResolved = record.resolvedAt != null;
+      if (mdrrmoResolved && !_resolvedAnnounced.contains(record.localId)) {
+        _resolvedAnnounced.add(record.localId);
+        unawaited(EtaNotifier.showRescueEta(
+          title: t.resolvedTitle,
+          body: t.resolvedNotifBody,
+        ));
+        announcedAny = true;
+      }
+    }
+    if (!announcedAny) {
+      return;
+    }
+    final dialogContext = _dialogContext;
+    if (dialogContext != null && dialogContext.mounted) {
+      Navigator.of(dialogContext).pop();
     }
   }
 
