@@ -404,15 +404,27 @@ class BackendClient {
   ///
   /// 1 = still in danger, 2 = safe now. Tells the dispatcher the fisher is
   /// alive and read the ETA - which the acknowledgement alone cannot confirm.
-  Future<bool> replyToSos(int eventId, int reply) async {
-    if (!hasVesselCredential) {
-      return false;
-    }
+  ///
+  /// [localId] is passed through only as a route: a credentialed phone (one
+  /// that enrolled a device) matches by event id as before, while an
+  /// un-enrolled phone falls back to POST /api/sos/reply/{local_id}, the same
+  /// trust model as ackByLocalId. Without that fallback the exact handsets
+  /// that need the reply most - self-declared vessels with no enrolment -
+  /// could never send one.
+  Future<bool> replyToSos(int eventId, int reply, {String? localId}) async {
     try {
+      final path = hasVesselCredential
+          ? '/api/sos/$eventId/reply'
+          : localId == null
+              ? null
+              : '/api/sos/reply/${Uri.encodeComponent(localId)}';
+      if (path == null) {
+        return false;
+      }
       final response = await _send(
         _request(
           'POST',
-          EndpointGuard.backend(_baseUrl, '/api/sos/$eventId/reply'),
+          EndpointGuard.backend(_baseUrl, path),
           headers: _withVesselAuth(
             const {'Content-Type': 'application/json'},
           ),

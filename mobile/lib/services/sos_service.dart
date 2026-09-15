@@ -242,7 +242,11 @@ class SosService {
       _pendingReplies[localId] = reply;
       return false;
     }
-    final ok = await _backend.replyToSos(int.tryParse(remoteId) ?? -1, reply);
+    final ok = await _backend.replyToSos(
+      int.tryParse(remoteId) ?? -1,
+      reply,
+      localId: localId,
+    );
     if (ok) {
       _pendingReplies.remove(localId);
       _syncedReplies.add(localId);
@@ -309,7 +313,11 @@ class SosService {
       // event id arrives.
       return;
     }
-    await _backend.replyToSos(int.tryParse(remoteId) ?? -1, 2);
+    await _backend.replyToSos(
+      int.tryParse(remoteId) ?? -1,
+      2,
+      localId: localId,
+    );
   }
 
   Future<BuoyStatus?> pollBuoy() async {
@@ -459,6 +467,7 @@ class SosService {
         etaAt: match.etaAt,
         responderStatus: match.responderStatus,
         responderNote: match.responderNote ?? match.responderStatusLabel,
+        resolvedAt: match.resolvedAt,
       );
       if (stored) {
         changed = true;
@@ -474,6 +483,7 @@ class SosService {
           final ok = await _backend.replyToSos(
             int.tryParse(match.id) ?? -1,
             pendingReply,
+            localId: record.localId,
           );
           if (ok) {
             _pendingReplies.remove(record.localId);

@@ -310,6 +310,27 @@ The fisher's reply to a responder acknowledgement.
 Requires a vessel-device bearer token. The backend updates the event only when
 it belongs to that token's vessel.
 
+### `POST /api/sos/reply/{local_id}`
+
+The same fisher reply, keyed on `local_id` instead of a device token — the
+mirror of `GET /api/sos/ack/{local_id}`'s trust model. An un-enrolled handset
+cannot obtain a vessel-device token (there is no enrolment UI), yet it can
+still raise an SOS and must still be able to answer an acknowledgement; the
+high-entropy `local_id` only that phone generated and sent with the SOS is a
+sufficient scope key, exactly as it is for the ack read-back.
+
+```json
+{
+  "reply": 2
+}
+```
+
+- `1` = still in danger
+- `2` = safe now (also resolves the incident)
+
+204/404 semantics match the credentialed variant: the event is updated once,
+retries are safe, and a `SAFE_NOW` reply freezes the reply fields.
+
 ### `POST /api/catch-logs`
 
 Creates or deduplicates one catch log upload from the handset.
