@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -396,28 +396,22 @@ class WarningDeliveryIn(BaseModel):
     """
 
     warning_id: int
-    delivery_state: str
+    delivery_state: Literal[
+        'generated',
+        'gateway_accepted',
+        'buoy_received',
+        'phone_received',
+        'user_acknowledged',
+    ]
     vessel_id: str | None = None
     buoy_id: str | None = None
     occurred_at: datetime | None = None
     details: dict[str, Any] = {}
 
 
-VALID_DELIVERY_STATES = {
-    'generated',
-    'gateway_accepted',
-    'buoy_received',
-    'phone_received',
-    'user_acknowledged',
-}
-
-
 @router.post('/delivery', status_code=200)
 async def record_warning_delivery(payload: WarningDeliveryIn) -> dict[str, Any]:
     """Record a hop or acknowledgement event in the warning delivery lifecycle."""
-    if payload.delivery_state not in VALID_DELIVERY_STATES:
-        raise HTTPException(status_code=422, detail='invalid warning delivery state')
-
     occurred_at = payload.occurred_at or datetime.now(UTC)
     pool = get_pool()
     async with pool.acquire() as conn:

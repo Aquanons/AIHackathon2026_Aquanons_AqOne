@@ -120,15 +120,6 @@
     return Array.isArray(payload) ? payload : [payload];
   }
 
-  function degradedBuoyCount(buoys) {
-    return (buoys || []).filter(function (buoy) {
-      var status = String(buoy.status || '').toLowerCase();
-      var signal = Number(buoy.signal);
-      return status === 'danger' || status === 'warning' || status === 'offline' ||
-        status === 'stale' || (Number.isFinite(signal) && signal < 50);
-    }).length;
-  }
-
   function riskLevel(score) {
     if (score >= 65) return { key: 'danger', label: 'Danger', color: '#ef4444' };
     if (score >= 40) return { key: 'watch', label: 'Watch', color: '#f59e0b' };

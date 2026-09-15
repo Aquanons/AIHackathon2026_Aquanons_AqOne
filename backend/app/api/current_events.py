@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hmac
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -9,7 +7,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.contacts import require_gateway_key
+from app.api.contacts import require_gateway_key, require_synthetic_demo_gate
 from app.db import get_pool
 
 router = APIRouter(prefix='/api/v1', tags=['current-events'])
@@ -19,18 +17,6 @@ _MAX_CURRENT_SPEED_MPS = 5.0
 
 # Tolerance for a buoy's clock running ahead of the server's
 _MAX_FUTURE_SKEW = timedelta(minutes=5)
-
-
-async def _require_synthetic_demo_gate(x_demo_key: str | None) -> None:
-    demo_mode = os.environ.get('DEMO_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
-    configured_key = os.environ.get('DEMO_CONTROL_KEY', '')
-    if (
-        not demo_mode
-        or not configured_key
-        or x_demo_key is None
-        or not hmac.compare_digest(x_demo_key, configured_key)
-    ):
-        raise HTTPException(status_code=403, detail='synthetic current data requires demo mode')
 
 
 class CurrentEventIn(BaseModel):
@@ -69,7 +55,7 @@ async def ingest_current_event(
     Preserves occurrence time (observed_at) and marks created_at as receipt time.
     """
     if payload.source == 'synthetic':
-        await _require_synthetic_demo_gate(x_demo_key)
+        await require_synthetic_demo_gate(x_demo_key, 'current')
 
     pool = get_pool()
     async with pool.acquire() as conn:

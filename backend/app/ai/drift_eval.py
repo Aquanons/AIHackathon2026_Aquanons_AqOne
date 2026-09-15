@@ -11,7 +11,6 @@ from app.ai.drift import (
     ObjectClass,
     _synthetic_wind_series,
     contour_contains,
-    max_radius_m,
     predict_drift,
 )
 from app.ai.eval_store import write_section
@@ -103,9 +102,7 @@ async def main() -> None:
         area_factors.append(
             _area_reduction_factor(
                 prediction,
-                float(row['last_contact_lat']),
-                float(row['last_contact_lon']),
-                forecast_hours=forecast_hours,
+                forecast_hours,
             )
         )
         if current_fn is not None:
@@ -152,12 +149,8 @@ def _independent_baseline_area_m2(forecast_hours: float) -> float:
     return 3.141592653589793 * radius_m * radius_m
 
 
-def _area_reduction_factor(prediction, last_lat: float, last_lon: float, forecast_hours: float | None = None) -> float:
-    if forecast_hours is not None and forecast_hours > 0:
-        baseline_area = _independent_baseline_area_m2(forecast_hours)
-    else:
-        final_radius = max_radius_m(prediction, last_lat, last_lon)
-        baseline_area = 3.141592653589793 * final_radius * final_radius
+def _area_reduction_factor(prediction, forecast_hours: float) -> float:
+    baseline_area = _independent_baseline_area_m2(forecast_hours)
     contour = prediction.contours[-1]['geometry']['coordinates'][0]
     area = abs(_polygon_area_m2(contour))
     if area <= 1e-9:

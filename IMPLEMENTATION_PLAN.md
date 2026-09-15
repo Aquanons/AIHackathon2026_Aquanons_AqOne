@@ -11,6 +11,8 @@ Separate workstream: [Web audit remediation implementation plan](docs/WEB_REMEDI
 Separate workstream: [AI accuracy implementation plan](docs/AI_ACCURACY_IMPLEMENTATION_PLAN.md), completed 2026-09-15, covers real measurements, controlled drills, physical drift boundaries, and the before/during/after safety scenario based on the data correctness audit; all Phases 1–5 are completed and verified.
 The fishing-window plan below is preserved as its existing workstream record.
 
+Separate workstream: [Gemini Ponytail simplification plan](docs/PONYTAIL_SIMPLIFICATION_IMPLEMENTATION_PLAN.md), completed 2026-09-15; all Phases 1–3 completed and verified.
+
 ---
 
 ## Overview
